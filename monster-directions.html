@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monster Directions</title>
+<!--
+  Barbell Brawl – throwaway prototype: three art directions for the 16-bit monsters, next to the current ones.
+
+  New pipeline (all three directions use it):
+    each monster is a stack of PARTS (back to front), each with a color ramp [ink, shadow, base, light, highlight].
+    1. every part is drawn as a mask; a distance field inside it gives a rounded "height", lit from the top-left
+       → shadow / base / light tones (form shading instead of a dark blob)
+    2. where a part sits in front of another, the part behind gets a dark line (arm vs torso, pecs, cushions)
+    3. outer outline, plus an optional cool rim light on the right edge so shapes pop on a dark arena
+    4. exact-pixel details last: faces, text, stripes
+  A style is just settings for that pipeline (STYLES) plus a face style. Designs live in ART.
+-->
+<style>
+  :root { --bg: #111317; --card: #1a1d22; --line: #2d3138; --text: #eceae4; --muted: #9a9ca0; --accent: #ff7a1a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  h2 { font-size: 20px; margin: 32px 0 6px; }
+  p { margin: 4px 0; color: var(--muted); }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; margin: 14px 0 4px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 2; }
+  .controls label { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+  .why { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; margin-top: 12px; }
+  .why li { margin: 4px 0; color: var(--muted); } .why b { color: var(--text); }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+  .dir { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+  .dir b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .dir .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--accent); color: #111; margin-bottom: 6px; }
+  .dir .tag.cur { background: #555a62; color: var(--text); }
+  .dir ul { margin: 6px 0 0; padding-left: 16px; color: var(--muted); }
+  .row h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); margin: 22px 0 8px; }
+  .row h3 span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .cell { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px; text-align: center; overflow: hidden; }
+  .cell canvas { max-width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; display: block; margin: 0 auto; border-radius: 6px; }
+  .cell .cap { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .react { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-top: 12px; }
+  .react li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BARBELL BRAWL · Monster directions</h1>
+  <p>The monsters in the chosen direction, <b>C · Chibi Mana</b> (founder, 2026-09-25), then the comparison that picked it: the Zone 1 lineup as it was, and three 16-bit directions on a better pixel pipeline.</p>
+
+  <div class="why">
+    <b>Why the current ones read as blobs</b>
+    <ul>
+      <li><b>No interior lines.</b> Arm, torso and head are one color, so the Oni's flexing arm melts into its body.</li>
+      <li><b>Shading is one dark ellipse</b> stuck on the side. It reads as a hole or a stain, not as a round shape.</li>
+      <li><b>Faces are 1–2 pixels.</b> The face is how you tell what a creature is, and it's the first thing lost.</li>
+      <li><b>Black outline on a dark arena.</b> The silhouette edge disappears. A rim light (or a lighter background) brings it back.</li>
+    </ul>
+  </div>
+
+  <div class="controls">
+    <label>Zoom <input type="range" id="zoom" min="1" max="7" step="1" value="4"> <span id="zoomV">×4</span></label>
+    <label><input type="checkbox" id="sil"> Silhouette test</label>
+    <label><input type="checkbox" id="anim" checked> Animate</label>
+    <label>Background <select id="bg"><option value="dark">Dark arena</option><option value="grass">Pixel village</option></select></label>
+  </div>
+  <p style="font-size:13px">×2 is roughly minion size on a phone mid-fight. Silhouette test: if you can still tell what it is as a flat shape, it'll read in a hectic fight.</p>
+
+  <h2>The directions</h2>
+  <div class="grid4">
+    <div class="dir"><span class="tag cur">NOW</span><b>Current</b>Shapes snapped to a palette, one outline. For comparison.</div>
+    <div class="dir"><span class="tag">A</span><b>Polished SNES RPG</b>Chrono Trigger / FF6 enemy sprites. Same designs, done properly: lit from the top-left, interior lines, rim light, real faces.
+      <ul><li>Keeps what you already liked</li><li>Most "16-bit" of the three</li><li>Most art effort per monster</li></ul></div>
+    <div class="dir"><span class="tag">B</span><b>Earthbound oddballs</b>Flat colors, bold black lines, googly eyes. Everyday objects that are deadpan weird.
+      <ul><li>Best fit for the excuse gags</li><li>Cheapest to make lots of</li><li>Bosses feel less menacing</li></ul></div>
+    <div class="dir"><span class="tag">C</span><b>Chibi Mana</b>Secret of Mana / anime: big heads, huge shiny eyes, soft round shading.
+      <ul><li>Most readable on a small phone</li><li>Ties into the anime layer</li><li>Cute more than scary</li></ul></div>
+  </div>
+
+  <h2>Chibi roster <span class="tag" style="font-size:12px;vertical-align:middle;background:var(--accent);color:#111;padding:2px 8px;border-radius:6px">DECIDED: C</span></h2>
+  <p>The whole bestiary so far in Chibi Mana, including the Zone 1 elite (Bridge Troll). The Couch Potato now sits up with a sprout on top, so it passes the silhouette test.</p>
+  <div class="grid4" id="roster"></div>
+
+  <h2>The comparison</h2>
+  <p>The Zone 1 lineup in all four directions, for reference.</p>
+  <div id="rows"></div>
+
+  <div class="react">
+    <b>What to react to</b>
+    <ol>
+      <li>Do the bosses (Oni Bro, Minotaur) still feel like a threat? If not: bigger on screen, meaner brows, or more gear?</li>
+      <li>Try the silhouette test at ×2. Can you tell every one apart?</li>
+      <li>Is the Kitsune's cocky grin and the Slime's dumbbell the right amount of gym-bro?</li>
+      <li>Text on monsters (the CHIPS label): fun, or too literal?</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const INK = '#0c0a12';
+
+// ---------------------------------------------------------------------------
+// Color ramps: [ink, shadow, base, light, highlight]
+// ---------------------------------------------------------------------------
+const RAMPS = {
+  chip:   ['#4a2008', '#c8701c', '#f0b030', '#ffe070', '#fff8c8'],
+  seal:   ['#5a2808', '#b85a14', '#e08a24', '#f8b848', '#ffe090'],
+  red:    ['#3a0810', '#9a1c28', '#e03838', '#ff7a6a', '#ffc4b4'],
+  crisp:  ['#5a3408', '#d09030', '#f8d070', '#fff0b0', '#ffffff'],
+  hair:   ['#08060c', '#1a1422', '#2e2238', '#4a3a58', '#6a5a78'],
+  potato: ['#34200c', '#8a5a2c', '#c08a4c', '#e8b878', '#f8e0b0'],
+  couch:  ['#1c0a16', '#5a1e3a', '#8e3454', '#bc5874', '#e896a8'],
+  wood:   ['#1c0c08', '#4a2a18', '#6a4228', '#8e6038', '#b88858'],
+  metal:  ['#141828', '#5a6278', '#9aa2b8', '#d0d6e4', '#ffffff'],
+  face:   ['#3a4050', '#c4cad4', '#eef0f4', '#ffffff', '#ffffff'],
+  wing:   ['#140a24', '#3e2468', '#6a44a0', '#9a74d0', '#c8a8f0'],
+  oni:    ['#3a0808', '#8a2018', '#c8402a', '#ee6a46', '#ffa88a'],
+  bone:   ['#4a3a20', '#b8a070', '#e8d8b0', '#fff4dc', '#ffffff'],
+  leather:['#1a0e08', '#3a2214', '#5a3620', '#7e5030', '#a07048'],
+  gold:   ['#4a3008', '#b08020', '#f0c040', '#fff080', '#ffffff'],
+  tiger:  ['#3a2008', '#b86818', '#f0a030', '#ffd060', '#fff0b0'],
+  iron:   ['#0a0a12', '#262834', '#40444f', '#646a7c', '#a0a8bc'],
+  leaf:   ['#0c2a08', '#2e7a1c', '#4ea830', '#80d050', '#c0f090'],
+  troll:  ['#12200a', '#3a6a24', '#5e9a3a', '#8ccc5a', '#c8f0a0'],
+  belly:  ['#2a3a14', '#8aa058', '#b8cc80', '#dce8a8', '#f4ffd8'],
+  fox:    ['#3a1404', '#a84a18', '#e87830', '#ffa860', '#ffd8b0'],
+  cream:  ['#5a4a38', '#c8b8a0', '#f4ecdc', '#ffffff', '#ffffff'],
+  slime:  ['#0c3a2a', '#2f9070', '#60d0a0', '#a0f0c8', '#e0fff0'],
+  fur:    ['#1c0c04', '#4e2e1c', '#7a4a2c', '#a06a44', '#c89068'],
+  muzzle: ['#3a2414', '#a07858', '#c8a080', '#e8c8a8', '#fff0e0'],
+  ghost:  ['#1a3040', '#6aa0c0', '#a8d8f0', '#d8f4ff', '#ffffff'],
+  screen: ['#0a2a40', '#2a88c8', '#5cc8ff', '#a0e4ff', '#e8f8ff'],
+};
+
+// ---------------------------------------------------------------------------
+// Styles = pipeline settings. Tweak these to taste.
+//   R: how round parts look (px of edge rounding)   t1/t2: light thresholds for shadow→base→light   hi: highlight
+//   lines: interior line color ('ramp' = the part's own ink, 'black')   outline: 'selout' (dark tint) or 'black'
+//   rim: cool light on right edges (pops on dark arenas)   ao: parts cast a short shadow onto what's below them
+// ---------------------------------------------------------------------------
+const STYLES = {
+  A: { R: 3, round: 1,   t1: 0.32, t2: 0.86, hi: 9,    lines: 'ramp',  outline: 'selout', rim: true,  ao: true,  face: 'A' },
+  B: { R: 3, round: 1,   t1: 0.0,  t2: 9,    hi: 9,    lines: 'black', outline: 'black',  rim: false, ao: false, face: 'B' },
+  C: { R: 5, round: 1.6, t1: 0.25, t2: 0.8,  hi: 0.97, lines: 'ramp',  outline: 'selout', rim: true,  ao: true,  face: 'C', chibi: true },
+};
+const LIGHT = (() => { const v = [-0.5, -0.7, 0.55], n = Math.hypot(...v); return v.map(a => a / n); })();
+
+// ---------------------------------------------------------------------------
+// Drawing helpers (shapes are masks; color comes from the part's ramp)
+// ---------------------------------------------------------------------------
+const E = (t, cx, cy, rx, ry, rot = 0) => { t.beginPath(); t.ellipse(cx, cy, rx, ry, rot, 0, 7); t.fill(); };
+const P = (t, pts) => { t.beginPath(); pts.forEach((p, i) => i ? t.lineTo(p[0], p[1]) : t.moveTo(p[0], p[1])); t.closePath(); t.fill(); };
+const R = (t, x, y, w, h) => t.fillRect(x, y, w, h);
+const RR = (t, x, y, w, h, r) => { t.beginPath(); t.roundRect(x, y, w, h, r); t.fill(); };
+const L = (t, w, a, b) => { t.lineWidth = w; t.lineCap = 'round'; t.beginPath(); t.moveTo(a[0], a[1]); t.lineTo(b[0], b[1]); t.stroke(); };
+
+const hexRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+
+// Distance to the nearest outside pixel (chamfer), turned into a rounded height profile
+function heightField(m, W, H, r) {
+  const N = W * H, D = new Float32Array(N);
+  for (let i = 0; i < N; i++) D[i] = m[i] ? 1e9 : 0;
+  const g = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : D[y * W + x];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (m[i]) D[i] = Math.min(D[i], g(x - 1, y) + 1, g(x, y - 1) + 1, g(x - 1, y - 1) + 1.41, g(x + 1, y - 1) + 1.41); }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; if (m[i]) D[i] = Math.min(D[i], g(x + 1, y) + 1, g(x, y + 1) + 1, g(x + 1, y + 1) + 1.41, g(x - 1, y + 1) + 1.41); }
+  const h = new Float32Array(N);
+  for (let i = 0; i < N; i++) if (m[i]) { const d = Math.min(D[i] - 0.5, r) / r; h[i] = r * Math.sqrt(1 - (1 - d) ** 2); }
+  return h;
+}
+
+// Tiny 3×5 pixel font for labels
+const FONT = { C: ['111', '100', '100', '100', '111'], H: ['101', '101', '111', '101', '101'], I: ['111', '010', '010', '010', '111'],
+               P: ['110', '101', '110', '100', '100'], S: ['111', '100', '111', '001', '111'], Z: ['111', '001', '010', '100', '111'] };
+
+function renderSprite(W, H, S, build, b) {
+  const parts = [];
+  const part = (ramp, fn, o = {}) => parts.push({ ramp: RAMPS[ramp].map(hexRgb), fn, ...o });
+  const res = build(part, b, S) || {};
+  const cv = mkCanvas(W, H), t = cv.getContext('2d', { willReadFrequently: true });
+  const N = W * H, id = new Int16Array(N).fill(-1), masks = [];
+  parts.forEach((p, k) => {
+    t.clearRect(0, 0, W, H); t.fillStyle = t.strokeStyle = '#000'; p.fn(t);
+    const d = t.getImageData(0, 0, W, H).data, m = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (d[i * 4 + 3] >= 128) { m[i] = 1; id[i] = k; }
+    masks.push(m);
+  });
+  const hs = masks.map((m, k) => heightField(m, W, H, (parts[k].r ?? S.R) * S.round));
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? -1 : id[y * W + x];
+  const img = t.createImageData(W, H), o = img.data;
+  const rimC = hexRgb(res.rim || '#c4e6ff'), ink = hexRgb(INK);
+  const put = (i, c) => { o[i * 4] = c[0]; o[i * 4 + 1] = c[1]; o[i * 4 + 2] = c[2]; o[i * 4 + 3] = 255; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, k = id[i]; if (k < 0) continue;
+    const p = parts[k], h = hs[k], hv = (X, Y) => (X < 0 || Y < 0 || X >= W || Y >= H) ? 0 : h[Y * W + X];
+    let nx = hv(x - 1, y) - hv(x + 1, y), ny = hv(x, y - 1) - hv(x, y + 1), nz = 2;
+    const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+    const lum = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
+    let tone = p.flat ? 2 : lum < S.t1 ? 1 : lum < S.t2 ? 2 : 3;
+    if (!p.flat && lum >= S.hi) tone = 4;
+    const casts = j => j > k && parts[j].line !== false;
+    if (S.ao && (casts(at(x, y - 1)) || casts(at(x, y - 2)))) tone = Math.min(tone, 1);
+    let c = p.ramp[tone];
+    if ((S.rim || res.rimAlways) && at(x + 1, y) < 0 && nx > 0.15) c = mix(p.ramp[3], rimC, 0.55);
+    if (!p.noLine && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => casts(at(x + dx, y + dy)))) c = S.lines === 'black' ? ink : p.ramp[0];
+    put(i, c);
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (id[i] >= 0) continue;
+    const n = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => at(x + dx, y + dy)).find(j => j >= 0);
+    if (n !== undefined) put(i, S.outline === 'black' ? ink : mix(parts[n].ramp[0], ink, 0.4));
+  }
+  t.putImageData(img, 0, 0);
+  const q = (x, y, c, w = 1, h = 1) => { t.fillStyle = c; t.fillRect(x, y, w, h); };
+  q.line = (x0, y0, x1, y1, c) => { const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)); for (let s = 0; s <= n; s++) q(Math.round(x0 + (x1 - x0) * s / (n || 1)), Math.round(y0 + (y1 - y0) * s / (n || 1)), c); };
+  q.text = (str, x, y, c) => [...str].forEach((ch, n) => FONT[ch].forEach((row, r) => [...row].forEach((v, col) => v === '1' && q(x + n * 4 + col, y + r, c))));
+  if (res.after) res.after(q, b, S);
+  return cv;
+}
+
+// ---------------------------------------------------------------------------
+// Faces, one set per style
+// ---------------------------------------------------------------------------
+const FACE = {
+  // A: small but defined — white eye, dark pupil, a brow line that sets the mood
+  eyeA(q, x, y, look = 1, iris = INK) { q(x, y, '#fff', 3, 2); q(x + (look > 0 ? 2 : 0), y, iris, 1, 2); },
+  // B: googly round eyes, pupils wandering
+  eyeB(q, x, y, px = 1, py = 1) { q(x + 1, y, '#fff', 2, 1); q(x, y + 1, '#fff', 4, 2); q(x + 1, y + 3, '#fff', 2, 1); q(x + px, y + py, INK, 2, 2); },
+  // C: tall anime eyes with a shine and a colored iris
+  eyeC(q, x, y, iris, w = 3, h = 5) { q(x, y, INK, w, h); q(x, y + h - 3, iris, w, 2); q(x, y + h - 1, INK, w, 1); q(x, y, '#fff', w > 3 ? 2 : 1, 2); q(x + w - 1, y + h - 2, '#fff'); },
+};
+
+// ---------------------------------------------------------------------------
+// The new designs. Each: (part, bob, style) → registers parts back-to-front, returns { after, rim }.
+// ---------------------------------------------------------------------------
+const ART = {
+  snack: { W: 36, H: 36, build: (part, b, S) => {   // chip-bag gremlin brandishing a chip
+    const y = b;
+    part('hair', t => { R(t, 12, 29, 3, 5); R(t, 21, 29, 3, 5); R(t, 10, 33, 5, 2); R(t, 21, 33, 6, 2); });
+    part('chip', t => L(t, 3, [9, 21 + y], [3, 13 - y * 2]));                                     // waving arm
+    part('chip', t => P(t, [[10, 7 + y], [26, 7 + y], [30, 15 + y], [30, 23 + y], [28, 30], [8, 30], [6, 23 + y], [6, 15 + y]]), { r: 4 });   // puffy bag
+    part('seal', t => R(t, 9, 5 + y, 18, 3), { r: 1 });                                           // crimped seal
+    part('red', t => P(t, [[6, 20 + y], [30, 20 + y], [29, 27], [7, 27]]), { r: 2 });               // label
+    part('chip', t => L(t, 3, [27, 23], [32, 19 - y]));                                           // front arm
+    part('crisp', t => P(t, [[28, 13 - y], [35, 14 - y], [33, 21 - y]]), { r: 1 });                // the chip
+    return { after: (q, b, S) => {
+      const y = b;
+      q.text('CHIPS', 8, 21 + y, S.face === 'B' ? '#fff' : '#ffe070');
+      for (let x = 10; x < 27; x += 2) q(x, 5 + y, S.face === 'B' ? INK : RAMPS.seal[0], 1, 3);    // crimp ridges
+      if (S.face === 'A') {
+        FACE.eyeA(q, 11, 12 + y); FACE.eyeA(q, 20, 12 + y);
+        q.line(10, 10 + y, 13, 12 + y, INK); q.line(20, 12 + y, 23, 10 + y, INK);                 // angry brows
+        q(13, 15 + y, INK, 9, 3); [14, 16, 18, 20].forEach(x => q(x, 15 + y, '#fff')); [15, 17, 19].forEach(x => q(x, 17 + y, '#fff'));
+      } else if (S.face === 'B') {
+        FACE.eyeB(q, 10, 10 + y, 2, 1); FACE.eyeB(q, 19, 11 + y, 0, 2);
+        q.line(13, 17 + y, 22, 16 + y, INK); q(20, 17 + y, '#fff');
+      } else {
+        FACE.eyeC(q, 10, 10 + y, '#8a2a18', 4, 6); FACE.eyeC(q, 20, 10 + y, '#8a2a18', 4, 6);
+        q.line(10, 9 + y, 14, 11 + y, INK); q.line(20, 11 + y, 24, 9 + y, INK);
+        q(15, 17 + y, INK, 5, 1); q(16, 18 + y, INK, 3, 1); q(18, 17 + y, '#fff');
+      }
+    } };
+  } },
+
+  couch: { W: 44, H: 36, build: (part, b, S) => {   // potato slumped on a couch, lit by the TV
+    const y = b - 4;                                                                              // potato sits up high so its head clears the backrest
+    part('couch', t => RR(t, 5, 12, 34, 14, 4), { r: 3 });                                        // backrest
+    part('leaf', t => { L(t, 1.5, [21, 9 + y], [21, 6 + y]); E(t, 18, 6.5 + y, 3.4, 2, 0.4); E(t, 24, 6 + y, 3.4, 2, -0.4); }, { r: 1 });  // sprout
+    part('potato', t => E(t, 21, 17 + y, 10.5, 9, -0.15), { r: 4 });                               // the potato
+    part('couch', t => RR(t, 4, 24, 36, 8, 2), { r: 2 });                                         // seat cushion
+    part('couch', t => RR(t, 0, 15, 9, 17, 3), { r: 3 });                                         // armrests
+    part('couch', t => RR(t, 35, 15, 9, 17, 3), { r: 3 });
+    part('wood', t => { R(t, 3, 32, 3, 3); R(t, 38, 32, 3, 3); });
+    part('potato', t => L(t, 3, [28, 21 + y], [33, 18 + y]));                                     // arm on the armrest
+    part('hair', t => R(t, 32, 10 + y, 3, 8), { r: 1 });                                          // remote
+    return { rim: '#58c8ff', rimAlways: true, after: (q, b, S) => {
+      const y = b - 4, sp = RAMPS.potato[1];
+      q(33, 11 + y, '#ff4040');                                                                   // remote button
+      [[13, 13], [27, 11], [14, 21], [25, 22]].forEach(([x, yy]) => q(x, yy + y, sp));             // potato "eyes"
+      if (S.face === 'A') {
+        FACE.eyeA(q, 17, 15 + y, 1, INK); FACE.eyeA(q, 23, 15 + y, 1, INK);
+        q(17, 15 + y, RAMPS.potato[1], 3, 1); q(23, 15 + y, RAMPS.potato[1], 3, 1);               // heavy lids
+        q(20, 20 + y, INK, 3, 2); q(21, 20 + y, '#f8d070');                                        // munching a chip
+      } else if (S.face === 'B') {
+        FACE.eyeB(q, 15, 13 + y, 1, 2); FACE.eyeB(q, 22, 13 + y, 2, 2);
+        q(15, 13 + y, RAMPS.potato[2], 4, 2); q(22, 13 + y, RAMPS.potato[2], 4, 2);                // lids halfway down
+        q(19, 20 + y, INK, 4, 1);
+      } else {
+        q(16, 16 + y, INK, 4, 1); q(15, 15 + y, INK); q(23, 16 + y, INK, 4, 1); q(27, 15 + y, INK);  // blissed-out closed eyes
+        q(20, 19 + y, INK, 3, 2); q(21, 20 + y, '#ff8090');
+      }
+    } };
+  } },
+
+  snooze: { W: 48, H: 36, build: (part, b, S) => {   // alarm clock with bat wings, mid-yawn
+    const w = b ? 4 : 0, o = 6;                                                                   // o: body offset, room for the wings
+    const wing = s => [[-6, -4], [-14, -15 + w], [-23, -12 + w], [-24, -1], [-20, -4 + w / 2], [-19, 4], [-15, 1], [-12, 7], [-8, 3]].map(([dx, dy]) => [24 + s * dx, 19 + dy]);
+    part('wing', t => P(t, wing(1)), { r: 2 });
+    part('wing', t => P(t, wing(-1)), { r: 2 });
+    part('metal', t => { L(t, 2, [o + 13, 28], [o + 10, 34]); L(t, 2, [o + 23, 28], [o + 26, 34]); });
+    part('metal', t => { R(t, o + 17, 2, 2, 6); R(t, o + 14, 2, 8, 2); });                        // hammer
+    part('red', t => E(t, o + 10, 8, 4.5, 4, -0.5), { r: 3 });                                    // bells
+    part('red', t => E(t, o + 26, 8, 4.5, 4, 0.5), { r: 3 });
+    part('metal', t => E(t, o + 18, 19, 11, 11), { r: 3 });                                       // case
+    part('face', t => E(t, o + 18, 19, 8, 8), { r: 3 });                                          // dial
+    return { after: (q0, b, S) => {
+      const q = (x, y, ...a) => q0(x + o, y, ...a); q.line = (x0, y0, x1, y1, c) => q0.line(x0 + o, y0, x1 + o, y1, c); q.text = (s, x, y, c) => q0.text(s, x + o, y, c);
+      q(18, 12, INK); q(25, 19, INK); q(18, 26, INK); q(11, 19, INK);                              // 12 · 3 · 6 · 9
+      const rib = S.face === 'B' ? INK : RAMPS.wing[0];                                           // wing fingers
+      [1, -1].forEach(s => { q0.line(24 - s * 14, 5 + w, 24 - s * 22, 17 + w / 2, rib); q0.line(24 - s * 14, 5 + w, 24 - s * 16, 19, rib); q0.line(24 - s * 14, 5 + w, 24 - s * 11, 23, rib); });
+      const zy = b ? 0 : 2; q.text('Z', 36, zy, '#fff');
+      if (S.face === 'A') {
+        q(14, 17, INK, 3, 1); q(20, 17, INK, 3, 1); q(15, 18, INK); q(21, 18, INK);                 // droopy eyes
+        q(16, 21, INK, 4, 3); q(17, 23, '#e03838', 2, 1);                                          // yawn
+      } else if (S.face === 'B') {
+        FACE.eyeB(q, 12, 15, 1, 2); FACE.eyeB(q, 20, 15, 1, 2);
+        q(12, 15, RAMPS.face[1], 4, 2); q(20, 15, RAMPS.face[1], 4, 2);
+        q(16, 22, INK, 4, 2);
+      } else {
+        q(13, 17, INK, 4, 1); q(12, 16, INK); q(19, 17, INK, 4, 1); q(23, 16, INK);                 // sleepy anime eyes
+        q(14, 18, INK); q(21, 18, INK);                                                           // lashes
+        q(17, 21, INK, 2, 2); q(17, 22, '#e03838', 2, 1);
+      }
+    } };
+  } },
+
+  oni: { W: 64, H: 72, build: (part, b, S) => S.chibi ? oniChibi(part, b) : oniFull(part, b), after: null },
+};
+
+function oniFull(part, b) {   // Oni Bro: flexing, kanabo on the far side, lifting belt, tiger shorts
+  const u = b;
+  part('iron', t => P(t, [[51, 35 + u], [55, 35 + u], [63, 8 + u], [61, 2 + u], [55, 1 + u], [53, 6 + u]]), { r: 3 });   // kanabo
+  part('oni', t => L(t, 7, [46, 31 + u], [54, 27 + u]));                                            // far arm gripping it
+  part('oni', t => { L(t, 7, [25, 56], [24, 67]); L(t, 7, [39, 56], [40, 67]); });                  // legs
+  part('leather', t => { R(t, 19, 66, 10, 4); R(t, 36, 66, 10, 4); });                               // sandals
+  part('tiger', t => P(t, [[20, 45], [44, 45], [46, 59], [34, 59], [32, 54], [30, 59], [18, 59]]), { r: 2 });
+  part('oni', t => P(t, [[13, 26 + u], [51, 26 + u], [45, 47], [19, 47]]), { r: 7 });               // V-taper torso
+  part('oni', t => { E(t, 25, 31 + u, 7.5, 4.5); }, { r: 3 });                                      // pecs
+  part('oni', t => { E(t, 39, 31 + u, 7.5, 4.5); }, { r: 3 });
+  part('leather', t => R(t, 18, 42, 28, 6), { r: 2 });                                              // belt
+  part('gold', t => R(t, 28, 41, 8, 8), { r: 2 });
+  part('oni', t => { E(t, 32, 16 + u, 9, 9); P(t, [[24, 17 + u], [40, 17 + u], [38, 26 + u], [26, 26 + u]]); }, { r: 4 });   // head + jaw
+  part('hair', t => P(t, [[22, 15 + u], [22, 6 + u], [26, 9 + u], [29, 3 + u], [33, 8 + u], [37, 3 + u], [40, 9 + u], [42, 7 + u], [42, 15 + u], [32, 11 + u]]), { r: 2 });
+  part('bone', t => { P(t, [[25, 11 + u], [19, 0], [28, 8 + u]]); P(t, [[39, 11 + u], [45, 0], [36, 8 + u]]); }, { r: 1 });
+  part('oni', t => L(t, 8, [17, 30 + u], [7, 32 + u]));                                             // near arm: flex
+  part('oni', t => E(t, 11, 27 + u, 5, 4), { r: 3 });                                               // bicep
+  part('oni', t => L(t, 7, [7, 32 + u], [8, 19 + u]));
+  part('oni', t => E(t, 8, 16 + u, 4.5, 4.5), { r: 3 });                                            // fist
+  return { after: (q, b, S) => {
+    const u = b, sh = RAMPS.oni[1];
+    [[28, 36], [35, 36], [28, 39], [35, 39]].forEach(([x, y]) => q(x, y + u, sh, 2, 1));           // abs
+    [[19, 50], [19, 55], [45, 50], [45, 55]].forEach(([x, y]) => { const d = x < 32 ? 1 : -1; q.line(x, y, x + d * 4, y + 1, INK); q.line(x, y + 1, x + d * 3, y + 1, INK); });   // tiger stripes
+    q(31, 43, INK, 2, 4);                                                                           // buckle prong
+    [[56, 5], [60, 9], [55, 12], [58, 17], [54, 22], [56, 28]].forEach(([x, y]) => { q(x, y + u, RAMPS.iron[4], 2, 1); q(x, y + 1 + u, INK, 2, 1); });   // club studs
+    if (S.face === 'A') {
+      FACE.eyeA(q, 27, 16 + u, 1, '#f0c040'); FACE.eyeA(q, 34, 16 + u, -1, '#f0c040');
+      q.line(26, 13 + u, 30, 15 + u, INK); q.line(34, 15 + u, 38, 13 + u, INK);
+      q(28, 22 + u, INK, 8, 2); q(28, 21 + u, '#fff'); q(35, 21 + u, '#fff');                     // grin with tusks
+    } else {
+      FACE.eyeB(q, 26, 14 + u, 2, 1); FACE.eyeB(q, 33, 14 + u, 1, 1);
+      q(26, 13 + u, INK, 5, 1); q(33, 13 + u, INK, 5, 1);
+      q(28, 22 + u, INK, 8, 1); q(29, 21 + u, '#fff'); q(34, 21 + u, '#fff');
+    }
+  } };
+}
+
+function oniChibi(part, b) {   // big head, huge club, stubby flex
+  const u = b;
+  part('iron', t => P(t, [[47, 44 + u], [52, 44 + u], [63, 6 + u], [50, 3 + u]]), { r: 3 });
+  part('oni', t => L(t, 6, [42, 45 + u], [50, 40 + u]));
+  part('oni', t => { L(t, 7, [27, 60], [27, 67]); L(t, 7, [37, 60], [37, 67]); });
+  part('leather', t => { R(t, 21, 66, 10, 4); R(t, 34, 66, 10, 4); });
+  part('tiger', t => P(t, [[21, 52], [43, 52], [45, 63], [33, 63], [32, 59], [31, 63], [19, 63]]), { r: 2 });
+  part('oni', t => E(t, 32, 45 + u, 13, 10), { r: 5 });
+  part('leather', t => R(t, 20, 50, 24, 5), { r: 2 });
+  part('gold', t => R(t, 29, 49, 6, 7), { r: 2 });
+  part('oni', t => E(t, 32, 24 + u, 16.5, 14), { r: 6 });                                           // big head
+  part('hair', t => P(t, [[16, 19 + u], [17, 9 + u], [21, 12 + u], [24, 5 + u], [29, 10 + u], [33, 4 + u], [37, 10 + u], [42, 6 + u], [45, 12 + u], [48, 10 + u], [48, 19 + u], [40, 15 + u], [32, 17 + u], [24, 15 + u]]), { r: 2 });
+  part('bone', t => { P(t, [[21, 13 + u], [14, 0], [25, 10 + u]]); P(t, [[43, 13 + u], [50, 0], [39, 10 + u]]); }, { r: 1 });
+  part('oni', t => L(t, 6, [21, 44 + u], [13, 44 + u]));
+  part('oni', t => L(t, 6, [13, 44 + u], [13, 37 + u]));
+  part('oni', t => E(t, 13, 34 + u, 4.5, 4.5), { r: 3 });
+  return { after: (q, b) => {
+    const u = b;
+    [[23, 55], [40, 55], [26, 58]].forEach(([x, y]) => q.line(x, y, x + 2, y + 3, INK));
+    [[59, 12], [56, 20], [58, 28], [54, 34]].forEach(([x, y]) => q(x, y + u, RAMPS.iron[4]));
+    FACE.eyeC(q, 22, 22 + u, '#f0c040', 5, 7); FACE.eyeC(q, 37, 22 + u, '#f0c040', 5, 7);
+    q.line(21, 19 + u, 27, 22 + u, INK); q.line(37, 22 + u, 43, 19 + u, INK); q.line(21, 20 + u, 26, 22 + u, INK); q.line(38, 22 + u, 43, 20 + u, INK);
+    q(29, 31 + u, INK, 6, 2); q(29, 30 + u, '#fff'); q(34, 30 + u, '#fff');
+    q(20, 29 + u, RAMPS.oni[3], 3, 1); q(41, 29 + u, RAMPS.oni[3], 3, 1);                          // cheek shine
+  } };
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the roster, chibi only (the chosen direction)
+// ---------------------------------------------------------------------------
+Object.assign(ART, {
+  doom: { W: 36, H: 44, build: (part, b) => {   // phone-faced wisp with hypnotic spiral eyes
+    const y = b;
+    part('ghost', t => { t.beginPath(); t.moveTo(9, 28 + y); t.lineTo(27, 28 + y); t.quadraticCurveTo(26, 38, 22 + b * 2, 43); t.lineTo(19, 38); t.lineTo(15, 43); t.lineTo(12, 38); t.quadraticCurveTo(9, 36, 9, 28 + y); t.fill(); }, { r: 3 });
+    part('ghost', t => { L(t, 3, [8, 20 + y], [2, 28 + y]); L(t, 3, [28, 20 + y], [34, 12 + y - b * 2]); });
+    part('hair', t => RR(t, 7, 2 + y, 22, 30, 4), { r: 2 });                                     // the phone
+    part('screen', t => R(t, 9, 6 + y, 18, 22), { r: 2 });
+    part('red', t => E(t, 27, 3 + y, 3.5, 3.5), { r: 2 });                                        // notification badge
+    return { after: (q, b) => {
+      const y = b;
+      q(26, 1 + y, '#fff', 1, 3); q(26, 5 + y, '#fff');                                           // !
+      q(9, 6 + ((b * 7 + 3) % 22) + y, RAMPS.screen[3], 18, 1);                                   // scanline
+      [[11, 10], [20, 10]].forEach(([x, yy]) => {                                                 // spiral eyes
+        q(x, yy + y, INK, 5, 5); q(x + 1, yy + 1 + y, '#fff', 3, 3); q(x + 2, yy + 2 + y, INK); q(x + 3, yy + 1 + y, INK); q(x + 1, yy + 3 + y, INK);
+      });
+      q(14, 19 + y, INK, 8, 1); q(15, 20 + y, INK, 6, 1); q(16, 20 + y, '#ff8090', 4, 1);         // dopey open mouth
+      q(12, 29 + y, RAMPS.hair[3], 12, 1);                                                         // home bar
+    } };
+  } },
+
+  troll: { W: 64, H: 72, build: (part, b) => {   // Bridge Troll: pot belly, long arms, log club, wristband
+    const u = b;
+    part('wood', t => P(t, [[47, 46 + u], [53, 44 + u], [62, 10 + u], [58, 5 + u], [52, 6 + u]]), { r: 3 });   // log club
+    part('troll', t => L(t, 7, [43, 40 + u], [51, 44 + u]));
+    part('troll', t => { L(t, 8, [25, 58], [24, 66]); L(t, 8, [39, 58], [40, 66]); });
+    part('troll', t => { E(t, 22, 68, 7, 3); E(t, 42, 68, 7, 3); }, { r: 2 });                     // big feet
+    part('troll', t => E(t, 32, 46 + u, 17, 13), { r: 6 });                                       // pot belly
+    part('belly', t => E(t, 33, 49 + u, 10, 8), { r: 4 });
+    part('leather', t => P(t, [[17, 54], [47, 54], [43, 63], [21, 63]]), { r: 2 });                // loincloth
+    part('troll', t => { P(t, [[19, 22 + u], [8, 13 + u], [19, 29 + u]]); P(t, [[45, 22 + u], [56, 13 + u], [45, 29 + u]]); }, { r: 2 });   // ears
+    part('troll', t => E(t, 32, 24 + u, 15, 12.5), { r: 6 });                                     // big head
+    part('hair', t => P(t, [[24, 14 + u], [26, 6 + u], [30, 11 + u], [33, 4 + u], [36, 11 + u], [40, 8 + u], [40, 15 + u], [32, 13 + u]]), { r: 2 });
+    part('troll', t => E(t, 32, 28 + u, 4.5, 3.5), { r: 3 });                                     // nose
+    part('troll', t => L(t, 8, [19, 40 + u], [12, 57]));                                           // long near arm
+    part('troll', t => E(t, 12, 59, 5, 4.5), { r: 3 });                                           // knuckles on the ground
+    part('red', t => R(t, 8, 50, 8, 3), { r: 1 });                                                // wristband
+    return { after: (q, b) => {
+      const u = b;
+      FACE.eyeC(q, 21, 18 + u, '#e8c547', 5, 6); FACE.eyeC(q, 38, 18 + u, '#e8c547', 5, 6);
+      q.line(20, 16 + u, 26, 17 + u, INK); q.line(37, 17 + u, 43, 16 + u, INK);
+      q(26, 33 + u, INK, 12, 2); q(27, 31 + u, '#fff', 2, 2); q(35, 31 + u, '#fff', 2, 2);        // underbite with tusks
+      q(30, 27 + u, RAMPS.troll[0]); q(33, 27 + u, RAMPS.troll[0]);                              // nostrils
+      [[53, 14], [56, 24], [51, 34]].forEach(([x, y]) => q(x, y + u, RAMPS.wood[0], 2, 1));      // bark knots
+    } };
+  } },
+
+  kitsune: { W: 64, H: 56, build: (part, b) => {   // Kitsune Sprinter: five fanned tails, sweatband, cocky grin
+    const u = b;
+    for (let k = 0; k < 5; k++) {
+      const a = -2.75 + k * 0.4 + (b ? 0.06 : -0.06), cx = 20 + Math.cos(a) * 9, cy = 40 + Math.sin(a) * 9;
+      part('fox', t => E(t, cx, cy, 10, 4.5, a), { r: 3 });
+      part('cream', t => E(t, 20 + Math.cos(a) * 17, 40 + Math.sin(a) * 17, 3.5, 3.5), { r: 2 });
+    }
+    part('fox', t => { L(t, 4, [26, 46], [22, 54]); L(t, 4, [40, 46], [44, 54]); });
+    part('fox', t => E(t, 33, 43, 11, 7.5), { r: 4 });                                            // body
+    part('cream', t => E(t, 41, 45, 5, 5), { r: 3 });                                             // chest fluff
+    part('fox', t => { L(t, 4, [36, 48], [35, 55]); L(t, 4, [42, 48], [43, 55]); });
+    part('fox', t => { P(t, [[32, 22 + u], [33, 6 + u], [41, 17 + u]]); P(t, [[45, 17 + u], [52, 5 + u], [54, 22 + u]]); }, { r: 2 });   // ears
+    part('fox', t => E(t, 43, 27 + u, 12.5, 11), { r: 5 });                                       // big head
+    part('cream', t => E(t, 49, 33 + u, 6.5, 4), { r: 2 });                                       // muzzle
+    part('red', t => R(t, 31, 17 + u, 24, 3), { r: 1 });                                          // sweatband
+    return { after: (q, b) => {
+      const u = b;
+      q.line(34, 10 + u, 36, 15 + u, RAMPS.cream[1]); q.line(50, 9 + u, 51, 15 + u, RAMPS.cream[1]);   // inner ears
+      FACE.eyeC(q, 37, 23 + u, '#40c0a0', 4, 6); FACE.eyeC(q, 46, 23 + u, '#40c0a0', 4, 6);
+      q.line(36, 22 + u, 41, 22 + u, INK); q.line(46, 21 + u, 50, 22 + u, INK);                  // one cocky raised brow
+      q(54, 31 + u, INK, 2, 2);                                                                    // nose
+      q(46, 35 + u, INK, 5, 1); q(50, 34 + u, INK); q(47, 36 + u, '#fff');                        // smirk with a fang
+      q(56, 18 + u, RAMPS.red[1], 2, 1); q(57, 19 + u, RAMPS.red[1], 2, 1);                      // band tails
+    } };
+  } },
+
+  slime: { W: 56, H: 48, build: (part, b) => {   // Bulk Slime: classic droplet, headband, curling a tiny dumbbell
+    const sq = b ? 1 : 0;
+    const body = t => { t.beginPath(); t.moveTo(28, 7 + sq); t.bezierCurveTo(33, 16, 46, 22, 46, 34); t.bezierCurveTo(46, 44, 36, 45, 28, 45); t.bezierCurveTo(20, 45, 10, 44, 10, 34); t.bezierCurveTo(10, 22, 23, 16, 28, 7 + sq); t.closePath(); };
+    part('slime', t => { body(t); t.fill(); }, { r: 7 });
+    part('red', t => { t.save(); body(t); t.clip(); R(t, 8, 22 + sq, 40, 4); t.restore(); P(t, [[44, 23 + sq], [50, 20], [49, 25]]); }, { r: 1 });   // headband + knot
+    part('slime', t => L(t, 4, [42, 36], [48, 32 - sq * 2]));                                      // pseudopod arm
+    part('iron', t => { L(t, 2, [46, 32 - sq * 2], [54, 32 - sq * 2]); R(t, 45, 28 - sq * 2, 3, 8); R(t, 52, 28 - sq * 2, 3, 8); }, { r: 1 });
+    part('slime', t => { E(t, 5, 43, 5, 4); }, { r: 3 });                                          // a baby slime
+    return { after: (q, b) => {
+      const sq = b ? 1 : 0;
+      q(17, 28, '#fff', 2, 3); q(19, 27, '#fff');                                                  // wet shine
+      FACE.eyeC(q, 20, 29 + sq, '#2f9070', 5, 7); FACE.eyeC(q, 31, 29 + sq, '#2f9070', 5, 7);
+      q.line(19, 27 + sq, 24, 28 + sq, INK); q.line(32, 28 + sq, 37, 27 + sq, INK);
+      q(25, 39, INK, 6, 1); q(24, 38, INK); q(31, 38, INK); q(26, 40, '#ff8090', 4, 1);          // big grin
+      q(3, 42, INK); q(6, 42, INK); q(4, 44, INK, 2, 1);                                          // baby face
+    } };
+  } },
+
+  minotaur: { W: 64, H: 72, build: (part, b) => {   // Minotaur Champion: bull head, champion belt, chalked hands, double axe
+    const u = b;
+    part('wood', t => L(t, 3, [54, 54 + u], [54, 4 + u]));                                         // axe handle
+    part('metal', t => { P(t, [[54, 9 + u], [63, 2 + u], [63, 20 + u]]); P(t, [[54, 9 + u], [45, 2 + u], [45, 20 + u]]); }, { r: 2 });
+    part('fur', t => L(t, 6, [44, 42 + u], [52, 40 + u]));
+    part('cream', t => E(t, 54, 40 + u, 4, 4), { r: 2 });                                          // chalked grip
+    part('fur', t => { L(t, 7, [27, 60], [27, 66]); L(t, 7, [37, 60], [37, 66]); });
+    part('hair', t => { E(t, 26, 68, 5, 3); E(t, 38, 68, 5, 3); }, { r: 2 });                      // hooves
+    part('red', t => P(t, [[21, 52], [43, 52], [45, 63], [33, 63], [32, 59], [31, 63], [19, 63]]), { r: 2 });   // trunks
+    part('fur', t => E(t, 32, 45 + u, 14, 10), { r: 5 });
+    part('leather', t => R(t, 19, 50, 26, 5), { r: 2 });
+    part('gold', t => RR(t, 26, 47, 12, 10, 2), { r: 3 });                                         // champion belt plate
+    part('fur', t => { P(t, [[19, 23 + u], [10, 26 + u], [19, 28 + u]]); P(t, [[45, 23 + u], [54, 26 + u], [45, 28 + u]]); }, { r: 1 });   // ears
+    part('bone', t => { P(t, [[21, 17 + u], [9, 15 + u], [4, 5 + u], [13, 11 + u], [23, 13 + u]]); P(t, [[43, 17 + u], [55, 15 + u], [60, 5 + u], [51, 11 + u], [41, 13 + u]]); }, { r: 2 });   // horns
+    part('fur', t => E(t, 32, 24 + u, 14, 12), { r: 6 });                                          // big head
+    part('hair', t => P(t, [[27, 13 + u], [29, 8 + u], [32, 12 + u], [35, 8 + u], [37, 13 + u], [32, 15 + u]]), { r: 1 });   // forelock
+    part('muzzle', t => E(t, 32, 32 + u, 9, 6), { r: 3 });
+    part('fur', t => L(t, 6, [21, 44 + u], [14, 49 + u]));
+    part('cream', t => E(t, 13, 51 + u, 4.5, 4.5), { r: 3 });                                      // chalked fist
+    return { after: (q, b) => {
+      const u = b;
+      FACE.eyeC(q, 22, 19 + u, '#e03838', 5, 6); FACE.eyeC(q, 37, 19 + u, '#e03838', 5, 6);
+      q.line(21, 17 + u, 27, 19 + u, INK); q.line(37, 19 + u, 43, 17 + u, INK); q.line(21, 18 + u, 26, 20 + u, INK); q.line(38, 20 + u, 43, 18 + u, INK);
+      q(28, 31 + u, INK, 2, 2); q(34, 31 + u, INK, 2, 2);                                          // nostrils
+      q(29, 36 + u, '#f0c040', 6, 1); q(28, 34 + u, '#f0c040', 1, 2); q(35, 34 + u, '#f0c040', 1, 2);   // nose ring
+      q(31, 50, RAMPS.gold[4], 2, 2);                                                              // belt jewel
+      const puff = b ? 0 : 1; [[8, 46], [16, 45], [10, 56], [58, 36]].forEach(([x, y]) => q(x + puff, y - puff, '#fff'));   // chalk puffs
+    } };
+  } },
+});
+
+// ---------------------------------------------------------------------------
+// The CURRENT sprites, copied from art-mockups.html so they sit side by side
+// ---------------------------------------------------------------------------
+const PAL = {
+  outline: '#140c1c', skin: '#f0b088', skinS: '#c87850', skinH: '#ffd8b8', hair: '#3a2050', hairH: '#6a4090',
+  band: '#d83838', top: '#2f6fd0', topS: '#1f4890', topH: '#5c94f0', shorts: '#2a2a44', shortsS: '#1a1a2c',
+  shoe: '#e8e8f0', shoeS: '#9098a8', iron: '#7a8294', ironS: '#464e5e', ironH: '#b8c0d0', orange: '#ff7a1a', orangeS: '#b84c10',
+  leather: '#8a5a30', gold: '#f0c040', white: '#ffffff', red: '#ff3030',
+  ghost: '#c8f0ff', ghostS: '#7ab8d8', troll: '#78b050', trollS: '#467a30', trollH: '#a8d880', pad: '#7a2a3a',
+  padS: '#4a1a26', potato: '#c09058', potatoS: '#7a5a30', fox: '#e87830', foxS: '#a84a18', cream: '#f8f0e0',
+  oni: '#d04830', oniS: '#902818', fur: '#8a5a38', furS: '#4e2e1c', bone: '#f0e0c0', slime: '#60d0a0', slimeS: '#2f9070',
+  slimeH: '#c0f8e0', screen: '#5cc8ff', purple: '#8050c0',
+};
+const PAL_RGB = Object.values(PAL).map(hexRgb);
+function snapAndOutline(x, W, H) {
+  const img = x.getImageData(0, 0, W, H), d = img.data, solid = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const p = i * 4; if (d[p + 3] < 110) { d[p + 3] = 0; continue; }
+    let best = 0, bd = 1e9;
+    for (let k = 0; k < PAL_RGB.length; k++) { const c = PAL_RGB[k], dd = (c[0] - d[p]) ** 2 + (c[1] - d[p + 1]) ** 2 + (c[2] - d[p + 2]) ** 2; if (dd < bd) { bd = dd; best = k; } }
+    const c = PAL_RGB[best]; d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255; solid[i] = 1;
+  }
+  const isS = (px, py) => px >= 0 && py >= 0 && px < W && py < H && solid[py * W + px];
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const i = py * W + px;
+    if (!solid[i] && (isS(px - 1, py) || isS(px + 1, py) || isS(px, py - 1) || isS(px, py + 1))) { const p = i * 4; d[p] = 20; d[p + 1] = 12; d[p + 2] = 28; d[p + 3] = 255; }
+  }
+  x.putImageData(img, 0, 0);
+}
+const E2 = (x, c, cx, cy, rx, ry, rot = 0) => { x.fillStyle = c; E(x, cx, cy, rx, ry, rot); };
+const L2 = (x, c, w, a, b) => { x.strokeStyle = c; L(x, w, a, b); };
+const P2 = (x, c, pts) => { x.fillStyle = c; P(x, pts); };
+const R2 = (x, c, X, Y, w = 1, h = 1) => { x.fillStyle = c; x.fillRect(X, Y, w, h); };
+function mkOld(W, H, frame, draw, after) {
+  const cv = mkCanvas(W, H), x = cv.getContext('2d', { willReadFrequently: true }), b = frame % 2;
+  draw(x, b, frame); snapAndOutline(x, W, H); if (after) after(x, b, frame);
+  return cv;
+}
+const OLD = {
+  snack: f => mkOld(32, 32, f, (x, b) => {
+    P2(x, PAL.gold, [[7, 7 + b], [11, 4 + b], [15, 7 + b], [19, 4 + b], [23, 7 + b], [26, 26], [6, 26]]);
+    P2(x, PAL.orangeS, [[19, 7 + b], [23, 7 + b], [26, 26], [20, 26]]);
+    R2(x, PAL.red, 7, 14 + b, 19, 5);
+    L2(x, PAL.gold, 2, [7, 17 + b], [2, 12 - b * 2]); L2(x, PAL.gold, 2, [25, 17 + b], [30, 21]);
+    R2(x, PAL.shorts, 10, 26, 3, 4); R2(x, PAL.shorts, 19, 26, 3, 4);
+  }, (x, b) => {
+    R2(x, PAL.white, 10, 9 + b, 3, 2); R2(x, PAL.white, 18, 9 + b, 3, 2); R2(x, PAL.outline, 12, 9 + b); R2(x, PAL.outline, 18, 9 + b);
+    R2(x, PAL.outline, 10, 8 + b); R2(x, PAL.outline, 11, 7 + b); R2(x, PAL.outline, 20, 8 + b); R2(x, PAL.outline, 19, 7 + b);
+    R2(x, PAL.outline, 13, 12 + b, 6, 1);
+  }),
+  couch: f => mkOld(40, 32, f, (x, b) => {
+    R2(x, PAL.padS, 2, 14, 6, 14); R2(x, PAL.padS, 32, 14, 6, 14); R2(x, PAL.pad, 4, 20, 32, 8); R2(x, PAL.padS, 4, 27, 32, 1);
+    E2(x, PAL.potato, 20, 15 - b, 11, 8); E2(x, PAL.potatoS, 25, 17 - b, 6, 5);
+    L2(x, PAL.potato, 3, [28, 13 - b], [33, 7]); R2(x, PAL.shorts, 32, 3, 3, 6);
+  }, (x, b) => {
+    R2(x, PAL.outline, 14, 13 - b, 3, 1); R2(x, PAL.outline, 21, 13 - b, 3, 1); R2(x, PAL.potatoS, 12, 10 - b); R2(x, PAL.potatoS, 18, 18 - b); R2(x, PAL.potatoS, 15, 20 - b);
+    R2(x, PAL.outline, 17, 17 - b, 3, 1); R2(x, PAL.red, 33, 4);
+  }),
+  snooze: f => mkOld(32, 32, f, (x, b) => {
+    const up = b ? 6 : 0;
+    P2(x, PAL.purple, [[9, 15], [0, 7 + up], [3, 17], [0, 23]]); P2(x, PAL.purple, [[23, 15], [32, 7 + up], [29, 17], [32, 23]]);
+    E2(x, PAL.red, 9, 8, 3.5, 3); E2(x, PAL.red, 23, 8, 3.5, 3);
+    E2(x, PAL.ironH, 16, 17, 9, 9); E2(x, PAL.white, 16, 17, 6.5, 6.5);
+    R2(x, PAL.ironS, 11, 25, 2, 4); R2(x, PAL.ironS, 19, 25, 2, 4);
+  }, (x) => {
+    R2(x, PAL.outline, 16, 13, 1, 4); R2(x, PAL.outline, 17, 17, 3, 1);
+    R2(x, PAL.outline, 12, 15, 2, 1); R2(x, PAL.outline, 19, 15, 2, 1);
+  }),
+  oni: f => mkOld(56, 64, f, (x, b) => {
+    R2(x, PAL.oniS, 18, 50, 8, 12); R2(x, PAL.oniS, 31, 50, 8, 12);
+    P2(x, PAL.gold, [[16, 44], [40, 44], [38, 54], [18, 54]]);
+    L2(x, PAL.ironS, 7, [30, 8 - b], [54, 28 - b]);
+    L2(x, PAL.oni, 6, [42, 30], [47, 21 - b]);
+    E2(x, PAL.oni, 28, 36, 15, 13); E2(x, PAL.oniS, 35, 38, 7, 10);
+    R2(x, PAL.leather, 14, 42, 28, 4); R2(x, PAL.gold, 26, 41, 5, 6);
+    L2(x, PAL.oni, 6, [15, 30], [8, 22]); L2(x, PAL.oni, 5, [8, 22], [12, 13 + b]); E2(x, PAL.oni, 10, 25, 4.5, 4.5);
+    E2(x, PAL.oni, 28, 18, 8, 8);
+    P2(x, PAL.hair, [[20, 13], [21, 5], [25, 9], [28, 3], [31, 9], [35, 5], [36, 13], [28, 11]]);
+    P2(x, PAL.bone, [[21, 12], [17, 3], [24, 10]]); P2(x, PAL.bone, [[35, 12], [39, 3], [32, 10]]);
+  }, (x, b) => {
+    R2(x, PAL.gold, 24, 17, 2, 1); R2(x, PAL.gold, 30, 17, 2, 1); R2(x, PAL.outline, 25, 22, 6, 1); R2(x, PAL.white, 25, 23); R2(x, PAL.white, 30, 23);
+    R2(x, PAL.outline, 20, 47, 2, 5); R2(x, PAL.outline, 27, 47, 2, 5); R2(x, PAL.outline, 34, 47, 2, 5);
+    for (let k = 0; k < 4; k++) R2(x, PAL.ironH, 36 + k * 5, 13 + k * 4 - b);
+  }),
+};
+
+// ---------------------------------------------------------------------------
+// Page: one row per monster, one cell per direction
+// ---------------------------------------------------------------------------
+const MONSTERS = [
+  { key: 'snack', name: 'Snack Attacker', sub: '"I deserve a treat" · minion' },
+  { key: 'couch', name: 'Couch Potato', sub: '"One more episode" · minion' },
+  { key: 'snooze', name: 'Snooze Imp', sub: '"Five more minutes" · minion, flies' },
+  { key: 'oni', name: 'Oni Bro', sub: 'Zone 1 boss' },
+];
+const DIRS = [['now', 'Current'], ['A', 'A · Polished SNES'], ['B', 'B · Earthbound'], ['C', 'C · Chibi Mana']];
+const cache = new Map();
+function sprite(key, dir, b) {
+  const k = key + dir + b;
+  if (!cache.has(k)) cache.set(k, dir === 'now' ? OLD[key](b) : renderSprite(ART[key].W, ART[key].H, STYLES[dir], ART[key].build, b));
+  return cache.get(k);
+}
+const cells = [];
+for (const m of MONSTERS) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<h3>${m.name} <span>${m.sub}</span></h3><div class="grid4"></div>`;
+  $('#rows').appendChild(row);
+  for (const [dir, label] of DIRS) {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    const cv = document.createElement('canvas'); cell.appendChild(cv);
+    const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = label; cell.appendChild(cap);
+    row.querySelector('.grid4').appendChild(cell);
+    cells.push({ key: m.key, dir, cv });
+  }
+}
+
+const ROSTER = [
+  { key: 'snack', name: 'Snack Attacker', sub: 'Minion · "I deserve a treat"' },
+  { key: 'couch', name: 'Couch Potato', sub: 'Minion · "One more episode"' },
+  { key: 'snooze', name: 'Snooze Imp', sub: 'Minion · "Five more minutes"' },
+  { key: 'doom', name: 'Doom Scroller', sub: 'Minion · "Just checking something"' },
+  { key: 'troll', name: 'Bridge Troll', sub: 'Zone 1 elite · "10 push-ups to pass"' },
+  { key: 'oni', name: 'Oni Bro', sub: 'Zone 1 boss · "The rack is mine"' },
+  { key: 'kitsune', name: 'Kitsune Sprinter', sub: 'Zone 2 boss · afterimage dashes' },
+  { key: 'slime', name: 'Bulk Slime', sub: 'Elite · splits when hit' },
+  { key: 'minotaur', name: 'Minotaur Champion', sub: 'Boss · charges, double axe' },
+];
+for (const m of ROSTER) {
+  const cell = document.createElement('div'); cell.className = 'cell';
+  const cv = document.createElement('canvas'); cell.appendChild(cv);
+  cell.insertAdjacentHTML('beforeend', `<div style="font-weight:700;margin-top:6px">${m.name}</div><div class="cap">${m.sub}</div>`);
+  $('#roster').appendChild(cell);
+  cells.push({ key: m.key, dir: 'C', cv });
+}
+
+function drawBg(c, w, h, zoom) {
+  if ($('#bg').value === 'dark') { c.fillStyle = '#15171a'; c.fillRect(0, 0, w, h); c.fillStyle = '#23262c'; c.fillRect(0, h - 3 * zoom, w, 3 * zoom); return; }
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#43294e'); g.addColorStop(0.7, '#9a4c58'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#5a4838'; c.fillRect(0, h - 3 * zoom, w, 3 * zoom); c.fillStyle = '#6aa84f'; c.fillRect(0, h - 3 * zoom, w, zoom);
+}
+function silhouette(sp) {
+  const cv = mkCanvas(sp.width, sp.height), x = cv.getContext('2d');
+  x.drawImage(sp, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#eceae4'; x.fillRect(0, 0, cv.width, cv.height);
+  return cv;
+}
+let bob = 0;
+function draw() {
+  const zoom = +$('#zoom').value, sil = $('#sil').checked;
+  $('#zoomV').textContent = '×' + zoom;
+  for (const c of cells) {
+    let sp = sprite(c.key, c.dir, bob); if (sil) sp = silhouette(sp);
+    const W = 68 * zoom, H = (ART[c.key].H > 48 ? 76 : 52) * zoom;
+    if (c.cv.width !== W || c.cv.height !== H) { c.cv.width = W; c.cv.height = H; }
+    const x = c.cv.getContext('2d'); x.imageSmoothingEnabled = false;
+    drawBg(x, W, H, zoom);
+    x.drawImage(sp, Math.round((W - sp.width * zoom) / 2), H - 2 * zoom - sp.height * zoom, sp.width * zoom, sp.height * zoom);
+  }
+}
+['#zoom', '#sil', '#bg'].forEach(s => $(s).addEventListener('input', draw));
+setInterval(() => { if ($('#anim').checked) { bob ^= 1; draw(); } }, 420);
+draw();
+</script>
+</body>
+</html>
