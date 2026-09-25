@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Art Mockups</title>
+<!--
+  Barbell Brawl – art direction mockups: Stick-fight vibe vs 16-bit SNES-era fighter (each with an anime layer).
+  Both styles render from the SAME skeleton and poses, so the comparison is about style, not posing.
+  The pixel style is drawn at sprite resolution (48×64), snapped to a limited palette, outlined, then scaled up
+  with no smoothing, like a real SNES sprite.
+-->
+<style>
+  :root {
+    --bg: #111317; --card: #1a1d22; --line: #2d3138; --text: #eceae4; --muted: #9a9ca0; --accent: #ff7a1a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  h2 { font-size: 20px; margin: 36px 0 4px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); margin: 18px 0 8px; }
+  p { margin: 4px 0; color: var(--muted); }
+  .controls { display: flex; gap: 16px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .controls label { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+  .style-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .badge { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--accent); color: #111; }
+  .badge.b { background: #5c94f0; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+  .cell { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
+  .cell canvas { width: 100%; max-width: 192px; height: auto; display: block; margin: 0 auto; }
+  .cell canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .cap { font-weight: 700; margin-top: 6px; }
+  .sub { font-size: 12px; color: var(--muted); }
+  .scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .scenes { grid-template-columns: 1fr; } }
+  .scene { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .scene canvas { width: 100%; height: auto; display: block; border-radius: 8px; }
+  .scene canvas.px { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .react { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-top: 12px; }
+  .react li { margin: 6px 0; }
+  .pros { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  @media (max-width: 760px) { .pros { grid-template-columns: 1fr; } }
+  .pros div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+  .pros b { display: block; margin-bottom: 4px; }
+  .pros ul { margin: 0; padding-left: 18px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BARBELL BRAWL · Art mockups</h1>
+  <p>Two directions, side by side, both with an anime layer. Same skeleton and poses in both, so you're judging the style.</p>
+  <div class="controls">
+    <label><input type="checkbox" id="fx" checked> Anime FX (aura, spiky hair, speed lines, impact frames)</label>
+    <label><input type="checkbox" id="anim" checked> Animate</label>
+  </div>
+
+  <h2>1 · Getting swole: levels 1 → 50</h2>
+  <p>Stats and level make the fighter visibly bigger. By level 50 the head stays small on a huge frame, played for laughs.</p>
+  <h3><span class="style-head"><span class="badge">A</span> Stick-fight vibe</span></h3>
+  <div class="grid4" id="stickLevels"></div>
+  <h3><span class="style-head"><span class="badge b">B</span> 16-bit SNES-era fighter</span></h3>
+  <div class="grid4" id="pixelLevels"></div>
+
+  <h2>2 · Gear on a fighter</h2>
+  <p>Monster loot that changes <i>how</i> you fight (moves, range), never your stats.</p>
+  <h3><span class="style-head"><span class="badge">A</span> Stick-fight vibe</span></h3>
+  <div class="grid4" id="stickGear"></div>
+  <h3><span class="style-head"><span class="badge b">B</span> 16-bit SNES-era fighter</span></h3>
+  <div class="grid4" id="pixelGear"></div>
+
+  <h2>3 · Special move vs the Plate Golem</h2>
+  <p>A level 25 fighter lands a special: speed lines, impact frame, POW.</p>
+  <div class="scenes">
+    <div class="scene"><div class="style-head" style="margin-bottom:8px"><span class="badge">A</span><b>Stick-fight vibe</b></div><canvas id="stickScene"></canvas></div>
+    <div class="scene"><div class="style-head" style="margin-bottom:8px"><span class="badge b">B</span><b>16-bit SNES-era fighter</b></div><canvas id="pixelScene" class="px"></canvas></div>
+  </div>
+
+  <h2>4 · Fusion: stick heroes vs 16-bit monsters <span class="badge" style="vertical-align:middle">A</span> + <span class="badge b" style="vertical-align:middle">B</span></h2>
+  <p>You and your crew are stick figures: cheap to animate, easy to customize, and they match the tracker. The monsters are hand-made 16-bit sprites, so each boss gets real personality and it's always clear who's who. Co-op below: P1 (stick man) and P2 (stick woman) take on the Plate Golem.</p>
+  <div class="scenes">
+    <div class="scene"><div class="style-head" style="margin-bottom:8px"><b>On a 16-bit arena</b><span class="sub">The world is pixel art too; only the heroes are vector.</span></div><canvas id="fusionPixelBg"></canvas></div>
+    <div class="scene"><div class="style-head" style="margin-bottom:8px"><b>On a clean dark arena</b><span class="sub">Only the monsters are pixel art, and the arena matches the tracker UI.</span></div><canvas id="fusionCleanBg"></canvas></div>
+  </div>
+  <h3>Hero options: stick men & women, one color per player</h3>
+  <div class="grid4" id="heroOptions"></div>
+  <h3>Monster roster in 16-bit</h3>
+  <div class="grid4" id="enemyRoster"></div>
+
+  <h2>5 · Bestiary preview</h2>
+  <p>Fantasy and anime creatures first, with a light gym-bro touch. Excuses for skipping a workout make up the swarm. Full roster: <code>docs/09-bestiary.md</code>.</p>
+  <h3>Excuse minions: the swarm</h3>
+  <div class="grid4" id="minionRoster"></div>
+  <h3>Elites & bosses: fantasy/anime with a gym-bro touch</h3>
+  <div class="grid4" id="eliteRoster"></div>
+
+  <h2>6 · Side-scroll swarm level</h2>
+  <p>The crew runs right through the Comfort Zone while excuse minions pour in. A gauntlet like this leads up to a boss arena. Pixel world and monsters, vector heroes.</p>
+  <div class="scene"><canvas id="scrollScene" style="aspect-ratio:960/300"></canvas>
+    <div class="sub" style="margin-top:6px">Level formats: <b>Boss Arena</b> (one big monster) · <b>Swarm Waves</b> (packs of minions, combo counter) · <b>Side-scroll Gauntlet</b> (this one).</div></div>
+
+  <h2>Tradeoffs</h2>
+  <div class="pros">
+    <div><b>A · Stick-fight</b><ul>
+      <li>Fastest to build and animate: poses are just joint positions, so new moves and gear are cheap.</li>
+      <li>Matches the tracker's exercise art already.</li>
+      <li>Swole comedy reads well (bulging arms on a stick body).</li>
+      <li>Risk: less "product" feel. The anime FX carry most of the excitement.</li></ul></div>
+    <div><b>B · 16-bit SNES</b><ul>
+      <li>Instant nostalgia and personality. It feels like a real fighting game.</li>
+      <li>Gear, outfits and cosmetics shine (skins, headbands, colors), which suits rewards.</li>
+      <li>Risk: more art effort per animation frame. A hybrid could work: generate sprites from a skeleton like this mockup, and hand-polish key frames.</li>
+      <li>The tracker UI could stay clean and modern, with pixel art only in the arena.</li></ul></div>
+  </div>
+
+  <h2>What to react to</h2>
+  <div class="react"><ol>
+    <li>Fusion: 16-bit arena or clean dark arena behind the stick heroes?</li>
+    <li>Hero identity: headband and aura in the player's color, plus hair (spiky, ponytail, bun, buzz). Enough to tell four friends apart?</li>
+    <li>How swole at level 50: this much, more, or less? Keep the tiny head joke?</li>
+    <li>Favorite gear so far? Any gym items you'd love as weapons or armor?</li>
+    <li>How much anime: aura and speed lines only, or also spiky hair, headband and impact text?</li>
+  </ol></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Shared skeleton & poses (units: figure ~100 tall, origin at the feet, y up is negative)
+// s = swole factor 0..1, b = breathing 0..1
+// ---------------------------------------------------------------------------
+const LEVELS = [
+  { lvl: 1, s: 0, title: 'Fresh Recruit' },
+  { lvl: 10, s: 0.3, title: 'Gym Regular' },
+  { lvl: 25, s: 0.65, title: 'Iron Devotee' },
+  { lvl: 50, s: 1, title: 'Absolute Unit' },
+];
+const GEAR = [
+  { key: 'staff', name: 'Barbell Staff', sub: 'Long reach, sweeping spins' },
+  { key: 'flail', name: 'Kettlebell Flail', sub: 'Slow, huge knockback' },
+  { key: 'shield', name: 'Plate Shield', sub: 'A 45 lb plate. Blocks lobbed plates' },
+  { key: 'belt', name: 'Lifting Belt', sub: 'Armor: tougher blocks' },
+];
+function pose(name, s, b = 0) {
+  const sh = 9 + s * 13, wa = 5 + s * 3;
+  if (name === 'flex') return {
+    front: true, lean: 0, hipY: -45, neckY: -78, head: [0, -89 - b], shW: sh, waW: wa,
+    arms: [-1, 1].map(d => [[d * sh, -76], [d * (sh + 12 + s * 5), -79 + b], [d * (sh + 9 + s * 4), -95 + b]]),
+    legs: [-1, 1].map(d => [[d * (4 + s * 2), -45], [d * (9 + s * 3), -22], [d * (11 + s * 4), 0]]),
+  };
+  if (name === 'stance') return {
+    front: false, lean: 2, hipY: -44, neckY: -78, head: [4, -89 - b * 0.6], shW: sh * 0.55, waW: wa * 0.8,
+    arms: [[[-sh * 0.3, -76], [2 - s * 2, -63 + b], [12, -72 + b]],
+           [[sh * 0.45, -76], [17 + s * 5, -66 + b], [24 + s * 4, -80 + b]]],
+    legs: [[[-3, -44], [-9, -22], [-15, 0]], [[3, -44], [11, -23], [16, 0]]],
+  };
+  if (name === 'run') {   // b = run-cycle phase (radians)
+    const sw = Math.sin(b), cw = Math.cos(b);
+    return {
+      front: false, lean: 9, hipY: -44 - Math.abs(cw) * 2, neckY: -78, head: [13, -88], shW: sh * 0.55, waW: wa * 0.8,
+      arms: [[[-sh * 0.2 + 7, -74], [8 + sw * 13, -62], [16 + sw * 17, -70]],
+             [[sh * 0.4 + 9, -74], [10 - sw * 13, -62], [20 - sw * 15, -70]]],
+      legs: [[[-1, -44], [5 - sw * 14, -24], [-3 - sw * 20, -2 + Math.max(0, cw) * 8]],
+             [[3, -44], [7 + sw * 14, -24], [-1 + sw * 20, -2 + Math.max(0, -cw) * 8]]],
+    };
+  }
+  return {   // strike: lunging punch
+    front: false, lean: 8, hipY: -40, neckY: -74, head: [13, -84], shW: sh * 0.55, waW: wa * 0.8,
+    arms: [[[-sh * 0.2 + 6, -72], [-5 - s * 3, -60], [0, -69]],
+           [[sh * 0.4 + 8, -73], [24 + s * 4, -75], [40 + s * 6, -76]]],
+    legs: [[[-2, -40], [-14, -20], [-28, 0]], [[4, -40], [18, -22], [26, 0]]],
+  };
+}
+const mid = (a, b, t = 0.5) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+const $ = s => document.querySelector(s);
+let FX = true, ANIM = true;
+
+// ---------------------------------------------------------------------------
+// Style A: stick-fight (smooth vector, chalk-white ink, orange accents, glowy anime FX)
+// ---------------------------------------------------------------------------
+const INK = '#f2efe8', BG = '#1a1d22', METAL = '#9aa3b5';
+function line(c, a, b) { c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
+function bulge(c, a, b, r) {
+  if (r < 0.6) return;
+  const [mx, my] = mid(a, b), ang = Math.atan2(b[1] - a[1], b[0] - a[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+  c.beginPath(); c.ellipse(mx, my, len * 0.8, r, ang, 0, Math.PI * 2); c.fill();
+}
+function stickAura(c, s, t, rgb = [255, 200, 60]) {
+  const n = 9, w = 20 + s * 26;
+  c.save();
+  for (let i = 0; i < n; i++) {
+    const x = -w + (2 * w) * i / (n - 1), h = 92 + 18 * Math.sin(t * 7 + i * 1.7) + s * 10;
+    const g = c.createLinearGradient(0, 0, 0, -h);
+    g.addColorStop(0, `rgba(${rgb.join(',')},0.30)`); g.addColorStop(1, `rgba(${rgb.join(',')},0)`);
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(x - 9, 2); c.quadraticCurveTo(x + 6 * Math.sin(t * 5 + i), -h * 0.6, x + 4 * Math.sin(t * 9 + i), -h); c.quadraticCurveTo(x + 6, -h * 0.5, x + 9, 2); c.fill();
+  }
+  c.restore();
+}
+function drawStickGear(c, P, gear, s) {
+  const hand = P.arms[1][2], back = P.arms[0][2];
+  c.save(); c.strokeStyle = METAL; c.fillStyle = METAL; c.lineCap = 'round';
+  if (gear === 'staff') {
+    const a = -1.15, dx = Math.cos(a) * 36, dy = Math.sin(a) * 36;
+    c.lineWidth = 3; line(c, [hand[0] - dx, hand[1] - dy], [hand[0] + dx, hand[1] + dy]);
+    for (const k of [-1, 1]) { const p = [hand[0] + k * dx, hand[1] + k * dy]; c.fillStyle = '#ff7a1a'; c.beginPath(); c.arc(p[0], p[1], 8, 0, 7); c.fill(); c.fillStyle = BG; c.beginPath(); c.arc(p[0], p[1], 2.5, 0, 7); c.fill(); }
+  } else if (gear === 'flail') {
+    c.lineWidth = 3; const h2 = [hand[0] + 6, hand[1] - 10]; line(c, hand, h2);
+    for (let i = 1; i <= 6; i++) { c.beginPath(); c.arc(h2[0] + i * 3.2, h2[1] - Math.sin(i / 6 * Math.PI) * 6 + i * 1.2, 1.4, 0, 7); c.fill(); }
+    const kb = [h2[0] + 24, h2[1] + 12];
+    c.fillStyle = '#ff7a1a'; c.beginPath(); c.arc(kb[0], kb[1], 8.5, 0, 7); c.fill();
+    c.strokeStyle = '#ff7a1a'; c.lineWidth = 2.5; c.beginPath(); c.arc(kb[0], kb[1] - 9, 4.5, Math.PI, 0); c.stroke();
+  } else if (gear === 'shield') {
+    c.fillStyle = '#ff7a1a'; c.beginPath(); c.arc(back[0] + 6, back[1] + 2, 17, 0, 7); c.fill();
+    c.fillStyle = BG; c.beginPath(); c.arc(back[0] + 6, back[1] + 2, 4, 0, 7); c.fill();
+    c.fillStyle = '#111'; c.font = 'bold 9px system-ui'; c.textAlign = 'center'; c.fillText('45', back[0] + 6, back[1] - 5);
+  } else if (gear === 'belt') {
+    const top = [P.lean, P.neckY], w = P.waW + 3.5;
+    c.fillStyle = '#ff7a1a'; c.fillRect(-w - 1, P.hipY - 9, 2 * w + 2, 8);
+    c.fillStyle = BG; c.fillRect(-2.5, P.hipY - 8, 5, 6);
+  }
+  c.restore();
+}
+function drawStick(c, P, s, o = {}) {
+  // o.ink: body color · o.accent: headband/player color · o.hair: 'spiky' | 'ponytail' | 'bun' | 'buzz' · o.glow: aura rgb
+  const t = o.t || 0, fx = FX && o.fx !== false, lw = 3 + s * 4.5, headR = 8.5 - s * 3;
+  const ink = o.ink || INK, hair = o.hair || 'spiky', glow = o.glow || [255, 210, 70];
+  if (fx && o.aura !== false) stickAura(c, s, t, glow);
+  c.save();
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = lw;
+  if (fx) { c.shadowColor = `rgba(${glow.join(',')},0.55)`; c.shadowBlur = 10; }
+  // hair behind the head (identity, always on)
+  {
+    const [hx, hy] = P.head, back = P.front ? 0 : -1;
+    if (hair === 'ponytail') {
+      const sw = Math.sin(t * 4) * 3;
+      c.lineWidth = 3.4; c.beginPath(); c.moveTo(hx + back * 5, hy - headR + 1);
+      c.quadraticCurveTo(hx - 12 + back * 4, hy - headR - 3, hx - 13 + back * 4 + sw, hy + 9); c.stroke();
+      c.lineWidth = lw;
+    } else if (hair === 'bun') {
+      c.beginPath(); c.arc(hx + back * 5, hy - headR - 3, 4.4, 0, 7); c.fill();
+    }
+  }
+  const top = [P.lean, P.neckY];
+  const leg = L => { line(c, L[0], L[1]); line(c, L[1], L[2]); bulge(c, L[0], L[1], s * 5.5); bulge(c, L[1], L[2], s * 2.6); };
+  const arm = A => { line(c, A[0], A[1]); line(c, A[1], A[2]); bulge(c, A[0], A[1], 1 + s * 7); bulge(c, A[1], A[2], s * 3.2); c.beginPath(); c.arc(A[2][0], A[2][1], lw * 0.55 + s * 1.5, 0, 7); c.fill(); };
+  leg(P.legs[0]); if (!P.front) arm(P.arms[0]);
+  // torso: a line when skinny, an inverted triangle as you get swole
+  if (s < 0.2) line(c, [0, P.hipY], top);
+  else {
+    c.beginPath(); c.moveTo(top[0] - P.shW, top[1] + 1); c.lineTo(top[0] + P.shW, top[1] + 1); c.lineTo(P.waW, P.hipY); c.lineTo(-P.waW, P.hipY); c.closePath(); c.fill(); c.stroke();
+  }
+  // neck + head (the head shrinks as the body grows, for comedy)
+  c.lineWidth = lw * (1 + s * 0.8); line(c, top, [P.head[0], P.head[1] + headR]); c.lineWidth = lw;
+  c.beginPath(); c.arc(P.head[0], P.head[1], headR, 0, 7); c.fill();
+  leg(P.legs[1]); if (P.front) arm(P.arms[0]); arm(P.arms[1]);
+  c.shadowBlur = 0;
+  if (o.accent) {   // player color: headband + tails
+    const [hx, hy] = P.head;
+    c.strokeStyle = o.accent; c.lineWidth = 2.6;
+    c.beginPath(); c.arc(hx, hy, headR, Math.PI * 1.08, Math.PI * 1.92); c.stroke();
+    if (!P.front) { c.lineWidth = 2; line(c, [hx - headR + 1, hy - 4], [hx - headR - 8, hy - 1 + Math.sin(t * 9) * 2]); line(c, [hx - headR + 1, hy - 4], [hx - headR - 7, hy + 3 + Math.sin(t * 9 + 1) * 2]); }
+    c.strokeStyle = ink;
+  }
+  // muscle definition, drawn in the background color
+  if (s > 0.55) {
+    c.strokeStyle = BG; c.lineWidth = 1.3;
+    const cx = top[0], y0 = top[1] + 10;
+    if (P.front) { line(c, [cx, y0 - 4], [cx, P.hipY - 3]); c.beginPath(); c.arc(cx - 6, y0 - 1, 6, 0.2, Math.PI - 0.2); c.stroke(); c.beginPath(); c.arc(cx + 6, y0 - 1, 6, 0.2, Math.PI - 0.2); c.stroke(); }
+    if (s > 0.85) for (let k = 0; k < 3; k++) { line(c, [cx - 4, y0 + 9 + k * 6], [cx + 4, y0 + 9 + k * 6]); }
+  }
+  // anime layer: spiky hair and determined eyes
+  if (fx) {
+    c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 2.4;
+    const [hx, hy] = P.head, r = headR;
+    if (hair === 'spiky') for (let k = -2; k <= 2; k++) { const a = -Math.PI / 2 + k * 0.42 - (P.front ? 0 : 0.35); line(c, [hx + Math.cos(a) * r * 0.7, hy + Math.sin(a) * r * 0.7], [hx + Math.cos(a) * (r + 6 + (k % 2 ? 1 : 3)), hy + Math.sin(a) * (r + 6 + (k % 2 ? 1 : 3))]); }
+    c.strokeStyle = BG; c.lineWidth = 1.4;
+    if (P.front) { line(c, [hx - 4, hy - 1], [hx - 1, hy]); line(c, [hx + 4, hy - 1], [hx + 1, hy]); }
+    else line(c, [hx + 2, hy - 1], [hx + 5, hy]);
+  }
+  if (s >= 0.95) {   // level 50 comedy: sweat drop + sparkle
+    c.fillStyle = '#7fc8ff'; const [hx, hy] = P.head;
+    c.beginPath(); c.moveTo(hx + 9, hy - 6); c.quadraticCurveTo(hx + 13, hy, hx + 9, hy + 1); c.quadraticCurveTo(hx + 5, hy, hx + 9, hy - 6); c.fill();
+    const sp = [P.arms[1][1][0] + 8, P.arms[1][1][1] - 12], k = 3 + Math.sin(t * 6) * 1.5;
+    c.strokeStyle = '#ffe27a'; c.lineWidth = 1.5; line(c, [sp[0] - k, sp[1]], [sp[0] + k, sp[1]]); line(c, [sp[0], sp[1] - k], [sp[0], sp[1] + k]);
+  }
+  c.restore();
+  if (o.gear) drawStickGear(c, P, o.gear, s);
+}
+function stickGolem(c, t, hit) {
+  c.save(); c.scale(-1, 1);
+  const col = hit ? '#ffffff' : '#8e939c', dark = '#50555d';
+  c.fillStyle = dark; c.fillRect(-38, -46, 26, 46); c.fillRect(12, -46, 26, 46);
+  [[-62, 60, 20], [-96, 66, 22], [-130, 60, 20]].forEach(([y, rx, ry]) => {
+    c.fillStyle = col; c.beginPath(); c.ellipse(0, y, rx, ry, 0, 0, 7); c.fill();
+    c.fillStyle = dark; c.beginPath(); c.ellipse(0, y, 12, 6, 0, 0, 7); c.fill();
+  });
+  c.fillStyle = col; c.beginPath(); c.arc(0, -172, 26, 0, 7); c.fill();
+  c.fillStyle = '#e0555a'; c.fillRect(4, -178, 16, 5);
+  c.strokeStyle = col; c.lineWidth = 22; c.lineCap = 'round'; line(c, [34, -120], [58, -60 + Math.sin(t * 2) * 4]);
+  c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Style B: 16-bit pixel sprite pipeline
+//   draw shapes at 48×64 → snap every pixel to a limited palette → 1px dark outline → (aura) → scale ×4, no smoothing
+// ---------------------------------------------------------------------------
+const PAL = {
+  outline: '#140c1c', skin: '#f0b088', skinS: '#c87850', skinH: '#ffd8b8', hair: '#3a2050', hairH: '#6a4090',
+  band: '#d83838', top: '#2f6fd0', topS: '#1f4890', topH: '#5c94f0', shorts: '#2a2a44', shortsS: '#1a1a2c',
+  shoe: '#e8e8f0', shoeS: '#9098a8', iron: '#7a8294', ironS: '#464e5e', ironH: '#b8c0d0', orange: '#ff7a1a', orangeS: '#b84c10',
+  leather: '#8a5a30', gold: '#f0c040', white: '#ffffff', red: '#ff3030',
+  ghost: '#c8f0ff', ghostS: '#7ab8d8', troll: '#78b050', trollS: '#467a30', trollH: '#a8d880', pad: '#7a2a3a',
+  padS: '#4a1a26', potato: '#c09058', potatoS: '#7a5a30', fox: '#e87830', foxS: '#a84a18', cream: '#f8f0e0',
+  oni: '#d04830', oniS: '#902818', fur: '#8a5a38', furS: '#4e2e1c', bone: '#f0e0c0', slime: '#60d0a0', slimeS: '#2f9070',
+  slimeH: '#c0f8e0', screen: '#5cc8ff', purple: '#8050c0',
+};
+const PAL_RGB = Object.values(PAL).map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+const OUT = PAL_RGB[0], AURA = [[255, 240, 138], [255, 176, 32], [255, 112, 32]];
+function noise(x, y, f) { let h = (x * 374761393 + y * 668265263 + f * 982451653) >>> 0; h = ((h ^ (h >>> 13)) * 1274126177) >>> 0; return (h >>> 0) / 4294967296; }
+function snapAndOutline(x, W, H, aura, frame) {
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  const solid = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const p = i * 4;
+    if (d[p + 3] < 110) { d[p + 3] = 0; continue; }
+    let best = 0, bd = 1e9;
+    for (let k = 0; k < PAL_RGB.length; k++) { const c = PAL_RGB[k], dd = (c[0] - d[p]) ** 2 + (c[1] - d[p + 1]) ** 2 + (c[2] - d[p + 2]) ** 2; if (dd < bd) { bd = dd; best = k; } }
+    const c = PAL_RGB[best]; d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255; solid[i] = 1;
+  }
+  const isS = (px, py) => px >= 0 && py >= 0 && px < W && py < H && solid[py * W + px];
+  const set = (i, c) => { const p = i * 4; d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255; };
+  const outl = new Uint8Array(W * H);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const i = py * W + px;
+    if (!solid[i] && (isS(px - 1, py) || isS(px + 1, py) || isS(px, py - 1) || isS(px, py + 1))) { set(i, OUT); outl[i] = 1; }
+  }
+  if (aura) {   // a solid 1px glow ring, then flame tongues rising from the top edge (per-column, so they read as shapes)
+    const ring = new Uint8Array(W * H);
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const i = py * W + px; if (solid[i] || outl[i]) continue;
+      const touch = [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dx, dy]) => { const X = px + dx, Y = py + dy; return X >= 0 && Y >= 0 && X < W && Y < H && outl[Y * W + X]; });
+      if (touch && noise(px >> 1, py >> 1, frame) > 0.12) { set(i, AURA[0]); ring[i] = 1; }
+    }
+    for (let px = 0; px < W; px++) {
+      let topY = -1; for (let py = 0; py < H; py++) if (outl[py * W + px] || ring[py * W + px]) { topY = py; break; }
+      if (topY < 0) continue;
+      const h = 1 + Math.floor(noise(px >> 1, 5, frame) * 7);   // columns in pairs = chunky flame tongues
+      for (let k = 1; k <= h; k++) { const py = topY - k; if (py >= 0 && !solid[py * W + px]) set(py * W + px, AURA[k <= h / 2 ? 1 : 2]); }
+    }
+  }
+  x.putImageData(img, 0, 0);
+}
+function pixelFighter(P, s, o = {}) {
+  const W = 48, H = 64, k = 0.56, cv = o.canvas || document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  x.clearRect(0, 0, W, H); x.save(); x.translate(W / 2 + (o.dx || 0), H - 2); x.scale(k, k);
+  const cap = (a, b, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); };
+  const ell = (a, b, r, col) => { const [mx, my] = mid(a, b), ang = Math.atan2(b[1] - a[1], b[0] - a[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2; x.fillStyle = col; x.beginPath(); x.ellipse(mx, my, len * 0.8, r, ang, 0, 7); x.fill(); };
+  const top = [P.lean, P.neckY], shirtless = s >= 0.95;
+  const leg = (L, back) => {
+    const sk = back ? PAL.skinS : PAL.skin, m = mid(L[0], L[1], 0.55);
+    cap(m, L[1], 6.5 + s * 4, sk); cap(L[1], L[2], 5.5 + s * 2.5, sk);
+    if (s > 0.3) ell(L[1], L[2], 2 + s * 2.2, sk);
+    cap(L[0], m, 9 + s * 5, back ? PAL.shortsS : PAL.shorts);
+    const dir = P.front ? Math.sign(L[2][0]) || 1 : 1;
+    cap([L[2][0] - 2 * dir, L[2][1] - 3], [L[2][0] + 4 * dir, L[2][1] - 3], 6, back ? PAL.shoeS : PAL.shoe);
+  };
+  const arm = (A, back) => {
+    const sk = back ? PAL.skinS : PAL.skin;
+    cap(A[0], A[1], 6 + s * 5, sk); ell(A[0], A[1], 2.5 + s * 5, sk);
+    cap(A[1], A[2], 5.5 + s * 3, sk);
+    if (!back) cap(mid(A[0], A[1], 0.2), mid(A[0], A[1], 0.7), 1.6, PAL.skinH);
+    x.fillStyle = PAL.band; x.beginPath(); x.arc(A[2][0], A[2][1], 3.6 + s * 1.2, 0, 7); x.fill();   // red wrist wraps
+  };
+  leg(P.legs[0], !P.front); if (!P.front) arm(P.arms[0], true);
+  // torso
+  const tp = [[top[0] - P.shW - 1, top[1] + 1], [top[0] + P.shW + 1, top[1] + 1], [P.waW + 1, P.hipY], [-P.waW - 1, P.hipY]];
+  x.fillStyle = shirtless ? PAL.skin : PAL.top; x.beginPath(); tp.forEach((p, i) => i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.closePath(); x.fill();
+  x.fillStyle = shirtless ? PAL.skinS : PAL.topS; x.beginPath(); x.moveTo(top[0] + 2, top[1] + 1); x.lineTo(tp[1][0], tp[1][1]); x.lineTo(tp[2][0], tp[2][1]); x.lineTo(1, P.hipY); x.closePath(); x.fill();
+  if (shirtless) {   // level 50: the shirt didn't survive
+    x.fillStyle = PAL.skinS;
+    for (let r = 0; r < 3; r++) for (const sx of [-1, 1]) x.fillRect(top[0] + sx * 4 - 2, top[1] + 14 + r * 6, 4, 3);
+    cap([top[0] - 9, top[1] + 9], [top[0] - 1, top[1] + 10], 1.5, PAL.skinS); cap([top[0] + 9, top[1] + 9], [top[0] + 1, top[1] + 10], 1.5, PAL.skinS);
+  } else cap([top[0] - P.shW * 0.6, top[1] + 4], [top[0] - 2, top[1] + 4], 2, PAL.topH);
+  cap([-P.waW - 1, P.hipY + 1], [P.waW + 1, P.hipY + 1], 4, o.gear === 'belt' ? PAL.leather : PAL.shorts);
+  if (o.gear === 'belt') { x.fillStyle = PAL.gold; x.fillRect(-3, P.hipY - 2, 6, 5); }
+  // neck + head + anime hair + headband
+  cap(top, [P.head[0], P.head[1] + 6], 6 + s * 5, PAL.skinS);
+  const [hx, hy] = P.head, hr = 8.2 - s * 1.2;
+  x.fillStyle = PAL.skin; x.beginPath(); x.arc(hx, hy, hr, 0, 7); x.fill();
+  x.fillStyle = PAL.hair; x.beginPath();
+  const back = P.front ? 0 : -1, spikes = 6;
+  x.moveTo(hx - hr - 1, hy + 1);
+  for (let i = 0; i <= spikes; i++) {
+    const a = Math.PI + (i / spikes) * Math.PI, len = hr + (i % 2 ? 2 : 7 + (i === 2 || i === 3 ? 3 : 0));
+    x.lineTo(hx + Math.cos(a) * len + back * 3 * (1 - i / spikes), hy - 1 + Math.sin(a) * len);
+  }
+  x.lineTo(hx + hr + 1, hy + 1); x.closePath(); x.fill();
+  x.fillStyle = PAL.band; x.fillRect(hx - hr, hy - 3, hr * 2, 3);
+  if (!P.front) { cap([hx - hr, hy - 2], [hx - hr - 7, hy + 2 + Math.sin((o.frame || 0) * 1.7) * 2], 2.4, PAL.band); }
+  leg(P.legs[1], false); if (P.front) arm(P.arms[0], false); arm(P.arms[1], false);
+  // gear
+  const hand = P.arms[1][2], bh = P.arms[0][2];
+  if (o.gear === 'staff') {
+    const a = -1.15, dx = Math.cos(a) * 30, dy = Math.sin(a) * 30;
+    cap([hand[0] - dx, hand[1] - dy], [hand[0] + dx, hand[1] + dy], 3, PAL.ironH);
+    for (const kk of [-1, 1]) { const p = [hand[0] + kk * dx, hand[1] + kk * dy]; x.fillStyle = PAL.orange; x.beginPath(); x.arc(p[0], p[1], 8, 0, 7); x.fill(); x.fillStyle = PAL.orangeS; x.beginPath(); x.arc(p[0] + 1.5, p[1] + 1.5, 5, 0, 7); x.fill(); }
+  } else if (o.gear === 'flail') {
+    const h2 = [hand[0] + 5, hand[1] - 10]; cap(hand, h2, 3.5, PAL.leather);
+    for (let i = 1; i <= 5; i++) { x.fillStyle = PAL.ironH; x.fillRect(h2[0] + i * 3 - 1, h2[1] - Math.sin(i / 5 * Math.PI) * 5 + i - 1, 2.4, 2.4); }
+    const kb = [h2[0] + 20, h2[1] + 10];
+    x.fillStyle = PAL.iron; x.beginPath(); x.arc(kb[0], kb[1], 8.5, 0, 7); x.fill();
+    x.fillStyle = PAL.ironS; x.beginPath(); x.arc(kb[0] + 2, kb[1] + 2, 6, 0, 7); x.fill();
+    x.strokeStyle = PAL.iron; x.lineWidth = 3; x.beginPath(); x.arc(kb[0], kb[1] - 9, 4.5, Math.PI, 0); x.stroke();
+  } else if (o.gear === 'shield') {
+    const c0 = [bh[0] + 6, bh[1] + 2];
+    x.fillStyle = PAL.ironS; x.beginPath(); x.arc(c0[0], c0[1], 16, 0, 7); x.fill();
+    x.fillStyle = PAL.iron; x.beginPath(); x.arc(c0[0] - 1, c0[1] - 1, 13.5, 0, 7); x.fill();
+    x.fillStyle = PAL.ironH; x.beginPath(); x.arc(c0[0] - 4, c0[1] - 4, 5, 0, 7); x.fill();
+    x.fillStyle = PAL.outline; x.beginPath(); x.arc(c0[0], c0[1], 3.5, 0, 7); x.fill();
+  }
+  x.restore();
+  // eyes: exact pixels after the transform
+  const ex = Math.round(W / 2 + (o.dx || 0) + hx * k), ey = Math.round(H - 2 + hy * k);
+  x.fillStyle = PAL.outline;
+  if (P.front) { x.fillRect(ex - 2, ey, 1, 2); x.fillRect(ex + 1, ey, 1, 2); } else x.fillRect(ex + 2, ey, 1, 2);
+  snapAndOutline(x, W, H, FX && o.aura !== false, o.frame || 0);
+  return cv;
+}
+function pixelGolem(frame, hit) {
+  const W = 56, H = 64, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  const main = hit ? PAL.white : PAL.iron;
+  x.fillStyle = PAL.ironS; x.fillRect(16, 50, 9, 13); x.fillRect(32, 50, 9, 13);
+  [[48, 20, 7], [36, 22, 8], [24, 20, 7]].forEach(([y, rx, ry]) => {
+    x.fillStyle = main; x.beginPath(); x.ellipse(28, y, rx, ry, 0, 0, 7); x.fill();
+    x.fillStyle = PAL.ironH; x.beginPath(); x.ellipse(24, y - 2, rx * 0.5, ry * 0.35, 0, 0, 7); x.fill();
+    x.fillStyle = PAL.ironS; x.beginPath(); x.ellipse(28, y, 4, 2, 0, 0, 7); x.fill();
+  });
+  x.fillStyle = main; x.beginPath(); x.arc(28, 10, 8, 0, 7); x.fill();
+  x.fillStyle = PAL.red; x.fillRect(20, 8, 6, 2);
+  x.strokeStyle = main; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.moveTo(14, 26); x.lineTo(6, 40 + (frame % 2)); x.stroke();
+  snapAndOutline(x, W, H, false, frame);
+  return cv;
+}
+function pixelWraith(frame) {
+  const W = 48, H = 64, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'), b = frame % 2, w = frame % 2 ? 2 : -2;
+  x.fillStyle = PAL.ghost; x.beginPath(); x.arc(24, 17 + b, 12, Math.PI, 0);
+  [[36, 40], [33 + w, 52], [29, 46], [25 - w, 59], [21, 46], [16 + w, 53], [12, 40]].forEach(([px, py]) => x.lineTo(px, py + b));
+  x.closePath(); x.fill();
+  x.fillStyle = PAL.ghostS; x.beginPath(); x.moveTo(26, 6 + b); x.arc(24, 17 + b, 12, -1.3, 0); x.lineTo(36, 40 + b); x.lineTo(33 + w, 52 + b); x.lineTo(28, 44 + b); x.closePath(); x.fill();
+  // a treadmill belt worn as a scarf
+  x.fillStyle = PAL.shorts; x.beginPath(); x.moveTo(10, 29 + b); x.lineTo(38, 25 + b); x.lineTo(38, 31 + b); x.lineTo(10, 35 + b); x.closePath(); x.fill();
+  x.fillStyle = PAL.shoeS; for (let i = 0; i < 6; i++) x.fillRect(12 + i * 4 + (frame % 4), 30 - i * 0.6 + b, 1, 3);
+  x.strokeStyle = PAL.ghost; x.lineWidth = 3; x.lineCap = 'round'; x.beginPath(); x.moveTo(12, 30 + b); x.lineTo(4, 38 - b * 2); x.stroke();
+  snapAndOutline(x, W, H, false, frame);
+  x.fillStyle = PAL.red; x.fillRect(18, 15 + b, 2, 3); x.fillRect(25, 15 + b, 2, 3);
+  return cv;
+}
+function pixelTroll(frame) {
+  const W = 56, H = 64, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'), b = frame % 2;
+  x.fillStyle = PAL.trollS; x.fillRect(17, 50, 8, 12); x.fillRect(31, 50, 8, 12);
+  x.fillStyle = PAL.troll; x.beginPath(); x.ellipse(28, 40, 16, 14, 0, 0, 7); x.fill();
+  x.fillStyle = PAL.trollS; x.beginPath(); x.ellipse(34, 42, 9, 11, 0, 0, 7); x.fill();
+  x.fillStyle = PAL.trollH; x.beginPath(); x.ellipse(25, 44, 7, 6, 0, 0, 7); x.fill();
+  // arms up, holding the bench it won't share
+  x.strokeStyle = PAL.troll; x.lineWidth = 6; x.lineCap = 'round';
+  x.beginPath(); x.moveTo(15, 32); x.lineTo(11, 10 - b); x.stroke();
+  x.beginPath(); x.moveTo(41, 32); x.lineTo(45, 10 - b); x.stroke();
+  x.fillStyle = PAL.pad; x.fillRect(4, 3 - b, 48, 5);
+  x.fillStyle = PAL.ironS; x.fillRect(9, 8 - b, 3, 4); x.fillRect(44, 8 - b, 3, 4);
+  x.fillStyle = PAL.troll; x.beginPath(); x.arc(28, 21, 9, 0, 7); x.fill();
+  x.fillStyle = PAL.trollS; x.beginPath(); x.ellipse(31, 24, 4, 3, 0, 0, 7); x.fill();
+  snapAndOutline(x, W, H, false, frame);
+  x.fillStyle = PAL.outline; x.fillRect(24, 19, 2, 2); x.fillRect(31, 19, 2, 2);
+  x.fillStyle = PAL.white; x.fillRect(25, 27, 1, 2); x.fillRect(32, 27, 1, 2);
+  return cv;
+}
+function drawPixelBackdrop(x, frame) {   // 160×75, floor at y=68
+  const W = 160, H = 75, g = 68;
+  [['#1c2438', 0, 22], ['#222c44', 22, 18], ['#28324e', 40, 28]].forEach(([c, y, h]) => { x.fillStyle = c; x.fillRect(0, y, W, h); });
+  for (let i = 0; i < 6; i++) { x.fillStyle = '#34405e'; x.fillRect(8 + i * 26, 12, 16, 14); x.fillStyle = '#4a5a80'; x.fillRect(9 + i * 26, 13, 14, 5); }
+  for (let i = 0; i < 3; i++) { x.fillStyle = '#3a3048'; x.fillRect(12 + i * 52, 44, 30, 3); x.fillRect(14 + i * 52, 47, 2, 21); x.fillRect(38 + i * 52, 47, 2, 21); }   // squat racks
+  for (let yy = g; yy < H; yy++) for (let xx = 0; xx < W; xx += 8) { x.fillStyle = ((xx / 8 + yy) % 2) ? '#3a3040' : '#4a4058'; x.fillRect(xx, yy, 8, 1); }
+  x.fillStyle = '#22202e'; x.fillRect(0, g, W, 1);
+}
+const FONT = { P: ['111', '101', '111', '100', '100'], O: ['111', '101', '101', '101', '111'], W: ['10001', '10001', '10101', '10101', '01010'], '!': ['1', '1', '1', '0', '1'] };
+function pixelText(x, str, px, py, sc, col, shadow) {
+  let cx = px;
+  for (const ch of str) {
+    const g = FONT[ch]; if (!g) { cx += 4 * sc; continue; }
+    g.forEach((row, r) => [...row].forEach((b, cI) => { if (b === '1') { x.fillStyle = shadow; x.fillRect(cx + cI * sc + 1, py + r * sc + 1, sc, sc); x.fillStyle = col; x.fillRect(cx + cI * sc, py + r * sc, sc, sc); } }));
+    cx += (g[0].length + 1) * sc;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Build the page
+// ---------------------------------------------------------------------------
+function cell(parent, cap, sub, pixel) {
+  const d = document.createElement('div'); d.className = 'cell';
+  d.innerHTML = `<canvas class="${pixel ? 'px' : ''}"></canvas><div class="cap">${cap}</div><div class="sub">${sub}</div>`;
+  parent.appendChild(d);
+  return d.querySelector('canvas');
+}
+function smooth(cv, w, h) { const r = window.devicePixelRatio || 1; cv.width = w * r; cv.height = h * r; const c = cv.getContext('2d'); c.setTransform(r, 0, 0, r, 0, 0); return c; }
+
+const stickCells = [], pixelCells = [];
+LEVELS.forEach(L => {
+  stickCells.push({ cv: cell($('#stickLevels'), `Lv ${L.lvl}`, L.title, false), s: L.s, pose: 'flex' });
+  pixelCells.push({ cv: cell($('#pixelLevels'), `Lv ${L.lvl}`, L.title, true), s: L.s, pose: 'flex' });
+});
+GEAR.forEach(G => {
+  const wide = G.key === 'flail';
+  stickCells.push({ cv: cell($('#stickGear'), G.name, G.sub, false), s: 0.5, pose: 'stance', gear: G.key, dx: wide ? -30 : -14 });
+  pixelCells.push({ cv: cell($('#pixelGear'), G.name, G.sub, true), s: 0.5, pose: 'stance', gear: G.key, dx: wide ? -12 : -6 });
+});
+stickCells.forEach(c => { c.ctx = smooth(c.cv, 180, 220); });
+pixelCells.forEach(c => { c.cv.width = 192; c.cv.height = 256; c.ctx = c.cv.getContext('2d'); c.ctx.imageSmoothingEnabled = false; c.sprite = document.createElement('canvas'); });
+
+const sScene = $('#stickScene'), sCtx = smooth(sScene, 640, 300);
+const pScene = $('#pixelScene'); pScene.width = 640; pScene.height = 300;
+const pCtx = pScene.getContext('2d'); pCtx.imageSmoothingEnabled = false;
+const pLow = document.createElement('canvas'); pLow.width = 160; pLow.height = 75;
+const lx = pLow.getContext('2d');
+
+function drawStickCells(t) {
+  for (const c of stickCells) {
+    const x = c.ctx; x.clearRect(0, 0, 180, 220);
+    x.save(); x.translate(90 + (c.dx || 0), 208); x.scale(1.65, 1.65);
+    drawStick(x, pose(c.pose, c.s, (Math.sin(t * 2.2) + 1) / 2), c.s, { t, gear: c.gear });
+    x.restore();
+  }
+}
+function drawPixelCells(frame) {
+  for (const c of pixelCells) {
+    pixelFighter(pose(c.pose, c.s, frame % 2 ? 1.6 : 0), c.s, { canvas: c.sprite, gear: c.gear, frame, dx: c.dx });
+    c.ctx.clearRect(0, 0, 192, 256); c.ctx.drawImage(c.sprite, 0, 0, 192, 256);
+  }
+}
+function drawStickScene(t) {
+  const x = sCtx, W = 640, H = 300, g = 262;
+  const bg = x.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#171a24'); bg.addColorStop(1, '#0f1116');
+  x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#1d2027'; x.fillRect(0, g, W, H - g); x.strokeStyle = '#2c3038'; x.lineWidth = 2; line(x, [0, g], [W, g]);
+  if (FX) {   // speed lines
+    x.save(); x.lineCap = 'round';
+    for (let i = 0; i < 26; i++) {
+      const y = 20 + (i * 37) % 230, len = 60 + (i * 53) % 140, off = ((t * 900 + i * 97) % 700) - 100;
+      x.strokeStyle = `rgba(240,236,228,${0.05 + (i % 5) * 0.03})`; x.lineWidth = 1 + (i % 3);
+      line(x, [W - off, y], [W - off - len, y]);
+    }
+    x.restore();
+  }
+  x.save(); x.translate(398, g); stickGolem(x, t, FX && (t % 1.2) < 0.08); x.restore();
+  x.save(); x.translate(232, g); x.scale(2, 2);
+  drawStick(x, pose('strike', 0.65), 0.65, { t });
+  x.restore();
+  if (FX) {   // impact frame + POW
+    const cx = 232 + (40 + 0.65 * 6) * 2 + 12, cy = g - 76 * 2, pulse = 1 + Math.sin(t * 10) * 0.08;
+    x.save(); x.translate(cx, cy); x.scale(pulse, pulse);
+    x.fillStyle = '#ffe27a'; x.beginPath();
+    for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2, r = i % 2 ? 16 : 40 + (i % 4) * 6; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    x.closePath(); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(0, 0, 12, 0, 7); x.fill();
+    x.restore();
+    x.save(); x.font = '900 44px Impact, "Arial Black", system-ui'; x.textAlign = 'center'; x.lineJoin = 'round';
+    x.lineWidth = 8; x.strokeStyle = '#111'; x.strokeText('POW!', cx + 10, cy - 58); x.fillStyle = '#ff7a1a'; x.fillText('POW!', cx + 10, cy - 58);
+    x.restore();
+  }
+}
+function drawPixelScene(frame) {
+  const x = lx, W = 160, H = 75, g = 68;
+  drawPixelBackdrop(x, frame);
+  if (FX) for (let i = 0; i < 14; i++) {   // pixel speed lines
+    const yy = 6 + (i * 11) % 58, len = 8 + (i * 7) % 20, off = (frame * 14 + i * 23) % 200 - 20;
+    x.fillStyle = i % 3 ? '#8a94b8' : '#c8d0e8'; x.fillRect(W - off, yy, len, 1);
+  }
+  const hit = FX && frame % 8 === 1;
+  x.drawImage(pixelGolem(frame, hit), 84, g - 62);
+  x.drawImage(pixelFighter(pose('strike', 0.65), 0.65, { frame, dx: -4 }), 34, g - 62);
+  if (FX) {   // impact star + POW!
+    const cx = 34 + 24 - 4 + Math.round((40 + 0.65 * 6) * 0.56) + 3, cy = g - 2 - Math.round(76 * 0.56);
+    const r = frame % 2 ? 7 : 9;
+    for (let a = 0; a < 8; a++) { const dx = Math.round(Math.cos(a * Math.PI / 4)), dy = Math.round(Math.sin(a * Math.PI / 4)); for (let k = 2; k < r - (a % 2) * 3; k++) { x.fillStyle = k < 4 ? '#ffffff' : '#fff08a'; x.fillRect(cx + dx * k, cy + dy * k, 1, 1); } }
+    x.fillStyle = '#ffffff'; x.fillRect(cx - 1, cy - 1, 3, 3);
+    pixelText(x, 'POW!', cx - 14, 2 + (frame % 2), 2, '#ff7a1a', '#140c1c');
+  }
+  pCtx.clearRect(0, 0, 640, 300); pCtx.drawImage(pLow, 0, 0, 640, 300);
+}
+
+// ---------------------------------------------------------------------------
+// Fusion: vector stick heroes over pixel monsters (and optionally a pixel arena)
+// ---------------------------------------------------------------------------
+const HEROES = [
+  { hair: 'spiky', accent: '#ff7a1a', glow: [255, 200, 60], name: 'P1 · Spiky', sub: 'Orange' },
+  { hair: 'ponytail', accent: '#2ec4b6', glow: [80, 220, 200], name: 'P2 · Ponytail', sub: 'Teal' },
+  { hair: 'bun', accent: '#b48cff', glow: [180, 140, 255], name: 'P3 · Bun', sub: 'Violet' },
+  { hair: 'buzz', accent: '#7ee08a', glow: [126, 224, 138], name: 'P4 · Buzz cut', sub: 'Green' },
+];
+const heroCells = HEROES.map(h => ({ ...h, cv: cell($('#heroOptions'), h.name, h.sub, false) }));
+heroCells.forEach(h => { h.ctx = smooth(h.cv, 180, 220); });
+const ENEMIES = [
+  { make: f => pixelGolem(f, false), w: 56, name: 'Plate Golem', sub: 'Slow, tanky, slams' },
+  { make: pixelWraith, w: 48, name: 'Treadmill Wraith', sub: 'Fast, flies, dashes' },
+  { make: pixelTroll, w: 56, name: 'Bench Troll', sub: "Won't share the bench" },
+];
+const enemyCells = ENEMIES.map(e => { const cv = cell($('#enemyRoster'), e.name, e.sub, true); cv.width = 224; cv.height = 256; const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; return { ...e, cv, ctx: c }; });
+const fusA = smooth($('#fusionPixelBg'), 640, 300), fusB = smooth($('#fusionCleanBg'), 640, 300);
+const fusLow = document.createElement('canvas'); fusLow.width = 160; fusLow.height = 75;
+
+function drawHeroCells(t) {
+  for (const h of heroCells) {
+    const x = h.ctx; x.clearRect(0, 0, 180, 220);
+    x.save(); x.translate(84, 208); x.scale(1.65, 1.65);
+    drawStick(x, pose('stance', 0.4, (Math.sin(t * 2.2) + 1) / 2), 0.4, { t, hair: h.hair, accent: h.accent, glow: h.glow });
+    x.restore();
+  }
+}
+function drawEnemyCells(frame) {
+  for (const e of enemyCells) { e.ctx.clearRect(0, 0, 224, 256); e.ctx.drawImage(e.make(frame), (56 - e.w) * 2, 0, e.w * 4, 256); }
+}
+function drawFusion(c, pixelArena, t, frame) {
+  const W = 640, H = 300, g = 272;
+  if (pixelArena) {
+    const lx2 = fusLow.getContext('2d'); drawPixelBackdrop(lx2, frame);
+    c.imageSmoothingEnabled = false; c.drawImage(fusLow, 0, 0, W, H);
+  } else {
+    const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#171a24'); bg.addColorStop(1, '#0f1116');
+    c.fillStyle = bg; c.fillRect(0, 0, W, H);
+    c.fillStyle = '#1d2027'; c.fillRect(0, g, W, H - g); c.strokeStyle = '#2c3038'; c.lineWidth = 2; line(c, [0, g], [W, g]);
+  }
+  if (FX) {   // speed lines behind the heroes
+    c.save(); c.lineCap = 'round';
+    for (let i = 0; i < 18; i++) {
+      const y = 30 + (i * 41) % 220, len = 50 + (i * 53) % 120, off = ((t * 800 + i * 97) % 700) - 100;
+      c.strokeStyle = `rgba(240,236,228,${0.05 + (i % 5) * 0.03})`; c.lineWidth = 1 + (i % 3);
+      line(c, [W - off, y], [W - off - len, y]);
+    }
+    c.restore();
+  }
+  // the monster: a 16-bit sprite scaled ×4 with no smoothing
+  const hit = FX && frame % 8 === 1;
+  c.imageSmoothingEnabled = false; c.drawImage(pixelGolem(frame, hit), 404, g - 62 * 4, 56 * 4, 64 * 4); c.imageSmoothingEnabled = true;
+  // the heroes: vector stick figures
+  c.save(); c.translate(150, g); c.scale(1.9, 1.9);
+  drawStick(c, pose('stance', 0.45, (Math.sin(t * 2.2) + 1) / 2), 0.45, { t, hair: 'ponytail', accent: '#2ec4b6', glow: [80, 220, 200], gear: 'shield' });
+  c.restore();
+  c.save(); c.translate(318, g); c.scale(1.9, 1.9);
+  drawStick(c, pose('strike', 0.65), 0.65, { t, hair: 'spiky', accent: '#ff7a1a' });
+  c.restore();
+  if (FX) {
+    const cx = 318 + (40 + 0.65 * 6) * 1.9 + 14, cy = g - 76 * 1.9, pulse = 1 + Math.sin(t * 10) * 0.08;
+    c.save(); c.translate(cx, cy); c.scale(pulse, pulse);
+    c.fillStyle = '#ffe27a'; c.beginPath();
+    for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2, r = i % 2 ? 14 : 34 + (i % 4) * 5; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    c.closePath(); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.arc(0, 0, 10, 0, 7); c.fill();
+    c.restore();
+    c.save(); c.font = '900 40px Impact, "Arial Black", system-ui'; c.textAlign = 'center'; c.lineJoin = 'round';
+    c.lineWidth = 8; c.strokeStyle = '#111'; c.strokeText('POW!', cx, cy - 50); c.fillStyle = '#ff7a1a'; c.fillText('POW!', cx, cy - 50);
+    c.restore();
+  }
+  // tiny HUD tags so co-op identity is obvious
+  c.save(); c.font = '700 13px system-ui';
+  [[150, '#2ec4b6', 'P2'], [318, '#ff7a1a', 'P1']].forEach(([px, col, tag]) => {
+    c.fillStyle = col; c.beginPath(); c.moveTo(px - 6, 44); c.lineTo(px + 6, 44); c.lineTo(px, 52); c.closePath(); c.fill();
+    c.fillStyle = '#eceae4'; c.textAlign = 'center'; c.fillText(tag, px, 38);
+  });
+  c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Bestiary sprites (16-bit). Each: draw shapes → snap to palette + outline → exact-pixel details (eyes, etc.)
+// ---------------------------------------------------------------------------
+const E2 = (x, c, cx, cy, rx, ry, rot = 0) => { x.fillStyle = c; x.beginPath(); x.ellipse(cx, cy, rx, ry, rot, 0, 7); x.fill(); };
+const L2 = (x, c, w, a, b) => { x.strokeStyle = c; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); };
+const P2 = (x, c, pts) => { x.fillStyle = c; x.beginPath(); pts.forEach((p, i) => i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.closePath(); x.fill(); };
+const R2 = (x, c, X, Y, w = 1, h = 1) => { x.fillStyle = c; x.fillRect(X, Y, w, h); };
+function mkSprite(W, H, frame, draw, after) {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'), b = frame % 2;
+  draw(x, b, frame); snapAndOutline(x, W, H, false, frame); if (after) after(x, b, frame);
+  return cv;
+}
+const MONSTER_ART = {
+  snack: f => mkSprite(32, 32, f, (x, b) => {   // chip-bag gremlin
+    P2(x, PAL.gold, [[7, 7 + b], [11, 4 + b], [15, 7 + b], [19, 4 + b], [23, 7 + b], [26, 26], [6, 26]]);
+    P2(x, PAL.orangeS, [[19, 7 + b], [23, 7 + b], [26, 26], [20, 26]]);
+    R2(x, PAL.red, 7, 14 + b, 19, 5);
+    L2(x, PAL.gold, 2, [7, 17 + b], [2, 12 - b * 2]); L2(x, PAL.gold, 2, [25, 17 + b], [30, 21]);
+    R2(x, PAL.shorts, 10, 26, 3, 4); R2(x, PAL.shorts, 19, 26, 3, 4);
+  }, (x, b, f) => {
+    R2(x, PAL.white, 10, 9 + b, 3, 2); R2(x, PAL.white, 18, 9 + b, 3, 2); R2(x, PAL.outline, 12, 9 + b); R2(x, PAL.outline, 18, 9 + b);
+    R2(x, PAL.outline, 10, 8 + b); R2(x, PAL.outline, 11, 7 + b); R2(x, PAL.outline, 20, 8 + b); R2(x, PAL.outline, 19, 7 + b);
+    R2(x, PAL.outline, 13, 12 + b, 6, 1);
+    for (let k = 0; k < 3; k++) R2(x, PAL.gold, (f * 5 + k * 11) % 30, 28 + (k % 2) * 2);   // crumbs
+  }),
+  couch: f => mkSprite(40, 32, f, (x, b) => {   // potato fused to a couch
+    R2(x, PAL.padS, 2, 14, 6, 14); R2(x, PAL.padS, 32, 14, 6, 14); R2(x, PAL.pad, 4, 20, 32, 8); R2(x, PAL.padS, 4, 27, 32, 1);
+    E2(x, PAL.potato, 20, 15 - b, 11, 8); E2(x, PAL.potatoS, 25, 17 - b, 6, 5);
+    L2(x, PAL.potato, 3, [28, 13 - b], [33, 7]); R2(x, PAL.shorts, 32, 3, 3, 6);
+  }, (x, b) => {
+    R2(x, PAL.outline, 14, 13 - b, 3, 1); R2(x, PAL.outline, 21, 13 - b, 3, 1); R2(x, PAL.potatoS, 12, 10 - b); R2(x, PAL.potatoS, 18, 18 - b); R2(x, PAL.potatoS, 15, 20 - b);
+    R2(x, PAL.outline, 17, 17 - b, 3, 1); R2(x, PAL.red, 33, 4);
+  }),
+  snooze: f => mkSprite(32, 32, f, (x, b) => {   // alarm clock with bat wings
+    const up = b ? 6 : 0;
+    P2(x, PAL.purple, [[9, 15], [0, 7 + up], [3, 17], [0, 23]]); P2(x, PAL.purple, [[23, 15], [32, 7 + up], [29, 17], [32, 23]]);
+    E2(x, PAL.red, 9, 8, 3.5, 3); E2(x, PAL.red, 23, 8, 3.5, 3);
+    E2(x, PAL.ironH, 16, 17, 9, 9); E2(x, PAL.white, 16, 17, 6.5, 6.5);
+    R2(x, PAL.ironS, 11, 25, 2, 4); R2(x, PAL.ironS, 19, 25, 2, 4);
+  }, (x, b, f) => {
+    R2(x, PAL.outline, 16, 13, 1, 4); R2(x, PAL.outline, 17, 17, 3, 1);
+    R2(x, PAL.outline, 12, 15, 2, 1); R2(x, PAL.outline, 19, 15, 2, 1);
+    const zy = 4 - (f % 3); [[26, zy], [27, zy], [28, zy], [27, zy + 1], [26, zy + 2], [27, zy + 2], [28, zy + 2]].forEach(([px, py]) => py >= 0 && R2(x, PAL.white, px, py));
+  }),
+  doom: f => mkSprite(28, 40, f, (x, b) => {   // phone-faced wisp
+    P2(x, PAL.ghostS, [[8, 30], [20, 30], [18 + b, 38], [14, 34], [10 - b, 39]]);
+    L2(x, PAL.ghostS, 2, [6, 18], [1, 26]); L2(x, PAL.ghostS, 2, [22, 18], [27, 12 + b * 2]);
+    R2(x, PAL.shorts, 6, 4, 16, 28); R2(x, PAL.screen, 8, 7, 12, 21);
+  }, (x, b, f) => {
+    R2(x, PAL.white, 8, 7 + (f * 3) % 21, 12, 1);
+    R2(x, PAL.red, 10, 13, 2, 2); R2(x, PAL.red, 16, 13, 2, 2); R2(x, PAL.outline, 11, 19, 6, 1);
+  }),
+  oni: f => mkSprite(56, 64, f, (x, b) => {   // oni with kanabo and lifting belt
+    R2(x, PAL.oniS, 18, 50, 8, 12); R2(x, PAL.oniS, 31, 50, 8, 12);
+    P2(x, PAL.gold, [[16, 44], [40, 44], [38, 54], [18, 54]]);
+    L2(x, PAL.ironS, 7, [30, 8 - b], [54, 28 - b]);
+    L2(x, PAL.oni, 6, [42, 30], [47, 21 - b]);
+    E2(x, PAL.oni, 28, 36, 15, 13); E2(x, PAL.oniS, 35, 38, 7, 10);
+    R2(x, PAL.leather, 14, 42, 28, 4); R2(x, PAL.gold, 26, 41, 5, 6);
+    L2(x, PAL.oni, 6, [15, 30], [8, 22]); L2(x, PAL.oni, 5, [8, 22], [12, 13 + b]); E2(x, PAL.oni, 10, 25, 4.5, 4.5);
+    E2(x, PAL.oni, 28, 18, 8, 8);
+    P2(x, PAL.hair, [[20, 13], [21, 5], [25, 9], [28, 3], [31, 9], [35, 5], [36, 13], [28, 11]]);
+    P2(x, PAL.bone, [[21, 12], [17, 3], [24, 10]]); P2(x, PAL.bone, [[35, 12], [39, 3], [32, 10]]);
+  }, (x, b) => {
+    R2(x, PAL.gold, 24, 17, 2, 1); R2(x, PAL.gold, 30, 17, 2, 1); R2(x, PAL.outline, 25, 22, 6, 1); R2(x, PAL.white, 25, 23); R2(x, PAL.white, 30, 23);
+    R2(x, PAL.outline, 20, 47, 2, 5); R2(x, PAL.outline, 27, 47, 2, 5); R2(x, PAL.outline, 34, 47, 2, 5);   // tiger stripes
+    for (let k = 0; k < 4; k++) R2(x, PAL.ironH, 36 + k * 5, 13 + k * 4 - b);   // club studs
+  }),
+  kitsune: f => mkSprite(56, 64, f, (x, b) => {   // nine-tailed fox, sweatband
+    for (let k = 0; k < 5; k++) {   // fanned tails, each with a cream tip
+      const a = -2.6 + k * 0.42 + (b ? 0.06 : -0.06), bx = 18, by = 44, len = 15;
+      const tx = bx + Math.cos(a) * len, ty = by + Math.sin(a) * len;
+      L2(x, k % 2 ? PAL.foxS : PAL.fox, 5, [bx, by], [tx, ty]); E2(x, PAL.cream, tx, ty, 3, 3);
+    }
+    L2(x, PAL.foxS, 3, [22, 48], [18 - b * 3, 60]); L2(x, PAL.foxS, 3, [34, 48], [40 + b * 3, 60]);
+    E2(x, PAL.fox, 29, 45, 13, 7); E2(x, PAL.cream, 34, 48, 7, 3.5);
+    L2(x, PAL.fox, 3, [26, 48], [22 + b * 3, 60]); L2(x, PAL.fox, 3, [36, 48], [44 - b * 2, 58]);
+    E2(x, PAL.fox, 42, 36, 7, 6); P2(x, PAL.cream, [[44, 37], [53, 39], [45, 41]]);
+    P2(x, PAL.fox, [[37, 32], [38, 23], [42, 31]]); P2(x, PAL.fox, [[43, 31], [47, 23], [47, 33]]);
+    R2(x, PAL.band, 36, 32, 11, 2);
+  }, (x) => { R2(x, PAL.outline, 45, 35, 2, 1); R2(x, PAL.outline, 53, 39); }),
+  slime: f => mkSprite(56, 64, f, (x, b) => {   // bulk slime + babies it splits into
+    const sq = b ? 1 : 0;
+    E2(x, PAL.slime, 28, 48 + sq, 20 + sq, 15 - sq); R2(x, PAL.slime, 8, 48, 40, 13);
+    E2(x, PAL.slimeS, 38, 52, 9, 9); E2(x, PAL.slimeH, 19, 41 + sq, 5, 3);
+    x.strokeStyle = PAL.band; x.lineWidth = 2.5; x.beginPath(); x.ellipse(28, 48 + sq, 19, 13 - sq, 0, Math.PI * 1.1, Math.PI * 1.9); x.stroke();
+    E2(x, PAL.slime, 5, 58, 4, 4); E2(x, PAL.slime, 51, 57 - sq, 5, 5);
+  }, (x, b) => {
+    R2(x, PAL.outline, 22, 45, 2, 3); R2(x, PAL.outline, 31, 45, 2, 3); R2(x, PAL.outline, 24, 51, 7, 1); R2(x, PAL.outline, 23, 50); R2(x, PAL.outline, 31, 50);
+    R2(x, PAL.outline, 4, 57); R2(x, PAL.outline, 6, 57); R2(x, PAL.outline, 50, 56 - b); R2(x, PAL.outline, 53, 56 - b);
+  }),
+  minotaur: f => mkSprite(56, 64, f, (x, b) => {   // minotaur champion: chalked hands, belt, double axe
+    R2(x, PAL.furS, 18, 48, 8, 14); R2(x, PAL.furS, 31, 48, 8, 14);
+    L2(x, PAL.leather, 3, [47, 30], [47, 6 - b]);
+    P2(x, PAL.ironH, [[47, 7 - b], [55, 2 - b], [55, 15 - b]]); P2(x, PAL.ironH, [[47, 7 - b], [39, 2 - b], [39, 15 - b]]);
+    E2(x, PAL.fur, 28, 36, 14, 14); E2(x, PAL.furS, 34, 39, 7, 10);
+    R2(x, PAL.leather, 15, 44, 26, 4); R2(x, PAL.gold, 26, 43, 5, 6);
+    L2(x, PAL.fur, 6, [15, 30], [8, 43 + b]); E2(x, PAL.cream, 8, 45 + b, 3.5, 3.5);
+    L2(x, PAL.fur, 6, [41, 30], [46, 20 - b]); E2(x, PAL.cream, 47, 19 - b, 3.5, 3.5);
+    E2(x, PAL.fur, 28, 18, 8, 8); E2(x, PAL.furS, 28, 23, 5, 3);
+    P2(x, PAL.bone, [[21, 14], [13, 10], [15, 5], [23, 12]]); P2(x, PAL.bone, [[35, 14], [43, 10], [41, 5], [33, 12]]);
+  }, (x) => {
+    R2(x, PAL.red, 24, 16, 2, 1); R2(x, PAL.red, 30, 16, 2, 1);
+    R2(x, PAL.gold, 26, 26, 4, 1); R2(x, PAL.gold, 25, 25); R2(x, PAL.gold, 30, 25);   // nose ring
+  }),
+};
+const MINIONS = [
+  { key: 'snack', name: 'Snack Attacker', sub: '"I deserve a treat" · swarms, crumbs' },
+  { key: 'couch', name: 'Couch Potato', sub: '"One more episode" · grabs, drains stamina' },
+  { key: 'snooze', name: 'Snooze Imp', sub: '"Five more minutes" · flies, sleep burst' },
+  { key: 'doom', name: 'Doom Scroller', sub: '"Just checking something" · slowing beam' },
+];
+const ELITES = [
+  { key: 'oni', name: 'Oni Bro', sub: 'Kanabo slams · lifting belt · "the rack is mine"' },
+  { key: 'kitsune', name: 'Kitsune Sprinter', sub: 'Nine tails · sweatband · afterimage dashes' },
+  { key: 'slime', name: 'Bulk Slime', sub: 'Splits into mini slimes · brags about bulking' },
+  { key: 'minotaur', name: 'Minotaur Champion', sub: 'Chalked hands · charges · double axe' },
+];
+const rosterCells = [...MINIONS.map(m => ({ ...m, grid: '#minionRoster' })), ...ELITES.map(m => ({ ...m, grid: '#eliteRoster' }))].map(m => {
+  const cv = cell($(m.grid), m.name, m.sub, true); cv.width = 224; cv.height = 256;
+  const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; return { ...m, cv, ctx: c };
+});
+function drawRoster(frame) {
+  for (const m of rosterCells) {
+    const sp = MONSTER_ART[m.key](frame), sc = Math.min(5, Math.floor(224 / sp.width), Math.floor(256 / sp.height));
+    m.ctx.clearRect(0, 0, 224, 256);
+    m.ctx.drawImage(sp, Math.round((224 - sp.width * sc) / 2), 256 - sp.height * sc, sp.width * sc, sp.height * sc);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Side-scroll swarm level: pixel world + pixel minions (low-res), vector heroes on top
+// ---------------------------------------------------------------------------
+const SW = 240, SH = 75, SG = 68, SCALE = 4;
+const scrollCtx = smooth($('#scrollScene'), 960, 300);
+const scrollLow = document.createElement('canvas'); scrollLow.width = SW; scrollLow.height = SH;
+const slx = scrollLow.getContext('2d');
+const spriteCache = new Map();
+const cachedSprite = (key, f) => { const k = key + (f % 4); if (!spriteCache.has(k)) spriteCache.set(k, MONSTER_ART[key](f % 4)); return spriteCache.get(k); };
+const HERO_X = { p1: 84, p2: 58 };   // low-res x
+const swarm = Array.from({ length: 9 }, (_, i) => ({ key: ['snack', 'couch', 'snooze', 'doom', 'snack', 'snack', 'snooze', 'couch', 'snack'][i], x: 130 + i * 26, seed: i }));
+const poofs = []; let combo = 0, comboPop = 0, attackUntil = 0, lastT = null;
+function hillLayer(x, off, color, base, amp, per) {
+  x.fillStyle = color; x.beginPath(); x.moveTo(0, SH);
+  for (let px = 0; px <= SW; px += 4) x.lineTo(px, base - Math.round(amp * (0.6 + 0.4 * Math.sin((px + off) / per) * Math.sin((px + off) / (per * 0.37)))));
+  x.lineTo(SW, SH); x.closePath(); x.fill();
+}
+function drawScroll(t) {
+  const dt = lastT == null ? 0 : Math.min(0.05, t - lastT); lastT = t;
+  const x = slx, speed = 42, off = t * speed;
+  // sky bands (a cozy village at dusk)
+  [['#2b2140', 0, 14], ['#43294e', 14, 10], ['#6a3656', 24, 9], ['#9a4c58', 33, 8]].forEach(([c, y, h]) => R2(x, c, 0, y, SW, h));
+  R2(x, '#f0c070', 176, 20, 10, 10); R2(x, '#f8e0a0', 178, 22, 6, 6);
+  hillLayer(x, off * 0.15, '#3a2446', 44, 12, 26);
+  // village houses (mid layer, parallax 0.5)
+  const hx0 = -((off * 0.5) % 60);
+  for (let i = 0; i < 6; i++) {
+    const bx = Math.round(hx0 + i * 60);
+    R2(x, '#4e3048', bx + 6, 44, 22, 20); P2(x, '#6a3a4a', [[bx + 3, 45], [bx + 17, 34], [bx + 31, 45]]);
+    R2(x, (Math.floor(t * 2 + i) % 5) ? '#f0c040' : '#c09030', bx + 11, 50, 4, 4); R2(x, '#f0c040', bx + 20, 50, 4, 4);
+  }
+  // ground tiles + grass (parallax 1.0)
+  for (let yy = SG; yy < SH; yy++) for (let xx = -8; xx < SW + 8; xx += 8) { const X = Math.round(xx - (off % 8)); R2(x, ((Math.floor((xx + Math.floor(off / 8) * 8) / 8) + yy) % 2) ? '#4a3a38' : '#5a4838', X, yy, 8, 1); }
+  R2(x, '#6aa84f', 0, SG - 1, SW, 1); for (let xx = 0; xx < SW; xx += 6) R2(x, '#8ac86f', Math.round(xx - (off % 6)), SG - 2);
+  // the swarm: walkers on the ground, fliers bob in the air; defeated minions go poof and respawn off-screen
+  const frame = Math.floor(t * 6);
+  let nearest = 999;
+  for (const m of swarm) {
+    if (ANIM) m.x -= dt * (speed * 0.9 + (m.key === 'snack' ? 26 : m.key === 'couch' ? 6 : 18));
+    const sp = cachedSprite(m.key, frame + m.seed), fly = m.key === 'snooze' || m.key === 'doom';
+    const y = fly ? 20 + Math.round(Math.sin(t * 3 + m.seed) * 4) + (m.seed % 3) * 6 : SG - sp.height + 1;
+    x.drawImage(sp, Math.round(m.x), y);
+    const d = m.x - HERO_X.p1; if (d < nearest) nearest = d;
+    if (m.x < HERO_X.p1 + 22) {
+      poofs.push({ x: m.x + sp.width / 2, y: y + sp.height / 2, t0: t }); combo++; comboPop = t;
+      m.x = SW + 10 + ((m.seed * 37 + combo * 13) % 90);
+    }
+  }
+  if (nearest < 40) attackUntil = t + 0.22;
+  for (let i = poofs.length - 1; i >= 0; i--) {
+    const p = poofs[i], a = (t - p.t0) / 0.35;
+    if (a > 1) { poofs.splice(i, 1); continue; }
+    const r = 2 + Math.round(a * 9);
+    for (let k = 0; k < 8; k++) { const ang = k * Math.PI / 4; R2(x, a < 0.5 ? '#ffffff' : '#fff08a', Math.round(p.x + Math.cos(ang) * r), Math.round(p.y + Math.sin(ang) * r), 2, 2); }
+  }
+  // blit the pixel world, then the vector heroes on top
+  const c = scrollCtx;
+  c.imageSmoothingEnabled = false; c.drawImage(scrollLow, 0, 0, 960, 300); c.imageSmoothingEnabled = true;
+  if (FX) { c.save(); for (let i = 0; i < 10; i++) { const y = 150 + (i * 23) % 110, len = 30 + (i * 17) % 60, ox = ((t * 700 + i * 53) % 400); c.strokeStyle = 'rgba(240,236,228,0.12)'; c.lineWidth = 2; line(c, [HERO_X.p2 * SCALE - 40 - ox * 0.3, y], [HERO_X.p2 * SCALE - 40 - ox * 0.3 - len, y]); } c.restore(); }
+  const g = SG * SCALE;
+  c.save(); c.translate(HERO_X.p2 * SCALE, g); c.scale(2.05, 2.05);
+  drawStick(c, pose('run', 0.45, t * 11 + 1.6), 0.45, { t, hair: 'ponytail', accent: '#2ec4b6', glow: [80, 220, 200], aura: false });
+  c.restore();
+  c.save(); c.translate(HERO_X.p1 * SCALE, g); c.scale(2.05, 2.05);
+  const striking = t < attackUntil;
+  drawStick(c, striking ? pose('strike', 0.65) : pose('run', 0.65, t * 11), 0.65, { t, hair: 'spiky', accent: '#ff7a1a', aura: false });
+  c.restore();
+  // HUD
+  c.save(); c.font = '800 13px system-ui'; c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(12, 12, 190, 26);
+  c.fillStyle = '#eceae4'; c.fillText('ZONE 1 · THE COMFORT ZONE', 20, 30);
+  const pop = Math.max(0, 1 - (t - comboPop) / 0.25);
+  c.textAlign = 'right'; c.font = `900 ${22 + pop * 10}px Impact, "Arial Black", system-ui`; c.lineWidth = 6; c.lineJoin = 'round';
+  c.strokeStyle = '#111'; c.strokeText(`COMBO ×${combo}`, 944, 40); c.fillStyle = '#ffe27a'; c.fillText(`COMBO ×${combo}`, 944, 40);
+  c.restore();
+}
+
+let pixFrame = 0, lastPix = 0;
+function loop(now) {
+  const t = now / 1000;
+  if (ANIM || !loop.drawn) {
+    drawStickCells(ANIM ? t : 0.4);
+    drawStickScene(ANIM ? t : 0.4);
+    drawHeroCells(ANIM ? t : 0.4);
+    if (!ANIM || now - lastPix > 160) { if (ANIM) pixFrame++; lastPix = now; drawPixelCells(pixFrame); drawPixelScene(pixFrame); drawEnemyCells(pixFrame); drawRoster(pixFrame); }
+    drawScroll(ANIM ? t : 0.4);
+    drawFusion(fusA, true, ANIM ? t : 0.4, pixFrame);
+    drawFusion(fusB, false, ANIM ? t : 0.4, pixFrame);
+    loop.drawn = true;
+  }
+  requestAnimationFrame(loop);
+}
+$('#fx').onchange = e => { FX = e.target.checked; loop.drawn = false; lastPix = 0; };
+$('#anim').onchange = e => { ANIM = e.target.checked; loop.drawn = false; };
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Balance Sim</title>
+<!--
+  Barbell Brawl balance sim. Throwaway prototype, not app code.
+  Simulates four training styles week by week through the draft XP, PR, consistency, level and
+  stat rules (docs/03, docs/04), then maps the final stats onto the fight formulas from
+  realtime-brawl.html. Compares the four B7 lift-XP formulas on identical simulated weeks.
+
+  Headless use (the /balance-sim skill): BB_SIM.report({ formula: 'c', weeks: 26 }) returns a text report;
+  BB_SIM.run(overrides) returns the raw results. Overrides use the keys in DEFAULTS.
+-->
+<style>
+  :root {
+    --bg: #121416; --card: #1c1f23; --card2: #24282d; --line: #33373d; --text: #eceae4; --muted: #9a9ca0;
+    --accent: #ff7a1a; --good: #5cc97b; --warn: #e8c547; --bad: #e0555a;
+    /* categorical series, dark steps (validated order: blue, orange, aqua, yellow) */
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --grid: #2a2e33;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } .controls { position: static !important; max-height: none !important; } }
+  .wrap > div { min-width: 0; }
+  .controls { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; min-width: 0; }
+  .grp { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin: 14px 0 6px; }
+  .grp:first-child { margin-top: 0; }
+  .ctl { margin-bottom: 8px; }
+  .ctl label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  .ctl label b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ctl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctl select { width: 100%; background: var(--card2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px; }
+  button { background: var(--card2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  td.sel, th.sel { background: rgba(255,122,26,.08); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .find { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .find:last-child { border-bottom: 0; }
+  .tag { flex: none; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; height: fit-content; margin-top: 2px; }
+  .tag.flag { background: rgba(224,85,90,.18); color: var(--bad); }
+  .tag.ok { background: rgba(92,201,123,.15); color: var(--good); }
+  .tag.info { background: rgba(154,156,160,.15); color: var(--muted); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .chartbox { position: relative; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  #tip { position: absolute; pointer-events: none; background: var(--card2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; display: none; white-space: nowrap; }
+  .bar { display: inline-block; height: 6px; background: var(--muted); border-radius: 3px; vertical-align: middle; margin-left: 4px; opacity: .6; }
+  ul { margin: 0; padding-left: 18px; } li { margin: 3px 0; }
+  code { background: var(--card2); padding: 0 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="controls card" id="controls"></div>
+  <div>
+    <div class="card">
+      <h1>Balance Sim</h1>
+      <div class="muted">Four simulated players train week by week under the draft rules in docs 03 and 04. Their final stats then go through the <code>realtime-brawl.html</code> fight formulas. All numbers are placeholders; change them with the sliders.</div>
+    </div>
+    <div class="card"><h2>Findings</h2><div id="findings"></div></div>
+    <div class="card"><h2>Level over time</h2><div class="legend" id="legend"></div><div class="chartbox"><svg id="chart" viewBox="0 0 680 280" width="100%" role="img" aria-label="Level per week for each player"></svg><div id="tip"></div></div></div>
+    <div class="card"><h2>Players at the end</h2><div class="scroll" id="players"></div></div>
+    <div class="card"><h2>Fight readiness</h2><div class="muted small" style="margin-bottom:8px">From final stats using the realtime-brawl formulas. Kill times assume the player is swinging for the "uptime" share of the fight (slider). Rough guide, not a fight simulation.</div><div class="scroll" id="fight"></div></div>
+    <div class="card"><h2>B7: lift XP formulas compared</h2><div class="muted small" style="margin-bottom:8px">The same simulated weeks under each formula. Every formula is scaled so a hard Workout A (You at your starting maxes) earns the same XP, which leaves only the shape of the rewards to compare.</div><div class="scroll" id="compare"></div></div>
+    <div class="card"><h2>Exploit checks</h2><div class="muted small" style="margin-bottom:8px">Lift XP for a single session, as % of a hard Workout A at your maxes (no PR or consistency bonus).</div><div class="scroll" id="probes"></div></div>
+    <div class="card"><h2>Assumptions</h2><ul class="muted small" id="assump"></ul></div>
+  </div>
+</div>
+
+<script>
+// ===========================================================================
+// Exercise library: copied from prototypes/tracker.html LIB. Keep in sync.
+// Only the fields the sim needs. Dumbbell loads in this sim are the total of
+// both dumbbells (docs/04's `implements` isn't in the tracker yet).
+// ===========================================================================
+const X = (id, name, kind, dist, extra = {}) => ({ id, name, kind, dist, ...extra });
+const LIB = [
+  X('squat', 'Barbell Back Squat', 'barbell', { STR: 85, VIT: 5, FREE: 10 }, { inc: 5 }),
+  X('frontsquat', 'Front Squat', 'barbell', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('bench', 'Bench Press', 'barbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('incline', 'Incline Bench Press', 'barbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('row', 'Barbell Row', 'barbell', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('deadlift', 'Deadlift', 'barbell', { STR: 85, VIT: 5, FREE: 10 }, { inc: 10 }),
+  X('rdl', 'Romanian Deadlift', 'barbell', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('ohp', 'Overhead Press', 'barbell', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('clean', 'Power Clean', 'barbell', { STR: 55, SPD: 20, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('hipthrust', 'Hip Thrust', 'barbell', { STR: 85, FREE: 15 }, { inc: 10 }),
+  X('curl', 'Barbell Curl', 'barbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('dbbench', 'Dumbbell Bench Press', 'dumbbell', { STR: 85, DEX: 5, FREE: 10 }, { inc: 5 }),
+  X('dbrow', 'Dumbbell Row', 'dumbbell', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('dbpress', 'Dumbbell Shoulder Press', 'dumbbell', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('dbcurl', 'Dumbbell Curl', 'dumbbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('arnoldcurl', 'Schwarzenegger Curl', 'dumbbell', { STR: 85, END: 5, FREE: 10 }, { inc: 5 }),
+  X('goblet', 'Goblet Squat', 'dumbbell', { STR: 75, VIT: 10, FREE: 15 }, { inc: 5 }),
+  X('lunge', 'Dumbbell Lunge', 'dumbbell', { STR: 60, DEX: 25, FREE: 15 }, { inc: 5 }),
+  X('lateral', 'Lateral Raise', 'dumbbell', { STR: 85, FREE: 15 }, { inc: 5 }),
+  X('kbswing', 'Kettlebell Swing', 'kettlebell', { STR: 40, END: 30, SPD: 15, FREE: 15 }, { inc: 5 }),
+  X('pulldown', 'Lat Pulldown', 'machine', { STR: 85, FREE: 15 }, { inc: 5 }),
+  X('legpress', 'Leg Press', 'machine', { STR: 85, FREE: 15 }, { inc: 10 }),
+  X('cablerow', 'Seated Cable Row', 'machine', { STR: 85, FREE: 15 }, { inc: 5 }),
+  X('pushdown', 'Triceps Pushdown', 'machine', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('pushups', 'Push-up', 'bodyweight', { STR: 60, END: 25, FREE: 15 }, { bw: 0.65 }),
+  X('pikepush', 'Pike Push-up', 'bodyweight', { STR: 65, DEX: 20, FREE: 15 }, { bw: 0.7 }),
+  X('pullups', 'Pull-up', 'bodyweight', { STR: 70, DEX: 15, FREE: 15 }, { bw: 1 }),
+  X('chinups', 'Chin-up', 'bodyweight', { STR: 75, DEX: 10, FREE: 15 }, { bw: 1 }),
+  X('dips', 'Dip', 'bodyweight', { STR: 75, END: 10, FREE: 15 }, { bw: 1 }),
+  X('invrow', 'Inverted Row', 'bodyweight', { STR: 70, DEX: 15, FREE: 15 }, { bw: 0.6 }),
+  X('bwsquat', 'Bodyweight Squat', 'bodyweight', { END: 50, STR: 30, FREE: 20 }, { bw: 0.7 }),
+  X('pistol', 'Pistol Squat', 'bodyweight', { STR: 55, DEX: 30, FREE: 15 }, { bw: 0.9 }),
+  X('legraise', 'Hanging Leg Raise', 'bodyweight', { STR: 50, DEX: 35, FREE: 15 }, { bw: 0.35 }),
+  X('muscleup', 'Muscle-up', 'bodyweight', { STR: 60, DEX: 25, FREE: 15 }, { bw: 1.3 }),
+  X('burpee', 'Burpee', 'bodyweight', { END: 50, SPD: 30, FREE: 20 }, { bw: 0.5 }),
+  X('plank', 'Plank', 'timed', { END: 60, VIT: 25, FREE: 15 }, { bw: 0.3 }),
+  X('pullup', 'Weighted Pull-up', 'weighted', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
+  X('wchinup', 'Weighted Chin-up', 'weighted', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
+  X('dip', 'Weighted Dip', 'weighted', { STR: 85, FREE: 15 }, { inc: 2.5, bw: 1 }),
+  X('run', 'Running', 'cardio', { SPD: 80, DEX: 15, FREE: 5 }, { met: 9.8 }),
+  X('bike', 'Cycling', 'cardio', { SPD: 55, END: 40, FREE: 5 }, { met: 7.5 }),
+  X('walk', 'Walking', 'cardio', { END: 70, VIT: 20, FREE: 10 }, { met: 3.5 }),
+  X('rower', 'Rowing Machine', 'cardio', { END: 55, STR: 25, FREE: 20 }, { met: 7 }),
+  X('swim', 'Swimming', 'cardio', { END: 60, SPD: 25, FREE: 15 }, { met: 8 }),
+  X('rope', 'Jump Rope', 'cardio', { SPD: 50, DEX: 35, FREE: 15 }, { met: 11 }),
+  X('yoga', 'Yoga / Mobility', 'cardio', { DEX: 70, VIT: 20, FREE: 10 }, { met: 2.5 }),
+];
+const EX = Object.fromEntries(LIB.map(e => [e.id, e]));
+const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
+const FORMULAS = { a: '(a) tonnage ÷ bodyweight', b: '(b) plain tonnage', c: '(c) effort vs your own max', d: '(d) hard-set count', e: '(e) hard sets: effort per set' };
+
+// ===========================================================================
+// Tunables. Every slider maps to one of these keys.
+// ===========================================================================
+const DEFAULTS = {
+  // simulation
+  weeks: 12, seed: 7, youBulk: 0.5, circuit: 1,
+  // lift XP (B7)
+  formula: 'a', refXp: 600,
+  cFloor: 0.30, cExp: 1.0, cRepCap: 12, e1rmDays: 60,
+  // (e): each set scores 1 at failure, minus eRirStep per rep left in reserve; the Nth set of an exercise × eSetDecay^(N−1)
+  eRirStep: 0.12, eSetDecay: 0.8, eFloor: 0.2,   // eFloor: easy sets always earn at least this (founder's B7 answer: "walk the dog" still counts)
+  // where (c) and (e) get your max: 'true' = the sim's real strength (as if the app knows your reps in reserve), 'history' = best logged set (what the app sees without an RIR input)
+  maxSource: 'true',
+  // PR bonus (docs/03: all-time "big", 60-day recent best "smaller")
+  prAll: 0.20, prRecent: 0.10, prDays: 60,
+  // consistency: hit your weekly target → base + step × streak weeks, capped
+  consBase: 0.10, consStep: 0.02, consCap: 0.30,
+  // levels and stat points
+  lvlBase: 100, lvlExp: 1.5, ptsPerLevel: 4, startStat: 8, free: 'even',
+  // VIT from cadence goals: flat VIT points per week you hit your goal, more for a perfect month (every week of a 4-week block),
+  // scaled by (weekly goal ÷ 3) ^ vitCadenceExp so a 6-day goal earns a bit more than a 3-day one
+  vitWeek: 0.5, vitMonth: 2, vitCadenceExp: 0.5,
+  // fight: copied from realtime-brawl.html DEFAULT_TUNING
+  hpBase: 60, hpPerVit: 5, dmgBase: 4, dmgPerStr: 0.6, critPerDex: 0.008, critMult: 1.75,
+  attackBaseMs: 600, spdRef: 25, stBase: 50, stPerEnd: 3, coopHpMult: 1.6, golemHp: 650, uptime: 0.5,
+};
+
+const CONTROLS = [
+  ['Simulation'],
+  ['weeks', 'Weeks simulated', 4, 52, 1],
+  ['seed', 'Random seed (skipped sessions, good and bad days)', 1, 99, 1],
+  ['youBulk', 'You: bodyweight change per week (lb)', -1, 1.5, 0.1],
+  ['circuit', 'You: Monday Circuit every other week (1 = on)', 0, 1, 1],
+  ['Lift XP formula (B7)'],
+  ['formula', 'Formula', FORMULAS],
+  ['refXp', 'XP for a hard Workout A (the reference)', 200, 1200, 50],
+  ['eRirStep', '(e) effort lost per rep left in reserve', 0.02, 0.3, 0.01],
+  ['eSetDecay', '(e) each extra set of an exercise counts ×', 0.3, 1, 0.05],
+  ['eFloor', '(e) easiest sets still earn at least', 0, 0.5, 0.05],
+  ['maxSource', '(c)(e) your max comes from', { true: 'Real strength (app knows reps in reserve)', history: 'Best logged set only' }],
+  ['cFloor', '(c) % of your max that earns zero', 0, 0.6, 0.05],
+  ['cExp', '(c) intensity curve (1 = straight line)', 0.5, 3, 0.1],
+  ['cRepCap', '(c) most reps counted per set', 5, 30, 1],
+  ['e1rmDays', '(c)(e) days of history for your estimated max', 14, 180, 1],
+  ['PR and consistency bonus'],
+  ['prAll', 'All-time PR bonus', 0, 1, 0.05],
+  ['prRecent', 'Recent-best bonus (inside the window)', 0, 0.5, 0.05],
+  ['prDays', 'Recent-best window (days)', 14, 180, 1],
+  ['consBase', 'Weekly target hit: bonus', 0, 0.5, 0.01],
+  ['consStep', 'Extra bonus per streak week', 0, 0.1, 0.01],
+  ['consCap', 'Consistency bonus cap', 0, 1, 0.05],
+  ['Levels and stats'],
+  ['lvlBase', 'XP to next level: base', 25, 400, 5],
+  ['lvlExp', 'XP to next level: exponent', 1, 2.5, 0.05],
+  ['ptsPerLevel', 'Stat points per level', 1, 10, 1],
+  ['startStat', 'Starting value of each stat', 0, 20, 1],
+  ['free', 'FREE points go to', { even: 'Spread evenly', main: 'Your top stat', weakest: 'Your weakest stat' }],
+  ['VIT from cadence goals'],
+  ['vitWeek', 'VIT per week you hit your goal', 0, 2, 0.1],
+  ['vitMonth', 'Extra VIT for a perfect month (4 of 4 weeks)', 0, 6, 0.25],
+  ['vitCadenceExp', 'Bigger goals earn more (0 = same for all)', 0, 1.5, 0.1],
+  ['Fight (realtime-brawl)'],
+  ['hpBase', 'Max HP: base', 20, 150, 5],
+  ['hpPerVit', 'Max HP per VIT', 0, 15, 0.5],
+  ['dmgBase', 'Damage per hit: base', 0, 15, 0.5],
+  ['dmgPerStr', 'Damage per STR', 0, 2, 0.05],
+  ['critPerDex', 'Crit chance per DEX', 0, 0.03, 0.001],
+  ['critMult', 'Crit multiplier', 1, 3, 0.05],
+  ['attackBaseMs', 'Attack duration base (ms)', 200, 1200, 10],
+  ['spdRef', 'SPD reference (attack speed curve)', 5, 60, 1],
+  ['coopHpMult', 'Monster HP × this in co-op', 1, 3, 0.1],
+  ['golemHp', 'Plate Golem HP', 200, 2000, 10],
+  ['uptime', 'Share of the fight spent swinging', 0.1, 1, 0.05],
+];
+
+// ===========================================================================
+// Players. Each has a weekly plan and starting lifts. `cap` is the heaviest
+// weight they can currently do for all target reps; it grows `g` lb/week
+// (tapering over time). Above the cap they miss reps; 3 misses in a row → they
+// take the suggested −10% deload.
+// ===========================================================================
+const WA = [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'bench', sets: 3, reps: 5, lift: 1 }, { ex: 'row', sets: 3, reps: 5, lift: 1 }, { ex: 'pullup', sets: 3, reps: 8, lift: 1 }];
+const WB = [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'ohp', sets: 3, reps: 5, lift: 1 }, { ex: 'deadlift', sets: 1, reps: 5, lift: 1 }, { ex: 'pullup', sets: 3, reps: 8, lift: 1 }];
+const CIRCUIT = [{ ex: 'rower', min: 6 }, { ex: 'bench', sets: 3, reps: 20, load: 135, circuit: 1 }, { ex: 'lunge', sets: 3, reps: 20, load: 90, circuit: 1, maxReps: 25 }, { ex: 'arnoldcurl', sets: 3, reps: 25, load: 50, circuit: 1, maxReps: 28 }];
+const CONDITIONING = [{ ex: 'kbswing', sets: 5, reps: 15, load: 53, circuit: 1, maxReps: 30 }, { ex: 'burpee', sets: 5, reps: 10, circuit: 1, maxReps: 20 }, { ex: 'rower', min: 10 }, { ex: 'pushups', sets: 3, reps: 20, circuit: 1, maxReps: 35 }];
+
+const PLAYERS = [
+  {
+    id: 'you', name: 'You (StrongLifts A/B)', short: 'You', color: 'var(--s1)', hex: '#3987e5',
+    bw: 190, bwPerWeek: c => c.youBulk, target: 3, skip: 0.05, skipWeek: 0,
+    lifts: { squat: [225, 275, 2.5, 5], bench: [185, 215, 1.2, 5], row: [155, 185, 1.5, 5], ohp: [115, 135, 0.8, 5], deadlift: [275, 335, 3, 10], pullup: [25, 45, 0.6, 2.5, 8] },
+    plan(w, d, st, c) {
+      if (![0, 2, 4].includes(d)) return null;
+      if (d === 0 && c.circuit && w % 2 === 1) return { name: 'Monday Circuit', items: CIRCUIT };
+      const A = st.ab === 0;
+      return { name: A ? 'Workout A' : 'Workout B', items: A ? WA : WB, done: s => { s.ab ^= 1; } };
+    },
+    desc: 'Mon/Wed/Fri A/B 3×5 plus weighted pull-ups; the Monday Circuit replaces every other Monday. 190 lb, bulking.',
+  },
+  {
+    id: 'runner', name: 'Runner', short: 'Runner', color: 'var(--s2)', hex: '#d95926',
+    bw: 160, bwPerWeek: () => 0, target: 4, skip: 0.07, skipWeek: 0, lifts: {},
+    plan(w, d) {
+      const min = { 0: 40, 2: 30, 4: 40, 6: Math.min(90, 50 + 3 * w) }[d];
+      return min ? { name: 'Run', items: [{ ex: 'run', min }] } : null;
+    },
+    desc: '4 runs a week (40, 30, 40 min, plus a long run growing from 50 to 90 min). No lifting. 160 lb.',
+  },
+  {
+    id: 'beginner', name: 'Casual beginner', short: 'Beginner', color: 'var(--s3)', hex: '#199e70',
+    bw: 175, bwPerWeek: () => -0.3, target: 2, skip: 0.1, skipWeek: 0.2,
+    lifts: { goblet: [30, 50, 1.5, 5, 10], dbbench: [40, 70, 2, 5, 10], pulldown: [70, 110, 2.5, 5, 10], legpress: [140, 230, 6, 10, 10] },
+    plan(w, d) {
+      if (d !== 1 && d !== 5) return null;
+      return { name: 'Full body', items: [{ ex: 'goblet', sets: 3, reps: 10, lift: 1 }, { ex: 'dbbench', sets: 3, reps: 10, lift: 1 }, { ex: 'pulldown', sets: 3, reps: 10, lift: 1 }, { ex: 'legpress', sets: 3, reps: 10, lift: 1 }, { ex: 'walk', min: 15 }] };
+    },
+    desc: 'Tue/Sat full-body machines and dumbbells, 3×10, light weights. Skips 1 week in 5. 175 lb, slowly losing weight.',
+  },
+  {
+    id: 'hybrid', name: 'Hybrid / CrossFit-ish', short: 'Hybrid', color: 'var(--s4)', hex: '#c98500',
+    bw: 180, bwPerWeek: () => 0, target: 4, skip: 0.06, skipWeek: 0,
+    lifts: { squat: [185, 215, 2, 5], bench: [155, 170, 1, 5], deadlift: [245, 285, 3, 10], ohp: [95, 110, 0.8, 5] },
+    plan(w, d) {
+      if (d === 0) return { name: 'Lift 1', items: [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'bench', sets: 3, reps: 5, lift: 1 }, { ex: 'pullups', sets: 3, reps: 8, maxReps: 12 }] };
+      if (d === 1 || d === 4) return { name: 'Conditioning', items: CONDITIONING };
+      if (d === 3) return { name: 'Lift 2', items: [{ ex: 'deadlift', sets: 1, reps: 5, lift: 1 }, { ex: 'ohp', sets: 3, reps: 5, lift: 1 }, { ex: 'dips', sets: 3, reps: 10, maxReps: 15 }] };
+      if (d === 5) return { name: 'Run', items: [{ ex: 'run', min: 30 }] };
+      return null;
+    },
+    desc: '2 lifting days, 2 conditioning circuits (KB swings, burpees, rower, push-ups), 1 run. 180 lb.',
+  },
+];
+
+const ASSUMPTIONS = [
+  'Every lift formula is scaled so a hard Workout A (You at 190 lb, every lift at its starting 5-rep max, pull-ups at their 8-rep max) earns the same XP. Your easier early sessions earn less than that. That compares the <i>shape</i> of each formula, not its raw size.',
+  'Cardio XP is kcal (MET × kg × hours) under every formula, unscaled, as in docs/03.',
+  '(c) intensity = ((weight ÷ your estimated max − floor) ÷ (1 − floor)) ^ curve, times reps (capped per set). Estimated max = best Epley 1RM in the history window, or this session\'s best set if there\'s no history. Bodyweight moves count bodyweight × the exercise\'s bw factor as the load.',
+  '(d) gives a fixed XP per completed work set, regardless of weight or reps.',
+  `(e) scores each set by effort: 1 at failure, minus a step per rep left in reserve (reps possible from Epley against your max), but never below the floor, so easy sets still count a little. The hardest set of an exercise counts fully, each further set a bit less. Reps and weight don't matter beyond how close to failure you got.`,
+  `Your max for (c) and (e): "real strength" uses the sim's true strength, which assumes the app knows how many reps you had left (e.g. a quick reps-in-reserve or to-failure tap). "Best logged set" is all the app knows without that input; a set of 5 that wasn't to failure then looks like it was.`,
+  'PRs: heaviest weight for loaded lifts, most reps for bodyweight, longest time for cardio. Circuit and conditioning sets never count as PRs. The first time an exercise is done isn\'t a PR.',
+  'Consistency uses each player\'s own weekly target (You 3, Runner 4, Beginner 2, Hybrid 4). The bonus is paid at the end of the week on that week\'s XP.',
+  'Stat points on level-up split by the XP tagged since the last level-up (docs/03). On top of that, VIT gets flat points from cadence goals: each week you hit your weekly goal, plus more for a perfect month. Months are 4-week blocks here; the app would use calendar months. Goals: You 3/week, Runner 4, Beginner 2, Hybrid 4.',
+  'Dumbbell loads are the total of both dumbbells. Monday Circuit lunge reps (20) are a guess, as noted in docs/04.',
+  'Each player has their own random stream from the seed, so every formula sees exactly the same skipped days and good and bad days.',
+];
+
+// ===========================================================================
+// Engine
+// ===========================================================================
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const need = (L, c) => Math.round(c.lvlBase * Math.pow(L, c.lvlExp));
+const epley = (load, reps) => load * (1 + reps / 30);
+const loadOf = (def, added, bw) => added + bw * (def.bw || 0);
+const isLoaded = k => ['barbell', 'dumbbell', 'kettlebell', 'machine', 'weighted'].includes(k);
+
+// Raw (unscaled) lift score for one exercise's done work sets: [{load, reps}].
+function rawLift(f, sets, bw, c, e1rm) {
+  if (f === 'e') {
+    // Effort per set from reps in reserve (Epley: reps possible at this load = 30 × (max ÷ load − 1)).
+    // Hardest set counts fully; each further set of the exercise counts eSetDecay × the one before.
+    const eff = sets.map(s => {
+      const possible = e1rm > s.load ? 30 * (e1rm / s.load - 1) : s.reps;
+      return Math.max(c.eFloor, 1 - c.eRirStep * Math.max(0, possible - s.reps));
+    }).sort((a, b) => b - a);
+    return eff.reduce((a, v, i) => a + v * Math.pow(c.eSetDecay, i), 0);
+  }
+  let raw = 0;
+  for (const s of sets) {
+    if (f === 'a') raw += s.load * s.reps / bw;
+    else if (f === 'b') raw += s.load * s.reps;
+    else if (f === 'c') {
+      const pct = e1rm > 0 ? s.load / e1rm : 0;
+      const i = Math.min(1.25, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp));
+      raw += Math.min(s.reps, c.cRepCap) * i;
+    } else raw += 1;
+  }
+  return raw;
+}
+const bestE1rm = sets => Math.max(0, ...sets.map(s => epley(s.load, s.reps)));
+
+// A session's lift sets for the probes: items [{ex, sets, reps, w}] at a bodyweight.
+function probeSets(items, bw) {
+  return items.map(it => { const def = EX[it.ex]; return { ex: it.ex, def, sets: Array.from({ length: it.sets }, () => ({ load: loadOf(def, it.w, bw), reps: it.reps })) }; });
+}
+// Reference: a hard Workout A at You's starting maxes (every set close to failure).
+const REF_ITEMS = [{ ex: 'squat', sets: 3, reps: 5, w: 275 }, { ex: 'bench', sets: 3, reps: 5, w: 215 }, { ex: 'row', sets: 3, reps: 5, w: 185 }, { ex: 'pullup', sets: 3, reps: 8, w: 45 }];
+
+// You's real max per exercise at the start (from the starting caps), for the reference session and the probes.
+// Curl isn't in You's program; assume about 80 lb for 5.
+function refMax(ex, bw) {
+  const l = PLAYERS[0].lifts[ex];
+  return l ? epley(loadOf(EX[ex], l[1], bw), l[4] || 5) : epley(80, 5);
+}
+// The max that (c) and (e) judge a probe or reference set against.
+const probeMax = (c, g) => c.maxSource === 'true' ? refMax(g.ex, 190) : bestE1rm(probeSets(REF_ITEMS, 190).find(r => r.ex === g.ex)?.sets || g.sets);
+
+// Scale factor per formula so the reference session earns c.refXp.
+function calibrate(c) {
+  const K = {};
+  const groups = probeSets(REF_ITEMS, 190);
+  for (const f of Object.keys(FORMULAS)) {
+    const raw = groups.reduce((a, g) => a + rawLift(f, g.sets, 190, c, probeMax(c, g)), 0);
+    K[f] = c.refXp / raw;
+  }
+  return K;
+}
+
+function simPlayer(P, idx, c, f, K) {
+  const rng = mulberry32(c.seed * 1000 + idx * 17 + 3);
+  const L = {};
+  for (const [ex, [w, cap, g, inc, reps = 5]] of Object.entries(P.lifts)) L[ex] = { w, cap, g, inc, reps, miss: 0 };
+  const st = { ab: 0 }, hist = {};
+  const R = {
+    P, xp: 0, level: 1, into: 0, pool: {}, stats: Object.fromEntries(STATS.map(s => [s, c.startStat])),
+    gained: { STR: 0, SPD: 0, DEX: 0, END: 0, VIT: 0, FREE: 0 }, sessions: 0, liftSessions: 0, prSessions: 0,
+    prXp: 0, consXp: 0, baseXp: 0, deloads: 0, weekly: [{ week: 0, level: 1, xp: 0 }], log: [], weeksHit: 0,
+    vitCadence: 0, perfectMonths: 0,
+  };
+  const addXp = (x, tags) => {
+    R.xp += x; R.into += x;
+    for (const [k, v] of Object.entries(tags)) R.pool[k] = (R.pool[k] || 0) + v;
+    let up = 0;
+    while (R.into >= need(R.level, c)) { R.into -= need(R.level, c); R.level++; up++; distribute(c.ptsPerLevel); }
+    if (up) R.pool = {};
+  };
+  const distribute = pts => {
+    const tot = Object.values(R.pool).reduce((a, b) => a + b, 0) || 1;
+    for (const [k, v] of Object.entries(R.pool)) {
+      const share = v / tot * pts;
+      if (k !== 'FREE') { R.stats[k] += share; R.gained[k] += share; continue; }
+      R.gained.FREE += share;
+      if (c.free === 'even') STATS.forEach(s => R.stats[s] += share / 5);
+      else {
+        const pick = c.free === 'main'
+          ? STATS.reduce((a, s) => R.gained[s] > R.gained[a] ? s : a, 'STR')
+          : STATS.reduce((a, s) => R.stats[s] < R.stats[a] ? s : a, 'STR');
+        R.stats[pick] += share;
+      }
+    }
+  };
+  let streak = 0, monthOk = true;
+  const vitScale = Math.pow(P.target / 3, c.vitCadenceExp);
+  const addVit = v => { R.stats.VIT += v; R.vitCadence += v; };
+  for (let w = 0; w < c.weeks; w++) {
+    if (w % 4 === 0) monthOk = true;
+    const bw = P.bw + P.bwPerWeek(c) * w;
+    for (const l of Object.values(L)) l.cap += l.g / (1 + w / 26);
+    const skipWeek = rng() < P.skipWeek;
+    let weekXp = 0, weekCount = 0; const weekTags = {};
+    for (let d = 0; d < 7; d++) {
+      const plan = P.plan(w, d, st, c);
+      if (!plan) continue;
+      const skip = rng() < P.skip;          // always draw, so the stream stays aligned across formulas
+      if (skipWeek || skip) continue;
+      const day = w * 7 + d;
+      let sx = 0, sBase = 0, hadPR = false, isLift = false;
+      for (const it of plan.items) {
+        const def = EX[it.ex];
+        let x, metric, sets = null;
+        if (def.kind === 'cardio') {
+          x = def.met * (bw / 2.2046) * it.min / 60; metric = it.min;
+        } else {
+          let added = it.load || 0, reps = Array(it.sets).fill(it.reps);
+          if (it.lift) {
+            const l = L[it.ex], capEff = l.cap * (1 + (rng() - 0.5) * 0.06);
+            added = l.w;
+            const deficit = l.w <= capEff ? 0 : Math.ceil((l.w - capEff) / l.inc);
+            reps = reps.map((r, i) => Math.max(1, r - Math.max(0, deficit - (it.sets - 1 - i))));
+            if (!deficit) { l.w += l.inc; l.miss = 0; }
+            else if (++l.miss >= 3) { l.w = Math.max(def.kind === 'barbell' ? 45 : 0, Math.round(l.w * 0.9 / l.inc) * l.inc); l.miss = 0; R.deloads++; }
+          }
+          if (!it.circuit) isLift = true;
+          sets = reps.map(r => ({ load: loadOf(def, added, bw), reps: def.kind === 'timed' ? r / 3 : r }));
+          let e1;
+          if (c.maxSource === 'true' && L[it.ex]) e1 = epley(loadOf(def, L[it.ex].cap, bw), L[it.ex].reps);
+          else if (c.maxSource === 'true' && it.maxReps) e1 = epley(loadOf(def, added, bw), it.maxReps);
+          else {
+            const win = (hist[it.ex] || []).filter(h => day - h.day <= c.e1rmDays && h.e1rm);
+            e1 = win.length ? Math.max(...win.map(h => h.e1rm)) : bestE1rm(sets);
+          }
+          x = K[f] * rawLift(f, sets, bw, c, e1);
+          metric = isLoaded(def.kind) ? added : Math.max(...reps);
+        }
+        // PR bonus
+        let bonus = 0;
+        if (!it.circuit) {
+          const prev = (hist[it.ex] || []).filter(h => !h.circuit);
+          if (prev.length) {
+            const all = Math.max(...prev.map(h => h.metric));
+            const recent = prev.filter(h => day - h.day <= c.prDays);
+            const rBest = recent.length ? Math.max(...recent.map(h => h.metric)) : -Infinity;
+            if (metric > all) bonus = c.prAll; else if (recent.length && metric > rBest) bonus = c.prRecent;
+          }
+        }
+        if (bonus > 0) { hadPR = true; R.prXp += x * bonus; }
+        (hist[it.ex] = hist[it.ex] || []).push({ day, metric, circuit: !!it.circuit, e1rm: sets ? bestE1rm(sets) : 0 });
+        sBase += x; x *= 1 + bonus; sx += x;
+        for (const [k, v] of Object.entries(def.dist)) weekTags[k] = (weekTags[k] || 0) + x * v / 100;
+        const tags = Object.fromEntries(Object.entries(def.dist).map(([k, v]) => [k, x * v / 100]));
+        addXp(x, tags);
+      }
+      plan.done && plan.done(st);
+      R.sessions++; weekCount++; weekXp += sx; R.baseXp += sBase;
+      if (isLift) { R.liftSessions++; if (hadPR) R.prSessions++; }
+      R.log.push({ week: w, name: plan.name, base: sBase, xp: sx, isLift, bw });
+    }
+    if (weekCount >= P.target) {
+      const b = Math.min(c.consCap, c.consBase + c.consStep * streak);
+      streak++; R.weeksHit++;
+      const bx = weekXp * b; R.consXp += bx;
+      if (bx > 0) addXp(bx, Object.fromEntries(Object.entries(weekTags).map(([k, v]) => [k, v * b])));
+      addVit(c.vitWeek * vitScale);
+    } else { streak = 0; monthOk = false; }
+    if (w % 4 === 3 && monthOk) { addVit(c.vitMonth * vitScale); R.perfectMonths++; }
+    R.weekly.push({ week: w + 1, level: R.level + R.into / need(R.level, c), xp: R.xp });
+  }
+  return R;
+}
+
+function fightOf(s, c) {
+  const hp = c.hpBase + c.hpPerVit * s.VIT, dmg = c.dmgBase + c.dmgPerStr * s.STR;
+  const crit = Math.min(1, c.critPerDex * s.DEX), swing = c.attackBaseMs * c.spdRef / (c.spdRef + s.SPD) / 1000;
+  const avg = dmg * (1 + crit * (c.critMult - 1));
+  return { hp, dmg, crit, swing, dps: avg / swing, stamina: c.stBase + c.stPerEnd * s.END };
+}
+
+function simulate(c, f) {
+  const K = calibrate(c);
+  const res = PLAYERS.map((P, i) => simPlayer(P, i, c, f, K));
+  for (const r of res) r.fight = fightOf(r.stats, c);
+  const you = res[0].fight;
+  for (const r of res) {
+    r.golemSolo = c.golemHp / (r.fight.dps * c.uptime);
+    r.coopShare = r.P.id === 'you' ? null : r.fight.dps / (r.fight.dps + you.dps);
+    r.golemCoop = r.P.id === 'you' ? null : c.golemHp * c.coopHpMult / ((r.fight.dps + you.dps) * c.uptime);
+  }
+  return { K, res };
+}
+
+function probes(c) {
+  const K = calibrate(c);
+  const A = REF_ITEMS;
+  const failReps = Math.floor(30 * (refMax('bench', 190) / 135 - 1));   // bench 135 to failure
+  const cases = [
+    ['Hard Workout A at your maxes (190 lb)', A, 190],
+    ['Workout A with 5 sets per lift instead of 3', A.map(it => ({ ...it, sets: 5 })), 190],
+    [`Light but to failure: bench 135 × ${failReps} reps (1 set)`, [{ ex: 'bench', sets: 1, reps: failReps, w: 135 }], 190],
+    ['Light farming: bench 95 lb × 20 reps × 10 sets', [{ ex: 'bench', sets: 10, reps: 20, w: 95 }], 190],
+    ['Workout A + 10 junk sets of curls (45 × 10)', [...A, { ex: 'curl', sets: 10, reps: 10, w: 45 }], 190],
+    ['Workout A, bodyweight entered as 120 lb', A, 120],
+    ['Workout A after a 20 lb bulk (210 lb)', A, 210],
+  ];
+  // (c) and (e) judge each set against your max: real strength, or the best set of a normal session (maxSource)
+  const ref = {};
+  return cases.map(([label, items, bw], i) => {
+    const row = { label };
+    for (const f of Object.keys(FORMULAS)) {
+      const xp = probeSets(items, bw).reduce((a, g) => {
+        const m = f === 'c' || f === 'e' ? probeMax(c, g) : 0;
+        return a + K[f] * rawLift(f, g.sets, bw, c, m);
+      }, 0);
+      if (i === 0) ref[f] = xp;
+      row[f] = xp; row[f + 'pct'] = xp / ref[f];
+    }
+    return row;
+  });
+}
+
+// ===========================================================================
+// Findings
+// ===========================================================================
+const pct = x => `${Math.round(x * 100)}%`;
+const r1 = x => (Math.round(x * 10) / 10).toFixed(1);
+const perSession = r => r.sessions ? r.xp / r.sessions : 0;
+
+function findings(c, sim, compare) {
+  const out = [], [you, runner, beg, hyb] = sim.res;
+  // 1. XP per session parity (the "45-min lift ≈ 45-min run" rule in docs/03)
+  const ys = perSession(you);
+  for (const r of [runner, hyb]) {
+    const ratio = perSession(r) / ys;
+    out.push([Math.abs(ratio - 1) > 0.25 ? 'flag' : 'ok', `${r.P.short} earns ${Math.round(perSession(r))} XP per session vs You ${Math.round(ys)} (${ratio >= 1 ? '+' : ''}${pct(ratio - 1)}).${Math.abs(ratio - 1) > 0.25 ? ' Outside ±25%.' : ''}`]);
+  }
+  // 2. Level spread
+  const lv = sim.res.map(r => r.weekly.at(-1).level);
+  out.push(['info', `After ${c.weeks} weeks: ${sim.res.map((r, i) => `${r.P.short} L${r1(lv[i])}`).join(', ')}.`]);
+  // 3. Stat dominance
+  const tot = { STR: 0, SPD: 0, DEX: 0, END: 0, VIT: 0 };
+  for (const r of sim.res) STATS.forEach(s => tot[s] += r.gained[s]);
+  const all = Object.values(tot).reduce((a, b) => a + b, 0) || 1;
+  const top = STATS.reduce((a, s) => tot[s] > tot[a] ? s : a, 'STR');
+  out.push([tot[top] / all > 0.5 ? 'flag' : 'ok', `${top} gets ${pct(tot[top] / all)} of all trained stat points across the four players (before FREE points). ${STATS.map(s => `${s} ${pct(tot[s] / all)}`).join(' · ')}`]);
+  // 4. VIT: trained points plus cadence-goal points
+  const hp0 = c.hpBase + c.hpPerVit * c.startStat;
+  const growth = r => STATS.reduce((a, s) => a + r.stats[s] - c.startStat, 0) || 1;
+  const vitShareOf = r => (r.stats.VIT - c.startStat) / growth(r);
+  const lowVit = sim.res.filter(r => vitShareOf(r) < 0.05);
+  out.push([lowVit.length ? 'flag' : 'ok', `VIT is ${sim.res.map(r => `${pct(vitShareOf(r))} of ${r.P.short}'s stat growth (HP ${hp0} → ${Math.round(r.fight.hp)})`).join(', ')}. Cadence goals gave ${sim.res.map(r => `${r.P.short} +${r1(r.vitCadence)} VIT, ${r.perfectMonths} perfect month${r.perfectMonths === 1 ? '' : 's'}`).join('; ')}.${lowVit.length ? ' Under 5% for ' + lowVit.map(r => r.P.short).join(', ') + ': HP barely grows.' : ''}`]);
+  // 5. PR bonus frequency
+  const prRate = you.liftSessions ? you.prSessions / you.liftSessions : 0;
+  out.push([prRate > 0.5 ? 'flag' : 'ok', `You set a PR in ${pct(prRate)} of lifting sessions; PR bonuses are ${pct(you.prXp / (you.xp || 1))} of your XP.${prRate > 0.5 ? ' Linear progression makes nearly every session an all-time heaviest, so the PR bonus acts like a flat raise while you\'re still adding weight.' : ''}`]);
+  // 6. Beginner useful in co-op?
+  out.push([beg.coopShare < 0.25 ? 'flag' : 'ok', `Beginner deals ${pct(beg.coopShare)} of the damage when co-oping with You.${beg.coopShare < 0.25 ? ' Under 25%: they may not feel useful (B6).' : ''}`]);
+  // 7. Consistency
+  out.push(['info', `Consistency bonus share of XP: ${sim.res.map(r => `${r.P.short} ${pct(r.consXp / (r.xp || 1))} (${r.weeksHit}/${c.weeks} weeks hit)`).join(', ')}.`]);
+  // 8. Bodyweight sensitivity for You under each formula
+  const drift = compare.map(cmp => { const lg = cmp.res[0].log.filter(l => l.isLift && l.name === 'Workout A'); const a = lg.slice(0, 2), b = lg.slice(-2); const avg = x => x.reduce((s, l) => s + l.base, 0) / (x.length || 1); return `${cmp.f} ${avg(b) / avg(a) >= 1 ? '+' : ''}${pct(avg(b) / avg(a) - 1)}`; });
+  out.push(['info', `You, Workout A base XP (no bonuses) from the first two to the last two sessions: ${drift.join(', ')}. Includes weight gains on the bar and bodyweight change.`]);
+  return out;
+}
+
+// ===========================================================================
+// Rendering
+// ===========================================================================
+let cfg = { ...DEFAULTS };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('bb-balance-sim') || '{}')); } catch (e) {}
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+function buildControls() {
+  let h = '';
+  for (const c of CONTROLS) {
+    if (c.length === 1) { h += `<div class="grp">${c[0]}</div>`; continue; }
+    const [k, label, a, b, step] = c;
+    if (typeof a === 'object') {
+      h += `<div class="ctl"><label>${label}</label><select data-k="${k}">${Object.entries(a).map(([v, t]) => `<option value="${v}" ${cfg[k] === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`;
+    } else {
+      h += `<div class="ctl"><label>${label} <b id="v-${k}"></b></label><input type="range" data-k="${k}" min="${a}" max="${b}" step="${step}" value="${cfg[k]}"></div>`;
+    }
+  }
+  h += `<div class="row" style="margin-top:12px"><button id="reset">Reset</button><button id="copy">Copy report</button></div>`;
+  $('controls').innerHTML = h;
+  $('controls').querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
+    const k = el.dataset.k; cfg[k] = el.tagName === 'SELECT' ? el.value : +el.value; render();
+  }));
+  $('reset').onclick = () => { cfg = { ...DEFAULTS }; buildControls(); render(); };
+  $('copy').onclick = () => { try { navigator.clipboard.writeText(report(cfg)); $('copy').textContent = 'Copied'; setTimeout(() => $('copy').textContent = 'Copy report', 1200); } catch (e) {} };
+}
+const fmtV = (k, v) => (typeof v === 'number' && !Number.isInteger(v)) ? (Math.abs(v) < 1 ? v.toFixed(Math.abs(v) < 0.05 ? 3 : 2) : v.toFixed(1)) : v;
+
+function chart(sim, c) {
+  const W = 680, H = 280, m = { l: 36, r: 76, t: 10, b: 28 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const maxL = Math.max(2, ...sim.res.map(r => r.weekly.at(-1).level));
+  const yMax = Math.ceil(maxL / 5) * 5, x = w => m.l + iw * w / c.weeks, y = L => m.t + ih * (1 - (L - 1) / (yMax - 1));
+  let g = '';
+  const yStep = yMax > 30 ? 10 : 5;
+  for (let L = 1; L <= yMax; L += (L === 1 ? yStep - 1 : yStep)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(L)}" y2="${y(L)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${y(L) + 4}" text-anchor="end">${L}</text>`;
+  const xStep = c.weeks > 26 ? 8 : c.weeks > 12 ? 4 : 2;
+  for (let w = 0; w <= c.weeks; w += xStep) g += `<text x="${x(w)}" y="${H - 8}" text-anchor="middle">wk ${w}</text>`;
+  g += `<line x1="${m.l}" x2="${W - m.r}" y1="${m.t + ih}" y2="${m.t + ih}" stroke="var(--line)"/>`;
+  // lines + end labels (nudged apart so they don't collide)
+  const ends = sim.res.map(r => ({ r, y: y(r.weekly.at(-1).level) })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  for (const r of sim.res) g += `<polyline fill="none" stroke="${r.P.hex}" stroke-width="2" stroke-linejoin="round" points="${r.weekly.map(p => `${x(p.week)},${y(p.level)}`).join(' ')}"/>`;
+  for (const e of ends) g += `<circle cx="${x(c.weeks)}" cy="${y(e.r.weekly.at(-1).level)}" r="4" fill="${e.r.P.hex}" stroke="var(--card)" stroke-width="2"/><text x="${x(c.weeks) + 8}" y="${e.y + 4}" style="fill:var(--text)">${e.r.P.short} ${r1(e.r.weekly.at(-1).level)}</text>`;
+  g += `<line id="xh" y1="${m.t}" y2="${m.t + ih}" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/><rect id="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/>`;
+  $('chart').innerHTML = g;
+  $('legend').innerHTML = sim.res.map(r => `<span><span class="sw" style="background:${r.P.hex}"></span>${esc(r.P.name)}</span>`).join('');
+  const svg = $('chart'), tip = $('tip'), xh = svg.querySelector('#xh');
+  svg.querySelector('#hit').onmousemove = e => {
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const w = Math.max(0, Math.min(c.weeks, Math.round((p.x - m.l) / iw * c.weeks)));
+    xh.setAttribute('x1', x(w)); xh.setAttribute('x2', x(w)); xh.setAttribute('visibility', 'visible');
+    tip.innerHTML = `<b>Week ${w}</b><br>` + sim.res.map(r => `<span class="sw" style="background:${r.P.hex}"></span>${r.P.short}: L${r1(r.weekly[w].level)} · ${Math.round(r.weekly[w].xp).toLocaleString()} XP`).join('<br>');
+    const box = svg.getBoundingClientRect(), px = (x(w) / W) * box.width;
+    tip.style.display = 'block'; tip.style.top = '10px';
+    tip.style.left = (px > box.width / 2 ? px - tip.offsetWidth - 10 : px + 10) + 'px';
+  };
+  svg.querySelector('#hit').onmouseleave = () => { tip.style.display = 'none'; xh.setAttribute('visibility', 'hidden'); };
+}
+
+function render() {
+  try { localStorage.setItem('bb-balance-sim', JSON.stringify(cfg)); } catch (e) {}
+  for (const c of CONTROLS) if (c.length > 1 && typeof c[2] !== 'object') { const el = $('v-' + c[0]); if (el) el.textContent = fmtV(c[0], cfg[c[0]]); }
+  const R = run(cfg), sim = R.sim, c = cfg;
+  $('findings').innerHTML = R.findings.map(([t, s]) => `<div class="find"><span class="tag ${t}">${t === 'flag' ? 'CHECK' : t === 'ok' ? 'OK' : 'INFO'}</span><div>${esc(s)}</div></div>`).join('');
+  chart(sim, c);
+  const maxStat = Math.max(...sim.res.flatMap(r => STATS.map(s => r.stats[s])));
+  $('players').innerHTML = `<table><tr><th>Player</th><th>Sessions</th><th>XP / session</th><th>XP / week</th><th>Level</th><th>PR bonus</th><th>Consistency</th>${STATS.map(s => `<th>${s}</th>`).join('')}<th>VIT from goals</th><th>Perfect months</th><th>Deloads</th></tr>` +
+    sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${esc(r.P.name)}<div class="muted small" style="white-space:normal;max-width:260px">${esc(r.P.desc)}</div></td><td>${r.sessions}</td><td>${Math.round(perSession(r))}</td><td>${Math.round(r.xp / c.weeks)}</td><td>${r1(r.weekly.at(-1).level)}</td><td>${pct(r.prXp / (r.xp || 1))}</td><td>${pct(r.consXp / (r.xp || 1))}</td>` +
+      STATS.map(s => `<td>${Math.round(r.stats[s])}<span class="bar" style="width:${Math.round(28 * r.stats[s] / maxStat)}px"></span></td>`).join('') + `<td>+${r1(r.vitCadence)}</td><td>${r.perfectMonths}</td><td>${r.deloads}</td></tr>`).join('') + `</table>`;
+  $('fight').innerHTML = `<table><tr><th>Player</th><th>Max HP</th><th>Damage / hit</th><th>Crit</th><th>Swing (s)</th><th>DPS</th><th>Stamina</th><th>Solo Golem (s)</th><th>Co-op share with You</th><th>Co-op Golem (s)</th></tr>` +
+    sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${r.P.short}</td><td>${Math.round(r.fight.hp)}</td><td>${r1(r.fight.dmg)}</td><td>${pct(r.fight.crit)}</td><td>${r.fight.swing.toFixed(2)}</td><td>${r1(r.fight.dps)}</td><td>${Math.round(r.fight.stamina)}</td><td>${Math.round(r.golemSolo)}</td><td>${r.coopShare == null ? '—' : pct(r.coopShare)}</td><td>${r.golemCoop == null ? '—' : Math.round(r.golemCoop)}</td></tr>`).join('') + `</table>`;
+  const fs = Object.keys(FORMULAS);
+  $('compare').innerHTML = `<table><tr><th>Level after ${c.weeks} wk (XP / session)</th>${fs.map(f => `<th class="${f === c.formula ? 'sel' : ''}">${FORMULAS[f]}</th>`).join('')}</tr>` +
+    PLAYERS.map((P, i) => `<tr><td><span class="sw" style="background:${P.hex}"></span>${P.short}</td>${R.compare.map(cm => `<td class="${cm.f === c.formula ? 'sel' : ''}">L${r1(cm.res[i].weekly.at(-1).level)} <span class="muted">(${Math.round(perSession(cm.res[i]))})</span></td>`).join('')}</tr>`).join('') +
+    `<tr><td class="muted">Highest ÷ lowest level</td>${R.compare.map(cm => { const l = cm.res.map(r => r.weekly.at(-1).level); return `<td class="${cm.f === c.formula ? 'sel' : ''}">${(Math.max(...l) / Math.min(...l)).toFixed(2)}×</td>`; }).join('')}</tr></table>`;
+  $('probes').innerHTML = `<table><tr><th>Session</th>${fs.map(f => `<th class="${f === c.formula ? 'sel' : ''}">${FORMULAS[f]}</th>`).join('')}</tr>` +
+    R.probes.map(p => `<tr><td>${esc(p.label)}</td>${fs.map(f => `<td class="${f === c.formula ? 'sel' : ''}">${Math.round(p[f])} <span class="muted">(${pct(p[f + 'pct'])})</span></td>`).join('')}</tr>`).join('') + `</table>`;
+  $('assump').innerHTML = ASSUMPTIONS.map(a => `<li>${a}</li>`).join('');
+}
+
+// ===========================================================================
+// Headless API (used by the /balance-sim skill)
+// ===========================================================================
+function run(overrides = {}) {
+  const c = { ...DEFAULTS, ...overrides };
+  const compare = Object.keys(FORMULAS).map(f => ({ f, ...simulate(c, f) }));
+  const sim = compare.find(x => x.f === c.formula);
+  return { config: c, sim, compare, probes: probes(c), findings: findings(c, sim, compare) };
+}
+
+function report(overrides = {}) {
+  const R = run(overrides), c = R.config, L = [];
+  const changed = Object.entries(c).filter(([k, v]) => DEFAULTS[k] !== v).map(([k, v]) => `${k}=${v}`);
+  L.push(`BALANCE SIM: ${c.weeks} weeks, formula ${FORMULAS[c.formula]}, seed ${c.seed}`);
+  L.push(`Changed from defaults: ${changed.length ? changed.join(', ') : 'none'}`, '');
+  L.push('FINDINGS');
+  for (const [t, s] of R.findings) L.push(`  [${t === 'flag' ? 'CHECK' : t.toUpperCase()}] ${s}`);
+  L.push('', 'PLAYERS (selected formula)');
+  for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} L${r1(r.weekly.at(-1).level).padStart(5)}  ${String(r.sessions).padStart(3)} sessions  ${String(Math.round(perSession(r))).padStart(5)} XP/session  PR ${pct(r.prXp / (r.xp || 1)).padStart(4)}  cons ${pct(r.consXp / (r.xp || 1)).padStart(4)}  ` + STATS.map(s => `${s} ${Math.round(r.stats[s])}`).join(' ') + `  VIT goals +${r1(r.vitCadence)} (${r.perfectMonths} perfect months)  deloads ${r.deloads}`);
+  L.push('', 'FIGHT (final stats)');
+  for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} HP ${Math.round(r.fight.hp)}  dmg ${r1(r.fight.dmg)}  crit ${pct(r.fight.crit)}  DPS ${r1(r.fight.dps)}  solo Golem ${Math.round(r.golemSolo)}s` + (r.coopShare == null ? '' : `  co-op share ${pct(r.coopShare)}`));
+  L.push('', 'B7 COMPARISON: level after ' + c.weeks + ' weeks (XP/session)');
+  L.push('  ' + ''.padEnd(9) + Object.keys(FORMULAS).map(f => `(${f})`.padStart(16)).join(''));
+  PLAYERS.forEach((P, i) => L.push('  ' + P.short.padEnd(9) + R.compare.map(cm => `L${r1(cm.res[i].weekly.at(-1).level)} (${Math.round(perSession(cm.res[i]))})`.padStart(16)).join('')));
+  L.push('  ' + 'spread'.padEnd(9) + R.compare.map(cm => { const l = cm.res.map(r => r.weekly.at(-1).level); return `${(Math.max(...l) / Math.min(...l)).toFixed(2)}x`.padStart(16); }).join(''));
+  L.push('', 'EXPLOIT CHECKS: lift XP as % of a hard Workout A');
+  L.push('  ' + ''.padEnd(48) + Object.keys(FORMULAS).map(f => `(${f})`.padStart(7)).join(''));
+  for (const p of R.probes) L.push('  ' + p.label.slice(0, 47).padEnd(48) + Object.keys(FORMULAS).map(f => pct(p[f + 'pct']).padStart(7)).join(''));
+  return L.join('\n');
+}
+
+window.BB_SIM = { DEFAULTS, PLAYERS, LIB, run, report };
+buildControls();
+render();
+</script>
+</body>
+</html>
