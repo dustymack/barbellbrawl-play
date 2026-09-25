@@ -6,7 +6,7 @@
 <title>Balance Sim</title>
 <!--
   Barbell Brawl balance sim. Throwaway prototype, not app code.
-  Simulates four training styles week by week through the draft XP, PR, consistency, level and
+  Simulates four training styles week by week through the settled XP, PR, consistency, level and
   stat rules (docs/03, docs/04), then maps the final stats onto the fight formulas from
   realtime-brawl.html. Compares the four B7 lift-XP formulas on identical simulated weeks.
 
@@ -69,7 +69,7 @@
   <div>
     <div class="card">
       <h1>Balance Sim</h1>
-      <div class="muted">Four simulated players train week by week under the draft rules in docs 03 and 04. Their final stats then go through the <code>realtime-brawl.html</code> fight formulas. All numbers are placeholders; change them with the sliders.</div>
+      <div class="muted">Four simulated players train week by week under the rules in docs 03 and 04 (cardio calories from pace, milestones, the B7 lift blend, B14 splits). Their final stats then go through the <code>realtime-brawl.html</code> fight formulas, and a couch-to-5K vs 30 mi/week check runs alongside (C7). Numbers not yet in decisions.md are placeholders; change them with the sliders.</div>
     </div>
     <div class="card"><h2>Findings</h2><div id="findings"></div></div>
     <div class="card"><h2>Level over time</h2><div class="legend" id="legend"></div><div class="chartbox"><svg id="chart" viewBox="0 0 680 280" width="100%" role="img" aria-label="Level per week for each player"></svg><div id="tip"></div></div></div>
@@ -128,15 +128,52 @@ const LIB = [
   X('pullup', 'Weighted Pull-up', 'weighted', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
   X('wchinup', 'Weighted Chin-up', 'weighted', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
   X('dip', 'Weighted Dip', 'weighted', { STR: 85, FREE: 15 }, { inc: 2.5, bw: 1 }),
-  X('run', 'Running', 'cardio', { SPD: 80, DEX: 15, FREE: 5 }, { met: 9.8 }),
-  X('bike', 'Cycling', 'cardio', { SPD: 55, END: 40, FREE: 5 }, { met: 7.5 }),
-  X('walk', 'Walking', 'cardio', { END: 70, VIT: 20, FREE: 10 }, { met: 3.5 }),
-  X('rower', 'Rowing Machine', 'cardio', { END: 55, STR: 25, FREE: 20 }, { met: 7 }),
+  X('run', 'Running', 'cardio', { SPD: 65, END: 20, DEX: 10, FREE: 5 }, { met: 9.8, cal: 'run' }),
+  X('jog', 'Jogging', 'cardio', { END: 50, SPD: 35, DEX: 5, FREE: 10 }, { met: 7, cal: 'run' }),
+  X('bike', 'Cycling', 'cardio', { SPD: 55, END: 40, FREE: 5 }, { met: 7.5, cal: 'bike' }),
+  X('walk', 'Walking', 'cardio', { END: 70, VIT: 20, FREE: 10 }, { met: 3.5, cal: 'walk' }),
+  X('rower', 'Rowing Machine', 'cardio', { END: 55, STR: 25, FREE: 20 }, { met: 7, cal: 'row' }),
   X('swim', 'Swimming', 'cardio', { END: 60, SPD: 25, FREE: 15 }, { met: 8 }),
   X('rope', 'Jump Rope', 'cardio', { SPD: 50, DEX: 35, FREE: 15 }, { met: 11 }),
   X('yoga', 'Yoga / Mobility', 'cardio', { DEX: 70, VIT: 20, FREE: 10 }, { met: 2.5 }),
+  // Added with B14 (2026-09-25); no pre-B14 split, so both options use the B14 values
+  X('sprints', 'Sprint Intervals', 'cardio', { SPD: 70, DEX: 20, FREE: 10 }, { met: 12 }),
+  X('boxjump', 'Box Jump', 'bodyweight', { SPD: 45, DEX: 45, FREE: 10 }, { bw: 0.8 }),
+  X('farmer', "Farmer's Carry", 'dumbbell', { STR: 50, END: 40, FREE: 10 }, { inc: 5 }),
 ];
 const EX = Object.fromEntries(LIB.map(e => [e.id, e]));
+const SPLITS_CURRENT = Object.fromEntries(LIB.map(e => [e.id, e.dist]));
+// B14 splits (settled 2026-09-25, same as tracker.html LIB): one rule per stat. STR = load, SPD = explosive or fast, DEX = balance,
+// coordination, single-side and overhead control, mobility, END = high reps, long duration, circuits,
+// holds. VIT comes from showing up (cadence goals), so no exercise feeds it. FREE is a flat 10.
+const SPLITS_B14 = {
+  squat: { STR: 70, END: 15, DEX: 5, FREE: 10 }, frontsquat: { STR: 70, DEX: 20, FREE: 10 },
+  bench: { STR: 90, FREE: 10 }, incline: { STR: 85, DEX: 5, FREE: 10 },
+  row: { STR: 75, DEX: 15, FREE: 10 }, deadlift: { STR: 75, END: 10, DEX: 5, FREE: 10 },
+  rdl: { STR: 70, DEX: 20, FREE: 10 }, ohp: { STR: 70, DEX: 20, FREE: 10 },
+  clean: { SPD: 45, STR: 35, DEX: 10, FREE: 10 }, hipthrust: { STR: 75, SPD: 15, FREE: 10 },
+  curl: { STR: 90, FREE: 10 },
+  dbbench: { STR: 80, DEX: 10, FREE: 10 }, dbrow: { STR: 75, DEX: 15, FREE: 10 },
+  dbpress: { STR: 70, DEX: 20, FREE: 10 }, dbcurl: { STR: 90, FREE: 10 },
+  arnoldcurl: { STR: 80, END: 10, FREE: 10 }, goblet: { STR: 60, DEX: 15, END: 15, FREE: 10 },
+  lunge: { STR: 45, DEX: 45, FREE: 10 }, lateral: { STR: 65, END: 15, DEX: 10, FREE: 10 },
+  kbswing: { SPD: 40, END: 30, STR: 15, DEX: 5, FREE: 10 },
+  pulldown: { STR: 80, END: 10, FREE: 10 }, legpress: { STR: 80, END: 10, FREE: 10 },
+  cablerow: { STR: 80, END: 10, FREE: 10 }, pushdown: { STR: 80, END: 10, FREE: 10 },
+  pushups: { STR: 45, END: 40, DEX: 5, FREE: 10 }, pikepush: { STR: 55, DEX: 35, FREE: 10 },
+  pullups: { STR: 65, DEX: 25, FREE: 10 }, chinups: { STR: 70, DEX: 20, FREE: 10 },
+  dips: { STR: 65, END: 25, FREE: 10 }, invrow: { STR: 55, END: 20, DEX: 15, FREE: 10 },
+  bwsquat: { END: 70, STR: 20, FREE: 10 }, pistol: { DEX: 50, STR: 40, FREE: 10 },
+  legraise: { DEX: 50, STR: 30, END: 10, FREE: 10 }, muscleup: { DEX: 45, STR: 35, SPD: 10, FREE: 10 },
+  burpee: { END: 45, SPD: 35, DEX: 10, FREE: 10 }, plank: { END: 80, DEX: 10, FREE: 10 },
+  pullup: { STR: 75, DEX: 15, FREE: 10 }, wchinup: { STR: 80, DEX: 10, FREE: 10 }, dip: { STR: 80, END: 10, FREE: 10 },
+  run: { SPD: 60, END: 15, DEX: 15, FREE: 10 }, bike: { SPD: 50, END: 40, FREE: 10 },
+  walk: { END: 80, DEX: 10, FREE: 10 }, rower: { END: 60, STR: 20, SPD: 10, FREE: 10 },
+  swim: { END: 60, SPD: 20, DEX: 10, FREE: 10 }, rope: { DEX: 60, SPD: 30, FREE: 10 },
+  yoga: { DEX: 80, END: 10, FREE: 10 }, jog: { END: 50, SPD: 35, DEX: 5, FREE: 10 },
+  sprints: { SPD: 70, DEX: 20, FREE: 10 }, boxjump: { SPD: 45, DEX: 45, FREE: 10 }, farmer: { STR: 50, END: 40, FREE: 10 },
+};
+const applySplits = which => { for (const e of LIB) e.dist = (which === 'b14' ? SPLITS_B14 : SPLITS_CURRENT)[e.id] || SPLITS_CURRENT[e.id]; };
 const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
 const FORMULAS = { a: '(a) tonnage ÷ bodyweight', b: '(b) plain tonnage', c: '(c) effort vs your own max', d: '(d) hard-set count', e: '(e) hard sets: effort per set' };
 
@@ -147,16 +184,37 @@ const DEFAULTS = {
   // simulation
   weeks: 12, seed: 7, youBulk: 0.5, circuit: 1,
   // lift XP (B7)
-  formula: 'a', refXp: 600,
+  formula: 'c', refXp: 600,
   cFloor: 0.30, cExp: 1.0, cRepCap: 12, e1rmDays: 60,
+  cMin: 0.2,   // (c): every rep earns at least this intensity (founder's B7 answer: easy work still counts)
+  // B7 blend (founder 2026-09-25): lift XP = (1 − kcalBlend) × effort + kcalBlend × calories. Calories count working time only:
+  // mechanical work (load × ROM ÷ muscle efficiency) + liftMet × kg × (reps × liftSecPerRep). Each part is scaled so the reference session earns refXp.
+  kcalBlend: 0.3, liftMet: 5, liftSecPerRep: 3, liftRom: 0.5,
+  // grit boost: sets that came up short of the plan ("went to failure?" → yes) earn this much extra
+  grit: 0.25,
+  // stat splits: 'b14' (settled, matches tracker.html) or 'current' (the pre-B14 values kept in LIB below, for comparison)
+  splits: 'b14',
+  cSetsFull: 5, cSetDecay: 0,   // (c): only the hardest cSetsFull sets of an exercise count fully; later sets × cSetDecay each (settled B7: hardest 5 count, rest 0)
   // (e): each set scores 1 at failure, minus eRirStep per rep left in reserve; the Nth set of an exercise × eSetDecay^(N−1)
   eRirStep: 0.12, eSetDecay: 0.8, eFloor: 0.2,   // eFloor: easy sets always earn at least this (founder's B7 answer: "walk the dog" still counts)
   // where (c) and (e) get your max: 'true' = the sim's real strength (as if the app knows your reps in reserve), 'history' = best logged set (what the app sees without an RIR input)
   maxSource: 'true',
+  // cardio calories (docs/03, C7): 'pace' = ACSM run/walk equations, Concept2 rowing, Compendium bike METs by speed,
+  // fixed MET × "how hard?" for the rest; 'met' = the old flat MET × time. Milestones: one-time XP for a first mile, 5K, 10K,
+  // half and marathon in one run or jog session (size is a placeholder).
+  cardioModel: 'pace', milestoneXp: 200,
   // PR bonus (docs/03: all-time "big", 60-day recent best "smaller")
   prAll: 0.20, prRecent: 0.10, prDays: 60,
   // consistency: hit your weekly target → base + step × streak weeks, capped
   consBase: 0.10, consStep: 0.02, consCap: 0.30,
+  // streak freezes (B12): every freezeEvery target weeks earns a freeze (bank at most freezeMax); a missed week spends one instead of resetting
+  freezeEvery: 4, freezeMax: 2,
+  // weekly reward chest (B10): 'both' = XP bonus and VIT both paid automatically; otherwise the player picks ONE per chest:
+  // 'xp' (the week's XP bonus as a lump), 'vit' (cadence VIT), 'free' (chestFree free stat points), 'alt' (alternate XP and VIT)
+  chest: 'both', chestFree: 1,
+  // import veteran boost (B9), You only: importWeeks of history, worth at most importCapLevels levels, with a hard discount
+  // boost XP = capXP × (1 − e^(−raw ÷ (capXP × importSoft)))
+  importWeeks: 0, importCapLevels: 3, importSoft: 1,
   // levels and stat points
   lvlBase: 100, lvlExp: 1.5, ptsPerLevel: 4, startStat: 8, free: 'even',
   // VIT from cadence goals: flat VIT points per week you hit your goal, more for a perfect month (every week of a 4-week block),
@@ -164,7 +222,7 @@ const DEFAULTS = {
   vitWeek: 0.5, vitMonth: 2, vitCadenceExp: 0.5,
   // fight: copied from realtime-brawl.html DEFAULT_TUNING
   hpBase: 60, hpPerVit: 5, dmgBase: 4, dmgPerStr: 0.6, critPerDex: 0.008, critMult: 1.75,
-  attackBaseMs: 600, spdRef: 25, stBase: 50, stPerEnd: 3, coopHpMult: 1.6, golemHp: 650, uptime: 0.5,
+  attackBaseMs: 600, spdRef: 25, stBase: 50, stPerEnd: 3, coopHpMult: 1.6, coopHostWeight: 0.7, coopSync: 0.5, golemHp: 650, uptime: 0.5,
 };
 
 const CONTROLS = [
@@ -180,10 +238,19 @@ const CONTROLS = [
   ['eSetDecay', '(e) each extra set of an exercise counts ×', 0.3, 1, 0.05],
   ['eFloor', '(e) easiest sets still earn at least', 0, 0.5, 0.05],
   ['maxSource', '(c)(e) your max comes from', { true: 'Real strength (app knows reps in reserve)', history: 'Best logged set only' }],
-  ['cFloor', '(c) % of your max that earns zero', 0, 0.6, 0.05],
+  ['cFloor', '(c) % of your max where the curve starts', 0, 0.6, 0.05],
+  ['cMin', '(c) every rep earns at least', 0, 0.5, 0.05],
+  ['kcalBlend', 'Calorie share of lift XP (B7 blend)', 0, 1, 0.05],
+  ['grit', 'Grit boost for sets to failure', 0, 1, 0.05],
+  ['splits', 'Exercise stat splits', { current: 'Before B14', b14: 'B14 (settled)' }],
+  ['cSetsFull', '(c) sets per exercise that count fully (99 = no limit)', 1, 99, 1],
+  ['cSetDecay', '(c) each set past that counts ×', 0.3, 1, 0.05],
   ['cExp', '(c) intensity curve (1 = straight line)', 0.5, 3, 0.1],
   ['cRepCap', '(c) most reps counted per set', 5, 30, 1],
   ['e1rmDays', '(c)(e) days of history for your estimated max', 14, 180, 1],
+  ['Cardio (C7)'],
+  ['cardioModel', 'Cardio calories', { pace: 'From pace (ACSM, Concept2, Compendium)', met: 'Flat MET × time (old)' }],
+  ['milestoneXp', 'Milestone bonus XP (first mile, 5K, 10K, half, full)', 0, 1000, 25],
   ['PR and consistency bonus'],
   ['prAll', 'All-time PR bonus', 0, 1, 0.05],
   ['prRecent', 'Recent-best bonus (inside the window)', 0, 0.5, 0.05],
@@ -191,6 +258,13 @@ const CONTROLS = [
   ['consBase', 'Weekly target hit: bonus', 0, 0.5, 0.01],
   ['consStep', 'Extra bonus per streak week', 0, 0.1, 0.01],
   ['consCap', 'Consistency bonus cap', 0, 1, 0.05],
+  ['freezeEvery', 'Target weeks per earned streak freeze (0 = no freezes)', 0, 12, 1],
+  ['freezeMax', 'Most freezes banked', 0, 5, 1],
+  ['chest', 'Weekly chest', { both: 'Pay XP bonus and VIT automatically', xp: 'Pick one: always XP', vit: 'Pick one: always VIT', free: 'Pick one: always free points', alt: 'Pick one: alternate XP and VIT' }],
+  ['chestFree', 'Free stat points in the chest option', 0, 3, 0.5],
+  ['importWeeks', 'You: weeks of imported history (B9)', 0, 260, 4],
+  ['importCapLevels', 'Import boost cap (levels)', 0, 10, 1],
+  ['importSoft', 'Import discount softness (lower = harder)', 0.1, 3, 0.1],
   ['Levels and stats'],
   ['lvlBase', 'XP to next level: base', 25, 400, 5],
   ['lvlExp', 'XP to next level: exponent', 1, 2.5, 0.05],
@@ -211,7 +285,9 @@ const CONTROLS = [
   ['attackBaseMs', 'Attack duration base (ms)', 200, 1200, 10],
   ['spdRef', 'SPD reference (attack speed curve)', 5, 60, 1],
   ['coopHpMult', 'Monster HP × this in co-op', 1, 3, 0.1],
-  ['golemHp', 'Plate Golem HP', 200, 2000, 10],
+  ['coopHostWeight', 'Co-op difficulty blend: weight on the host (You)', 0, 1, 0.05],
+  ['coopSync', 'Co-op level sync: helper stats above yours pulled toward yours', 0, 1, 0.05],
+  ['golemHp', 'Forge Golem HP', 200, 2000, 10],
   ['uptime', 'Share of the fight spent swinging', 0.1, 1, 0.05],
 ];
 
@@ -223,8 +299,8 @@ const CONTROLS = [
 // ===========================================================================
 const WA = [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'bench', sets: 3, reps: 5, lift: 1 }, { ex: 'row', sets: 3, reps: 5, lift: 1 }, { ex: 'pullup', sets: 3, reps: 8, lift: 1 }];
 const WB = [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'ohp', sets: 3, reps: 5, lift: 1 }, { ex: 'deadlift', sets: 1, reps: 5, lift: 1 }, { ex: 'pullup', sets: 3, reps: 8, lift: 1 }];
-const CIRCUIT = [{ ex: 'rower', min: 6 }, { ex: 'bench', sets: 3, reps: 20, load: 135, circuit: 1 }, { ex: 'lunge', sets: 3, reps: 20, load: 90, circuit: 1, maxReps: 25 }, { ex: 'arnoldcurl', sets: 3, reps: 25, load: 50, circuit: 1, maxReps: 28 }];
-const CONDITIONING = [{ ex: 'kbswing', sets: 5, reps: 15, load: 53, circuit: 1, maxReps: 30 }, { ex: 'burpee', sets: 5, reps: 10, circuit: 1, maxReps: 20 }, { ex: 'rower', min: 10 }, { ex: 'pushups', sets: 3, reps: 20, circuit: 1, maxReps: 35 }];
+const CIRCUIT = [{ ex: 'rower', min: 6, split: 135 }, { ex: 'bench', sets: 3, reps: 20, load: 135, circuit: 1 }, { ex: 'lunge', sets: 3, reps: 20, load: 90, circuit: 1, maxReps: 25 }, { ex: 'arnoldcurl', sets: 3, reps: 25, load: 50, circuit: 1, maxReps: 28 }];
+const CONDITIONING = [{ ex: 'kbswing', sets: 5, reps: 15, load: 53, circuit: 1, maxReps: 30 }, { ex: 'burpee', sets: 5, reps: 10, circuit: 1, maxReps: 20 }, { ex: 'rower', min: 10, split: 130 }, { ex: 'pushups', sets: 3, reps: 20, circuit: 1, maxReps: 35 }];
 
 const PLAYERS = [
   {
@@ -244,9 +320,9 @@ const PLAYERS = [
     bw: 160, bwPerWeek: () => 0, target: 4, skip: 0.07, skipWeek: 0, lifts: {},
     plan(w, d) {
       const min = { 0: 40, 2: 30, 4: 40, 6: Math.min(90, 50 + 3 * w) }[d];
-      return min ? { name: 'Run', items: [{ ex: 'run', min }] } : null;
+      return min ? { name: 'Run', items: [{ ex: 'run', min, pace: d === 6 ? 10 : 9 }] } : null;
     },
-    desc: '4 runs a week (40, 30, 40 min, plus a long run growing from 50 to 90 min). No lifting. 160 lb.',
+    desc: '4 runs a week at 9:00/mi (40, 30, 40 min), plus a long run at 10:00/mi growing from 50 to 90 min. No lifting. 160 lb.',
   },
   {
     id: 'beginner', name: 'Casual beginner', short: 'Beginner', color: 'var(--s3)', hex: '#199e70',
@@ -254,9 +330,9 @@ const PLAYERS = [
     lifts: { goblet: [30, 50, 1.5, 5, 10], dbbench: [40, 70, 2, 5, 10], pulldown: [70, 110, 2.5, 5, 10], legpress: [140, 230, 6, 10, 10] },
     plan(w, d) {
       if (d !== 1 && d !== 5) return null;
-      return { name: 'Full body', items: [{ ex: 'goblet', sets: 3, reps: 10, lift: 1 }, { ex: 'dbbench', sets: 3, reps: 10, lift: 1 }, { ex: 'pulldown', sets: 3, reps: 10, lift: 1 }, { ex: 'legpress', sets: 3, reps: 10, lift: 1 }, { ex: 'walk', min: 15 }] };
+      return { name: 'Full body', items: [{ ex: 'goblet', sets: 3, reps: 10, lift: 1 }, { ex: 'dbbench', sets: 3, reps: 10, lift: 1 }, { ex: 'pulldown', sets: 3, reps: 10, lift: 1 }, { ex: 'legpress', sets: 3, reps: 10, lift: 1 }, { ex: 'walk', min: 15, pace: 20 }] };
     },
-    desc: 'Tue/Sat full-body machines and dumbbells, 3×10, light weights. Skips 1 week in 5. 175 lb, slowly losing weight.',
+    desc: 'Tue/Sat full-body machines and dumbbells, 3×10, light weights, plus a 15-min walk at 3 mph. Skips 1 week in 5. 175 lb, slowly losing weight.',
   },
   {
     id: 'hybrid', name: 'Hybrid / CrossFit-ish', short: 'Hybrid', color: 'var(--s4)', hex: '#c98500',
@@ -266,7 +342,7 @@ const PLAYERS = [
       if (d === 0) return { name: 'Lift 1', items: [{ ex: 'squat', sets: 3, reps: 5, lift: 1 }, { ex: 'bench', sets: 3, reps: 5, lift: 1 }, { ex: 'pullups', sets: 3, reps: 8, maxReps: 12 }] };
       if (d === 1 || d === 4) return { name: 'Conditioning', items: CONDITIONING };
       if (d === 3) return { name: 'Lift 2', items: [{ ex: 'deadlift', sets: 1, reps: 5, lift: 1 }, { ex: 'ohp', sets: 3, reps: 5, lift: 1 }, { ex: 'dips', sets: 3, reps: 10, maxReps: 15 }] };
-      if (d === 5) return { name: 'Run', items: [{ ex: 'run', min: 30 }] };
+      if (d === 5) return { name: 'Run', items: [{ ex: 'run', min: 30, pace: 9.5 }] };
       return null;
     },
     desc: '2 lifting days, 2 conditioning circuits (KB swings, burpees, rower, push-ups), 1 run. 180 lb.',
@@ -275,7 +351,8 @@ const PLAYERS = [
 
 const ASSUMPTIONS = [
   'Every lift formula is scaled so a hard Workout A (You at 190 lb, every lift at its starting 5-rep max, pull-ups at their 8-rep max) earns the same XP. Your easier early sessions earn less than that. That compares the <i>shape</i> of each formula, not its raw size.',
-  'Cardio XP is kcal (MET × kg × hours) under every formula, unscaled, as in docs/03.',
+  'Cardio XP is kcal under every formula, unscaled, as in docs/03. "From pace": running and jogging use the ACSM running equation (VO₂ = 0.2 × speed + 3.5 ml/kg/min, speed in m/min), walking the ACSM walking equation (0.1 × speed + 3.5), kcal = VO₂ × kg ÷ 1000 × 5 per minute; the rower uses Concept2 (watts = 2.8 ÷ (s/m)³, kcal/h = 4 × watts × 0.8604 + 300); bikes use Compendium METs by average speed; everything else a fixed MET. No elevation. Paces: Runner 9:00/mi (long run 10:00), Hybrid 9:30, Beginner walks at 3 mph, circuit rowing 2:10–2:15 per 500 m.',
+  'Milestones: a run or jog session that covers a first mile, 5K, 10K, half or full marathon pays the milestone XP once, tagged with that exercise\'s split. Imports never earn them.',
   '(c) intensity = ((weight ÷ your estimated max − floor) ÷ (1 − floor)) ^ curve, times reps (capped per set). Estimated max = best Epley 1RM in the history window, or this session\'s best set if there\'s no history. Bodyweight moves count bodyweight × the exercise\'s bw factor as the load.',
   '(d) gives a fixed XP per completed work set, regardless of weight or reps.',
   `(e) scores each set by effort: 1 at failure, minus a step per rep left in reserve (reps possible from Epley against your max), but never below the floor, so easy sets still count a little. The hardest set of an exercise counts fully, each further set a bit less. Reps and weight don't matter beyond how close to failure you got.`,
@@ -283,6 +360,12 @@ const ASSUMPTIONS = [
   'PRs: heaviest weight for loaded lifts, most reps for bodyweight, longest time for cardio. Circuit and conditioning sets never count as PRs. The first time an exercise is done isn\'t a PR.',
   'Consistency uses each player\'s own weekly target (You 3, Runner 4, Beginner 2, Hybrid 4). The bonus is paid at the end of the week on that week\'s XP.',
   'Stat points on level-up split by the XP tagged since the last level-up (docs/03). On top of that, VIT gets flat points from cadence goals: each week you hit your weekly goal, plus more for a perfect month. Months are 4-week blocks here; the app would use calendar months. Goals: You 3/week, Runner 4, Beginner 2, Hybrid 4.',
+  'B7 calorie blend: the calorie part counts working time only, as mechanical work (load × 0.5 m × reps ÷ 20% efficiency) plus an active-time MET term (MET × kg × reps × seconds per rep). Rests are ignored. It uses the same hardest-5-sets rule, and it\'s scaled so the reference Workout A earns the same XP as the effort part. Grit boost: any set short of the plan counts as "went to failure" (the sim assumes the player says yes); the boost scales with the share of the exercise\'s sets that were short.',
+  'B14 splits (settled 2026-09-25): STR = load, SPD = explosive or fast, DEX = balance, coordination, single-side and overhead control, mobility, END = high reps, long duration, circuits, holds. No exercise feeds VIT (it comes from cadence goals), and FREE is a flat 10.',
+  '(c) floor (B7): every rep earns at least the "every rep earns at least" intensity, so light and easy sets still count a little.',
+  'Streak freezes (B12): every N weeks that hit the target earn a freeze (banked up to the max). A missed week spends one and keeps the streak, but earns no chest and breaks any perfect month.',
+  'Weekly chest (B10): "pay both" gives the XP bonus and the cadence VIT automatically. The pick-one modes give only the chosen reward. A perfect month always adds its VIT.',
+  'Import boost (B9, You only): replays the chosen weeks of You\'s program with no PR or consistency bonuses, then squashes that raw XP into at most the cap: boost = cap × (1 − e^(−raw ÷ (cap × softness))). The stat mix follows the replayed training. Imported PR baselines aren\'t modeled; the sim never counts an exercise\'s first session as a PR anyway.',
   'Dumbbell loads are the total of both dumbbells. Monday Circuit lunge reps (20) are a guess, as noted in docs/04.',
   'Each player has their own random stream from the seed, so every formula sees exactly the same skipped days and good and bad days.',
 ];
@@ -296,6 +379,29 @@ const epley = (load, reps) => load * (1 + reps / 30);
 const loadOf = (def, added, bw) => added + bw * (def.bw || 0);
 const isLoaded = k => ['barbell', 'dumbbell', 'kettlebell', 'machine', 'weighted'].includes(k);
 
+// Cardio kcal for one item { ex, min, pace (min/mi) | split (s per 500 m) } at kg bodyweight (docs/03).
+function cardioKcal(def, it, kg, c) {
+  const h = it.min / 60;
+  if (c.cardioModel === 'pace') {
+    if ((def.cal === 'run' || def.cal === 'walk') && it.pace) {
+      const speed = 1609.34 / it.pace;                                  // m/min
+      const vo2 = (def.cal === 'run' ? 0.2 : 0.1) * speed + 3.5;         // ACSM, ml/kg/min
+      return vo2 * kg / 1000 * 5 * it.min;
+    }
+    if (def.cal === 'row' && it.split) {                                // Concept2
+      const watts = 2.8 / Math.pow(it.split / 500, 3);
+      return (4 * watts * 0.8604 + 300) * h;
+    }
+    if (def.cal === 'bike' && it.pace) {                                // Compendium METs by average speed
+      const mph = 60 / it.pace, met = mph < 10 ? 4 : mph < 12 ? 6 : mph < 14 ? 8 : mph < 16 ? 10 : mph < 20 ? 12 : 15.8;
+      return met * kg * h;
+    }
+    return def.met * (it.effort || 1) * kg * h;
+  }
+  return def.met * kg * h;
+}
+const MILESTONES = [['first mile', 1], ['first 5K', 3.107], ['first 10K', 6.214], ['first half marathon', 13.109], ['first marathon', 26.219]];
+
 // Raw (unscaled) lift score for one exercise's done work sets: [{load, reps}].
 function rawLift(f, sets, bw, c, e1rm) {
   if (f === 'e') {
@@ -307,13 +413,22 @@ function rawLift(f, sets, bw, c, e1rm) {
     }).sort((a, b) => b - a);
     return eff.reduce((a, v, i) => a + v * Math.pow(c.eSetDecay, i), 0);
   }
+  if (f === 'c') {
+    // Hardest sets first; after cSetsFull sets of the same exercise, each extra set counts cSetDecay × the one before
+    const vals = sets.map(s => {
+      const pct = e1rm > 0 ? s.load / e1rm : 0;
+      const i = Math.max(c.cMin, Math.min(1.25, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp)));
+      return Math.min(s.reps, c.cRepCap) * i;
+    }).sort((a, b) => b - a);
+    return vals.reduce((a, v, i) => a + v * Math.pow(c.cSetDecay, Math.max(0, i - c.cSetsFull + 1)), 0);
+  }
   let raw = 0;
   for (const s of sets) {
     if (f === 'a') raw += s.load * s.reps / bw;
     else if (f === 'b') raw += s.load * s.reps;
     else if (f === 'c') {
       const pct = e1rm > 0 ? s.load / e1rm : 0;
-      const i = Math.min(1.25, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp));
+      const i = Math.max(c.cMin, Math.min(1.25, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp)));
       raw += Math.min(s.reps, c.cRepCap) * i;
     } else raw += 1;
   }
@@ -337,6 +452,24 @@ function refMax(ex, bw) {
 // The max that (c) and (e) judge a probe or reference set against.
 const probeMax = (c, g) => c.maxSource === 'true' ? refMax(g.ex, 190) : bestE1rm(probeSets(REF_ITEMS, 190).find(r => r.ex === g.ex)?.sets || g.sets);
 
+// Working-time calories for one exercise's sets (hardest cSetsFull sets only, like the effort part).
+function kcalRaw(sets, bw, c) {
+  const kg = bw / 2.2046;
+  const v = sets.map(s => {
+    const loadKg = s.load / 2.2046;
+    const work = loadKg * 9.81 * c.liftRom * s.reps / 0.2 / 4184;            // mechanical work at ~20% muscle efficiency
+    const time = c.liftMet * kg * (s.reps * c.liftSecPerRep) / 3600;        // active time only, no rests
+    return work + time;
+  }).sort((a, b) => b - a);
+  return v.reduce((a, x, i) => a + x * Math.pow(c.cSetDecay, Math.max(0, i - c.cSetsFull + 1)), 0);
+}
+// Lift XP for one exercise: effort part blended with the calorie part (formulas (c) and (e) only).
+function liftXp(f, sets, bw, c, e1rm, K) {
+  const eff = K[f] * rawLift(f, sets, bw, c, e1rm);
+  if (!c.kcalBlend || (f !== 'c' && f !== 'e')) return eff;
+  return (1 - c.kcalBlend) * eff + c.kcalBlend * K.kcal * kcalRaw(sets, bw, c);
+}
+
 // Scale factor per formula so the reference session earns c.refXp.
 function calibrate(c) {
   const K = {};
@@ -345,10 +478,11 @@ function calibrate(c) {
     const raw = groups.reduce((a, g) => a + rawLift(f, g.sets, 190, c, probeMax(c, g)), 0);
     K[f] = c.refXp / raw;
   }
+  K.kcal = c.refXp / groups.reduce((a, g) => a + kcalRaw(g.sets, 190, c), 0);
   return K;
 }
 
-function simPlayer(P, idx, c, f, K) {
+function simPlayer(P, idx, c, f, K, start = null) {
   const rng = mulberry32(c.seed * 1000 + idx * 17 + 3);
   const L = {};
   for (const [ex, [w, cap, g, inc, reps = 5]] of Object.entries(P.lifts)) L[ex] = { w, cap, g, inc, reps, miss: 0 };
@@ -357,7 +491,8 @@ function simPlayer(P, idx, c, f, K) {
     P, xp: 0, level: 1, into: 0, pool: {}, stats: Object.fromEntries(STATS.map(s => [s, c.startStat])),
     gained: { STR: 0, SPD: 0, DEX: 0, END: 0, VIT: 0, FREE: 0 }, sessions: 0, liftSessions: 0, prSessions: 0,
     prXp: 0, consXp: 0, baseXp: 0, deloads: 0, weekly: [{ week: 0, level: 1, xp: 0 }], log: [], weeksHit: 0,
-    vitCadence: 0, perfectMonths: 0,
+    vitCadence: 0, perfectMonths: 0, freezesUsed: 0, streakResets: 0, bestStreak: 0, msXp: 0, milestones: [],
+    chests: { xp: 0, vit: 0, free: 0 }, chestFreePts: 0, importXp: 0, importLevels: 0,
   };
   const addXp = (x, tags) => {
     R.xp += x; R.into += x;
@@ -381,9 +516,24 @@ function simPlayer(P, idx, c, f, K) {
       }
     }
   };
-  let streak = 0, monthOk = true;
+  let streak = 0, monthOk = true, freezes = 0, hits = 0;
   const vitScale = Math.pow(P.target / 3, c.vitCadenceExp);
   const addVit = v => { R.stats.VIT += v; R.vitCadence += v; };
+  const addFree = pts => {   // chest free points follow the same FREE policy as level-up free points
+    R.chestFreePts += pts;
+    if (c.free === 'even') { STATS.forEach(s => R.stats[s] += pts / 5); return; }
+    const pick = c.free === 'main'
+      ? STATS.reduce((a, s) => R.gained[s] > R.gained[a] ? s : a, 'STR')
+      : STATS.reduce((a, s) => R.stats[s] < R.stats[a] ? s : a, 'STR');
+    R.stats[pick] += pts;
+  };
+  // B9 import boost: arrives before week 1 as ordinary XP tagged with the imported stat mix
+  if (start && start.xp > 0) {
+    R.importXp = start.xp;
+    addXp(start.xp, start.tags);
+    R.importLevels = R.level - 1 + R.into / need(R.level, c);
+    R.weekly[0] = { week: 0, level: R.importLevels + 1, xp: R.xp };
+  }
   for (let w = 0; w < c.weeks; w++) {
     if (w % 4 === 0) monthOk = true;
     const bw = P.bw + P.bwPerWeek(c) * w;
@@ -400,8 +550,13 @@ function simPlayer(P, idx, c, f, K) {
       for (const it of plan.items) {
         const def = EX[it.ex];
         let x, metric, sets = null;
+        let ms = 0;
         if (def.kind === 'cardio') {
-          x = def.met * (bw / 2.2046) * it.min / 60; metric = it.min;
+          x = cardioKcal(def, it, bw / 2.2046, c); metric = it.min;
+          if ((it.ex === 'run' || it.ex === 'jog') && it.pace && c.milestoneXp) {   // one-time firsts
+            const miles = it.min / it.pace;
+            for (const [name, d] of MILESTONES) if (miles >= d && !R.milestones.includes(name)) { R.milestones.push(name); ms += c.milestoneXp; }
+          }
         } else {
           let added = it.load || 0, reps = Array(it.sets).fill(it.reps);
           if (it.lift) {
@@ -421,7 +576,10 @@ function simPlayer(P, idx, c, f, K) {
             const win = (hist[it.ex] || []).filter(h => day - h.day <= c.e1rmDays && h.e1rm);
             e1 = win.length ? Math.max(...win.map(h => h.e1rm)) : bestE1rm(sets);
           }
-          x = K[f] * rawLift(f, sets, bw, c, e1);
+          x = liftXp(f, sets, bw, c, e1, K);
+          // grit boost: a set short of the plan triggers "Went to failure?" (the sim assumes yes)
+          const short = reps.filter(r => r < it.reps).length;
+          if (c.grit && short) x *= 1 + c.grit * Math.min(short, c.cSetsFull) / Math.min(reps.length, c.cSetsFull);
           metric = isLoaded(def.kind) ? added : Math.max(...reps);
         }
         // PR bonus
@@ -437,7 +595,7 @@ function simPlayer(P, idx, c, f, K) {
         }
         if (bonus > 0) { hadPR = true; R.prXp += x * bonus; }
         (hist[it.ex] = hist[it.ex] || []).push({ day, metric, circuit: !!it.circuit, e1rm: sets ? bestE1rm(sets) : 0 });
-        sBase += x; x *= 1 + bonus; sx += x;
+        sBase += x; x *= 1 + bonus; x += ms; R.msXp += ms; sx += x;
         for (const [k, v] of Object.entries(def.dist)) weekTags[k] = (weekTags[k] || 0) + x * v / 100;
         const tags = Object.fromEntries(Object.entries(def.dist).map(([k, v]) => [k, x * v / 100]));
         addXp(x, tags);
@@ -449,15 +607,37 @@ function simPlayer(P, idx, c, f, K) {
     }
     if (weekCount >= P.target) {
       const b = Math.min(c.consCap, c.consBase + c.consStep * streak);
-      streak++; R.weeksHit++;
-      const bx = weekXp * b; R.consXp += bx;
-      if (bx > 0) addXp(bx, Object.fromEntries(Object.entries(weekTags).map(([k, v]) => [k, v * b])));
-      addVit(c.vitWeek * vitScale);
-    } else { streak = 0; monthOk = false; }
+      streak++; hits++; R.weeksHit++; R.bestStreak = Math.max(R.bestStreak, streak);
+      if (c.freezeEvery > 0 && hits % c.freezeEvery === 0) freezes = Math.min(c.freezeMax, freezes + 1);
+      // the weekly chest
+      const pick = c.chest === 'alt' ? (R.weeksHit % 2 ? 'xp' : 'vit') : c.chest;
+      if (pick === 'both' || pick === 'xp') {
+        const bx = weekXp * b; R.consXp += bx;
+        if (bx > 0) addXp(bx, Object.fromEntries(Object.entries(weekTags).map(([k, v]) => [k, v * b])));
+        if (pick === 'xp') R.chests.xp++;
+      }
+      if (pick === 'both' || pick === 'vit') { addVit(c.vitWeek * vitScale); if (pick === 'vit') R.chests.vit++; }
+      if (pick === 'free') { addFree(c.chestFree); R.chests.free++; }
+    } else {
+      monthOk = false;
+      if (freezes > 0) { freezes--; R.freezesUsed++; } else { if (streak > 0) R.streakResets++; streak = 0; }
+    }
     if (w % 4 === 3 && monthOk) { addVit(c.vitMonth * vitScale); R.perfectMonths++; }
     R.weekly.push({ week: w + 1, level: R.level + R.into / need(R.level, c), xp: R.xp });
   }
   return R;
+}
+
+// B9: You's imported history. Replay importWeeks of You's program under the same rules (no bonuses:
+// imports get no PR or consistency XP), then squash the raw XP into at most importCapLevels levels.
+function importBoost(c, f, K) {
+  if (!c.importWeeks || !c.importCapLevels) return null;
+  const pre = simPlayer(PLAYERS[0], 0, { ...c, weeks: c.importWeeks, importWeeks: 0, prAll: 0, prRecent: 0, consBase: 0, consStep: 0, milestoneXp: 0 }, f, K);
+  let capXp = 0; for (let L = 1; L <= c.importCapLevels; L++) capXp += need(L, c);
+  const xp = capXp * (1 - Math.exp(-pre.baseXp / (capXp * c.importSoft)));
+  const tot = Object.values(pre.gained).reduce((a, b) => a + b, 0) || 1;
+  const tags = Object.fromEntries(Object.entries(pre.gained).map(([k, v]) => [k, xp * v / tot]));
+  return { xp, tags, raw: pre.baseXp, capXp };
 }
 
 function fightOf(s, c) {
@@ -467,15 +647,36 @@ function fightOf(s, c) {
   return { hp, dmg, crit, swing, dps: avg / swing, stamina: c.stBase + c.stPerEnd * s.END };
 }
 
+// Two extra runners for the C7 fairness check (not in the main table).
+const FAIR = [
+  { id: 'c25k', name: 'Couch-to-5K', short: 'C25K', bw: 200, bwPerWeek: () => -0.3, target: 3, skip: 0.08, skipWeek: 0.05, lifts: {},
+    plan(w, d) { return [1, 3, 5].includes(d) ? { name: 'Jog', items: [{ ex: 'jog', min: Math.min(35, 20 + 1.7 * w), pace: Math.max(11, 13.5 - 0.28 * w) }] } : null; } },
+  { id: 'vet', name: '30 mi/week runner', short: 'Veteran', bw: 160, bwPerWeek: () => 0, target: 5, skip: 0.05, skipWeek: 0, lifts: {},
+    plan(w, d) { return d === 6 ? { name: 'Long run', items: [{ ex: 'run', min: 76, pace: 9.5 }] } : [0, 1, 3, 4].includes(d) ? { name: 'Run', items: [{ ex: 'run', min: 47, pace: 8.5 }] } : null; } },
+];
+function runnerFairness(c) {
+  const K = calibrate(c);
+  const [c25k, vet] = FAIR.map((P, i) => simPlayer(P, 10 + i, c, c.formula, K));
+  return { c25k, vet, xpRatio: vet.xp / (c25k.xp || 1), levelRatio: vet.weekly.at(-1).level / c25k.weekly.at(-1).level };
+}
+
 function simulate(c, f) {
   const K = calibrate(c);
-  const res = PLAYERS.map((P, i) => simPlayer(P, i, c, f, K));
+  const res = PLAYERS.map((P, i) => simPlayer(P, i, c, f, K, i === 0 ? importBoost(c, f, K) : null));
   for (const r of res) r.fight = fightOf(r.stats, c);
   const you = res[0].fight;
   for (const r of res) {
     r.golemSolo = c.golemHp / (r.fight.dps * c.uptime);
     r.coopShare = r.P.id === 'you' ? null : r.fight.dps / (r.fight.dps + you.dps);
-    r.golemCoop = r.P.id === 'you' ? null : c.golemHp * c.coopHpMult / ((r.fight.dps + you.dps) * c.uptime);
+    if (r.P.id === 'you') { r.golemCoop = null; continue; }
+    // Co-op (docs/05): You host. The helper's stats above yours are partly synced down, and the boss's HP comes
+    // from a blend of both stat totals weighted toward You (brawl: coopHostWeight, coopSync).
+    const synced = Object.fromEntries(STATS.map(s => [s, r.stats[s] > res[0].stats[s] ? res[0].stats[s] + (r.stats[s] - res[0].stats[s]) * (1 - c.coopSync) : r.stats[s]]));
+    const sum = st => STATS.reduce((a, s) => a + st[s], 0);
+    const blend = Math.max(0.75, Math.min(2, (c.coopHostWeight * sum(res[0].stats) + (1 - c.coopHostWeight) * sum(synced)) / sum(res[0].stats)));
+    const hf = fightOf(synced, c);
+    r.coopShare = hf.dps / (hf.dps + you.dps);
+    r.golemCoop = c.golemHp * c.coopHpMult * blend / ((hf.dps + you.dps) * c.uptime);
   }
   return { K, res };
 }
@@ -500,7 +701,7 @@ function probes(c) {
     for (const f of Object.keys(FORMULAS)) {
       const xp = probeSets(items, bw).reduce((a, g) => {
         const m = f === 'c' || f === 'e' ? probeMax(c, g) : 0;
-        return a + K[f] * rawLift(f, g.sets, bw, c, m);
+        return a + liftXp(f, g.sets, bw, c, m, K);
       }, 0);
       if (i === 0) ref[f] = xp;
       row[f] = xp; row[f + 'pct'] = xp / ref[f];
@@ -545,8 +746,15 @@ function findings(c, sim, compare) {
   // 6. Beginner useful in co-op?
   out.push([beg.coopShare < 0.25 ? 'flag' : 'ok', `Beginner deals ${pct(beg.coopShare)} of the damage when co-oping with You.${beg.coopShare < 0.25 ? ' Under 25%: they may not feel useful (B6).' : ''}`]);
   // 7. Consistency
-  out.push(['info', `Consistency bonus share of XP: ${sim.res.map(r => `${r.P.short} ${pct(r.consXp / (r.xp || 1))} (${r.weeksHit}/${c.weeks} weeks hit)`).join(', ')}.`]);
-  // 8. Bodyweight sensitivity for You under each formula
+  out.push(['info', `Consistency bonus share of XP: ${sim.res.map(r => `${r.P.short} ${pct(r.consXp / (r.xp || 1))} (${r.weeksHit}/${c.weeks} weeks hit, best streak ${r.bestStreak}, ${r.freezesUsed} freeze${r.freezesUsed === 1 ? '' : 's'} used, ${r.streakResets} reset${r.streakResets === 1 ? '' : 's'})`).join(', ')}.`]);
+  if (you.importXp > 0) {
+    const nextBest = Math.max(...sim.res.slice(1).map(r => r.weekly.at(-1).level));
+    out.push([you.importLevels > c.importCapLevels + 0.01 ? 'flag' : 'ok', `Import boost: ${c.importWeeks} weeks of history → +${r1(you.importLevels)} levels (${Math.round(you.importXp)} XP, cap ${c.importCapLevels}). You end at L${r1(you.weekly.at(-1).level)} vs the next-highest player at L${r1(nextBest)}.`]);
+  }
+  // 8. Runner fairness (C7): a couch-to-5K beginner vs a 30 mi/week runner, cardio only, same rules
+  const fair = runnerFairness(c);
+  out.push([fair.levelRatio > 2 ? 'flag' : 'info', `Runner fairness (C7): after ${c.weeks} weeks the 30 mi/week runner (160 lb) has ${fair.xpRatio.toFixed(1)}× the couch-to-5K runner's XP (200 lb) but only ${fair.levelRatio.toFixed(2)}× the level (L${r1(fair.vet.weekly.at(-1).level)} vs L${r1(fair.c25k.weekly.at(-1).level)}). Milestones: C25K ${fair.c25k.milestones.join(', ') || 'none'} (${pct(fair.c25k.msXp / (fair.c25k.xp || 1))} of its XP); veteran ${fair.vet.milestones.length}.${fair.levelRatio > 2 ? ' Over 2×: the curve is not closing the gap enough.' : ''}`]);
+  // 9. Bodyweight sensitivity for You under each formula
   const drift = compare.map(cmp => { const lg = cmp.res[0].log.filter(l => l.isLift && l.name === 'Workout A'); const a = lg.slice(0, 2), b = lg.slice(-2); const avg = x => x.reduce((s, l) => s + l.base, 0) / (x.length || 1); return `${cmp.f} ${avg(b) / avg(a) >= 1 ? '+' : ''}${pct(avg(b) / avg(a) - 1)}`; });
   out.push(['info', `You, Workout A base XP (no bonuses) from the first two to the last two sessions: ${drift.join(', ')}. Includes weight gains on the bar and bodyweight change.`]);
   return out;
@@ -623,7 +831,7 @@ function render() {
   $('players').innerHTML = `<table><tr><th>Player</th><th>Sessions</th><th>XP / session</th><th>XP / week</th><th>Level</th><th>PR bonus</th><th>Consistency</th>${STATS.map(s => `<th>${s}</th>`).join('')}<th>VIT from goals</th><th>Perfect months</th><th>Deloads</th></tr>` +
     sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${esc(r.P.name)}<div class="muted small" style="white-space:normal;max-width:260px">${esc(r.P.desc)}</div></td><td>${r.sessions}</td><td>${Math.round(perSession(r))}</td><td>${Math.round(r.xp / c.weeks)}</td><td>${r1(r.weekly.at(-1).level)}</td><td>${pct(r.prXp / (r.xp || 1))}</td><td>${pct(r.consXp / (r.xp || 1))}</td>` +
       STATS.map(s => `<td>${Math.round(r.stats[s])}<span class="bar" style="width:${Math.round(28 * r.stats[s] / maxStat)}px"></span></td>`).join('') + `<td>+${r1(r.vitCadence)}</td><td>${r.perfectMonths}</td><td>${r.deloads}</td></tr>`).join('') + `</table>`;
-  $('fight').innerHTML = `<table><tr><th>Player</th><th>Max HP</th><th>Damage / hit</th><th>Crit</th><th>Swing (s)</th><th>DPS</th><th>Stamina</th><th>Solo Golem (s)</th><th>Co-op share with You</th><th>Co-op Golem (s)</th></tr>` +
+  $('fight').innerHTML = `<table><tr><th>Player</th><th>Max HP</th><th>Damage / hit</th><th>Crit</th><th>Swing (s)</th><th>DPS</th><th>Stamina</th><th>Solo Forge Golem (s)</th><th>Co-op share with You (synced)</th><th>Co-op Forge Golem (s)</th></tr>` +
     sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${r.P.short}</td><td>${Math.round(r.fight.hp)}</td><td>${r1(r.fight.dmg)}</td><td>${pct(r.fight.crit)}</td><td>${r.fight.swing.toFixed(2)}</td><td>${r1(r.fight.dps)}</td><td>${Math.round(r.fight.stamina)}</td><td>${Math.round(r.golemSolo)}</td><td>${r.coopShare == null ? '—' : pct(r.coopShare)}</td><td>${r.golemCoop == null ? '—' : Math.round(r.golemCoop)}</td></tr>`).join('') + `</table>`;
   const fs = Object.keys(FORMULAS);
   $('compare').innerHTML = `<table><tr><th>Level after ${c.weeks} wk (XP / session)</th>${fs.map(f => `<th class="${f === c.formula ? 'sel' : ''}">${FORMULAS[f]}</th>`).join('')}</tr>` +
@@ -639,6 +847,7 @@ function render() {
 // ===========================================================================
 function run(overrides = {}) {
   const c = { ...DEFAULTS, ...overrides };
+  applySplits(c.splits);
   const compare = Object.keys(FORMULAS).map(f => ({ f, ...simulate(c, f) }));
   const sim = compare.find(x => x.f === c.formula);
   return { config: c, sim, compare, probes: probes(c), findings: findings(c, sim, compare) };
@@ -652,7 +861,7 @@ function report(overrides = {}) {
   L.push('FINDINGS');
   for (const [t, s] of R.findings) L.push(`  [${t === 'flag' ? 'CHECK' : t.toUpperCase()}] ${s}`);
   L.push('', 'PLAYERS (selected formula)');
-  for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} L${r1(r.weekly.at(-1).level).padStart(5)}  ${String(r.sessions).padStart(3)} sessions  ${String(Math.round(perSession(r))).padStart(5)} XP/session  PR ${pct(r.prXp / (r.xp || 1)).padStart(4)}  cons ${pct(r.consXp / (r.xp || 1)).padStart(4)}  ` + STATS.map(s => `${s} ${Math.round(r.stats[s])}`).join(' ') + `  VIT goals +${r1(r.vitCadence)} (${r.perfectMonths} perfect months)  deloads ${r.deloads}`);
+  for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} L${r1(r.weekly.at(-1).level).padStart(5)}  ${String(r.sessions).padStart(3)} sessions  ${String(Math.round(perSession(r))).padStart(5)} XP/session  PR ${pct(r.prXp / (r.xp || 1)).padStart(4)}  cons ${pct(r.consXp / (r.xp || 1)).padStart(4)}  ` + STATS.map(s => `${s} ${Math.round(r.stats[s])}`).join(' ') + `  VIT goals +${r1(r.vitCadence)} (${r.perfectMonths} perfect months)  HP ${Math.round(r.fight.hp)}  deloads ${r.deloads}  freezes ${r.freezesUsed}  resets ${r.streakResets}` + (r.importXp ? `  import +${r1(r.importLevels)} lv` : ''));
   L.push('', 'FIGHT (final stats)');
   for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} HP ${Math.round(r.fight.hp)}  dmg ${r1(r.fight.dmg)}  crit ${pct(r.fight.crit)}  DPS ${r1(r.fight.dps)}  solo Golem ${Math.round(r.golemSolo)}s` + (r.coopShare == null ? '' : `  co-op share ${pct(r.coopShare)}`));
   L.push('', 'B7 COMPARISON: level after ' + c.weeks + ' weeks (XP/session)');

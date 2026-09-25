@@ -1,0 +1,16 @@
+{
+  "name": "Barbell Brawl (prototype)",
+  "short_name": "Brawl",
+  "description": "Throwaway prototype of the Barbell Brawl real-time fight: Zone 1 vs the excuse swarm, the Bridge Troll and Oni Bro.",
+  "start_url": "realtime-brawl.html?play=1",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#15171a",
+  "theme_color": "#15171a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

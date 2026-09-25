@@ -2,15 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Realtime Brawl Prototype</title>
+<link rel="manifest" href="brawl.webmanifest">
+<meta name="theme-color" content="#15171a">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <!--
-  Barbell Brawl – throwaway prototype of the real-time stick fighter vs a monster.
+  Barbell Brawl – throwaway prototype of the real-time stick fighter vs monsters.
   Solo, co-op with a second player on the same keyboard, or co-op with a CPU buddy.
-  All balance numbers live in TUNING and MONSTERS below (TUNING is also editable live in the panel).
+  All balance numbers live in TUNING, MONSTERS and ZONES below (TUNING is also editable live in the panel).
+
+  Monsters and zones are data (G4): one MONSTERS entry per monster (HP, damage, weight, speed, attacks with
+  heights, the AI kit it uses), and ZONES lists each zone's levels as waves of monster keys. Zone 1 (the
+  Comfort Zone) comes first: Snack Attacker, Couch Potato, Snooze Imp, the Bridge Troll elite, and Oni Bro.
+  The Forge Golem (was Plate Golem) and Marathon Wraith (was Treadmill Wraith) stay as test fights.
+
+  Phone play mode (G1): "Play fullscreen" (or opening with ?play=1, which the installed web app does)
+  goes landscape and fullscreen with a floating left thumbstick (down = crouch), a big jump button
+  bottom-right, a few action buttons around it, gesture candidates (hold attack = special, double-tap
+  block = flex, swipe = dodge), and switchable layouts (LAYOUTS) to compare. Installable via
+  brawl.webmanifest.
 
   Stat effects:
-    STR  damage per hit
+    STR  damage per hit, and push (launch) vs monster weight
     SPD  movement speed and attack speed
     DEX  dodge invincibility window, crit chance, jump height
     END  stamina pool and regen (spent on dodge, block, special, flex)
@@ -19,6 +35,15 @@
   Co-op systems:
     Threat  monsters chase whoever has the most threat. Damage and blocking build it, Flex builds a lot.
     Revive  stand next to a downed ally and hold Block.
+    Scaling boss HP and damage come from a blend of both players' stats weighted toward the host (P1,
+            whose rung it is); the helper's stats above the host's are partly synced down; the CPU
+            buddy (ghost) is weaker than a real buddy. Speed and weight never change.
+
+  Rewards & shop (docs/03-progression.md#gear-and-gold): gold buys it, training unlocks it.
+    Wins pay gold: base × first-clear bonus or freshness × post-workout pump × live co-op bonus.
+    Freshness halves per win, has a floor, and refills each day. Gear adds verbs, not numbers,
+    and stat requirements are a hard lock (buy anytime, equip once you qualify). Numbers live in
+    DEFAULT_ECON, ZONES (gold per level) and ITEMS (and the Economy panel). The wallet is saved in localStorage.
 -->
 <style>
   :root {
@@ -33,16 +58,12 @@
   main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; max-width: 1320px; margin: 0 auto; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   #stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  #arena { position: relative; }
   canvas { width: 100%; aspect-ratio: 960 / 400; background: #0f1113; border: 1px solid var(--line); border-radius: 10px; display: block; touch-action: none; }
-  #touch { display: flex; justify-content: space-between; gap: 12px; user-select: none; -webkit-user-select: none; }
-  #touch .pad { display: flex; gap: 6px; min-width: 0; flex-wrap: wrap; }
-  #touch .pad:first-child { flex: 2; } #touch .pad:last-child { flex: 5; justify-content: flex-end; }
-  #touch button { flex: 1; min-width: 0; max-width: 84px; height: 58px; padding: 0 4px; font-size: 13px; font-weight: 700; touch-action: none; }
-  @media (max-width: 520px) { #touch button { height: 50px; font-size: 11px; } }
   button { background: #2a2e33; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--muted); }
   button.primary { background: var(--p1); border-color: var(--p1); color: #111; font-weight: 700; }
-  #touch button.on { background: #444a52; }
+  #playBtn { padding: 12px; font-size: 16px; }
   .keys { font-size: 13px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
   .keys b { color: var(--text); font-weight: 600; }
   #results { max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
@@ -52,6 +73,7 @@
   .card h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
   .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
   .row label { font-size: 13px; color: var(--muted); min-width: 70px; }
+  .row label.check { min-width: 0; display: flex; gap: 6px; align-items: center; }
   .fighters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .fighter h3 { margin: 0 0 6px; font-size: 15px; }
   .fighter.p1 h3 { color: var(--p1); } .fighter.p2 h3 { color: var(--p2); }
@@ -62,6 +84,8 @@
   select, input[type=number] { background: #2a2e33; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; }
   select { flex: 1; }
   .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .hint b { color: var(--text); }
+  .scout { font-size: 12px; color: #e8c547; margin: 6px 0 0; }
   details summary { cursor: pointer; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
   .tune { display: grid; grid-template-columns: 1fr 76px; gap: 4px 8px; align-items: center; font-size: 12px; margin-top: 8px; }
   .tune input { width: 100%; }
@@ -70,40 +94,96 @@
   .jv { display: grid; grid-template-columns: 1fr 96px 38px; gap: 4px 8px; align-items: center; font-size: 12px; }
   .jv input { width: 100%; }
   .jv output { text-align: right; font-variant-numeric: tabular-nums; }
+  button:disabled { opacity: .5; cursor: default; }
+  .wallet { display: flex; justify-content: space-between; align-items: baseline; }
+  .wallet .gold b { color: #e8c547; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .wallet span { color: var(--muted); font-size: 13px; }
+  .sub { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 12px 0 6px; }
+  .workouts { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .workouts button { flex: 1; padding: 6px 8px; font-size: 12px; }
+  .bar { height: 6px; background: #2a2e33; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #7ee08a; }
+  .fresh { display: grid; grid-template-columns: 116px 1fr 64px; gap: 8px; align-items: center; font-size: 12px; margin: 4px 0; }
+  .fresh b { text-align: right; font-variant-numeric: tabular-nums; }
+  .item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+  .item.eq { border-color: var(--p1); }
+  .item.locked { opacity: .55; }
+  .item .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .item .top b { font-size: 14px; }
+  .item .tag { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+  .item .tag em { color: #e8c547; font-style: normal; }
+  .item p { margin: 4px 0; font-size: 12px; color: var(--muted); }
+  .req { display: grid; grid-template-columns: 76px 1fr; gap: 8px; align-items: center; font-size: 12px; margin: 3px 0; font-variant-numeric: tabular-nums; }
+  .req .bar i { background: #e8c547; }
+  .req.ok .bar i { background: #7ee08a; }
+  .train { font-size: 12px; color: #e8c547; margin: 3px 0; }
+  .item button { margin-top: 6px; padding: 5px 10px; font-size: 13px; }
+
+  /* Phone play mode (G1): fullscreen landscape arena with a touch layout over the canvas */
+  #pad, #playbar, #menu, #rotate { display: none; }
+  body.play { overflow: hidden; overscroll-behavior: none; }
+  body.play #arena { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+  body.play #game { width: min(100vw, calc(100dvh * 2.4)); height: auto; border: 0; border-radius: 0; }
+  body.play #pad { display: block; position: absolute; inset: 0; }
+  body.play #playbar { display: flex; position: absolute; top: max(6px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); gap: 8px; z-index: 3; }
+  #playbar button { padding: 6px 12px; background: rgba(42,46,51,.75); font-size: 16px; }
+  #stickZone { position: absolute; left: 0; top: 16%; bottom: 0; width: 45%; }
+  #swipe { position: absolute; right: 0; top: 16%; bottom: 0; width: 55%; display: none; }
+  #stickBase { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(236,234,228,.35); background: rgba(236,234,228,.06); display: none; pointer-events: none; }
+  #stickKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(236,234,228,.4); }
+  #stickHint { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: 10px; font-size: 12px; color: rgba(236,234,228,.45); pointer-events: none; }
+  .tb { position: absolute; border-radius: 50%; background: rgba(42,46,51,.55); border: 2px solid rgba(236,234,228,.3); color: #eceae4; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; line-height: 1.05; touch-action: none; }
+  .tb small { display: block; font-size: .5em; font-weight: 600; opacity: .75; margin-top: 2px; }
+  .tb.jump { border-color: rgba(255,122,26,.75); }
+  .tb.on { background: rgba(255,122,26,.55); border-color: #ff7a1a; }
+  .tb.charged { background: rgba(232,197,71,.75); border-color: #e8c547; color: #111; }
+  body.play #menu.show { display: flex; flex-direction: column; gap: 6px; position: absolute; inset: 12% 8% 6% 8%; z-index: 4; overflow-y: auto;
+    background: rgba(21,23,26,.95); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; touch-action: pan-y; }
+  body.play #menu.show.after { inset: auto 18% max(4%, env(safe-area-inset-bottom)) 18%; }
+  #menu h3 { margin: 0; font-size: 16px; }
+  #menu .lv { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+  #menu .lv button, #menu .mrow button { text-align: left; }
+  #menu button small { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+  #menu button.primary small { color: #3a2410; }
+  #menu .mrow { display: flex; gap: 6px; flex-wrap: wrap; }
+  #menu .mrow button { flex: 1; min-width: 90px; }
+  #menu button.sel { border-color: var(--p1); }
+  #menu .sub { margin: 6px 0 0; }
+  @media (orientation: portrait) {
+    body.play #rotate { display: flex; position: absolute; inset: 0; z-index: 10; background: #15171a; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 20px; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>BARBELL BRAWL · Realtime Brawl</h1>
-  <span>Prototype: a stick fighter vs a monster, solo or co-op. Red = incoming attack. Jump it, dodge it, or block it.</span>
+  <span>Prototype: stick fighters vs Zone 1's excuse swarm, the Bridge Troll and Oni Bro, solo or co-op. Red = incoming attack. Jump it, duck it, dodge it, or block it.</span>
 </header>
 
 <main>
   <section id="stage">
-    <canvas id="game" width="960" height="400"></canvas>
-    <div id="touch">
-      <div class="pad">
-        <button data-a="left">◀</button>
-        <button data-a="down">▼</button>
-        <button data-a="right">▶</button>
+    <button class="primary" id="playBtn">📱 Play fullscreen: phone layout (landscape, thumbstick)</button>
+    <div id="arena">
+      <canvas id="game" width="960" height="400"></canvas>
+      <div id="pad">
+        <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
+        <div id="stickHint">Left thumb: move · pull down: crouch</div>
+        <div id="swipe"></div>
+        <div id="btns"></div>
       </div>
-      <div class="pad">
-        <button data-a="flex">Flex</button>
-        <button data-a="block">Block</button>
-        <button data-a="dodge">Dodge</button>
-        <button data-a="special">Special</button>
-        <button data-a="jump">Jump</button>
-        <button data-a="attack">Attack</button>
-      </div>
+      <div id="playbar"><button id="pbPause" aria-label="Pause">⏸</button><button id="pbExit" aria-label="Exit play mode">✕</button></div>
+      <div id="menu"></div>
+      <div id="rotate">↻ Turn your phone sideways to play</div>
     </div>
     <div class="card">
       <h2>Controls</h2>
       <div class="keys">
+        <b>Phone</b><span><b>Play fullscreen</b> (or install it: browser menu → <b>Add to Home screen</b>). Left thumb anywhere = floating stick, pull down to crouch. Big <b>JUMP</b> bottom-right. Layouts A/B/C (⏸ menu) compare gestures: hold attack = special, double-tap block = flex, swipe = dodge.</span>
         <b style="color:var(--p1)">P1</b><span><b>A/D</b> move · <b>S</b> crouch (hold) · <b>W</b> jump · <b>J</b> attack · <b>K</b> block (hold) · <b>L</b> dodge · <b>I</b> special · <b>U</b> flex</span>
         <b style="color:var(--p2)">P2</b><span><b>← →</b> move · <b>↓</b> crouch · <b>↑</b> jump · <b>Enter</b> attack · <b>'</b> block (hold) · <b>Right Shift</b> dodge · <b>/</b> special · <b>.</b> flex</span>
         <b>Moves</b><span>Attack in the air = <b>kick</b> (high) · crouch + attack = <b>low sweep</b> · crouch + block = <b>low block</b></span>
-        <b>Heights</b><span><b>HIGH</b> attacks: duck or stand-block · <b>LOW</b>: jump or crouch-block · <b>MID</b>: any block · dodge beats everything</span>
-        <b>Both</b><span>Hold <b>crouch + jump</b> to drop off a bench · hold <b>block</b> next to a downed ally to revive · <b>R</b> restart</span>
+        <b>Heights</b><span><b>HIGH</b> attacks: duck or stand-block · <b>LOW</b>: jump or crouch-block · <b>MID</b>: any block · <b>GRAB</b> and <b>ALARM</b> can't be blocked: dodge (or jump a grab) · dodge beats everything</span>
+        <b>Both</b><span>Grabbed? Mash any button. Hold <b>crouch + jump</b> to drop off a bench · hold <b>block</b> next to a downed ally to revive · <b>R</b> restart · <b>P</b>/<b>Esc</b> pause</span>
       </div>
     </div>
     <div id="results"><div style="color:var(--muted)">Fight results appear here.</div></div>
@@ -112,17 +192,34 @@
   <aside>
     <div class="card">
       <h2>Fight</h2>
-      <div class="row"><label>Monster</label><select id="monster"></select></div>
+      <div class="row"><label>Level</label><select id="level"></select></div>
+      <div class="row"><label class="check"><input type="checkbox" id="locks"> Ladder locks (each Zone 1 level unlocks after the one before it)</label></div>
       <p class="hint" id="monsterHint"></p>
+      <p class="scout" id="scoutHint"></p>
       <div class="row"><label>Player 2</label>
         <select id="p2mode">
           <option value="none">None (solo)</option>
-          <option value="cpu">CPU buddy</option>
+          <option value="cpu">CPU buddy (ghost)</option>
           <option value="human">Human (same keyboard)</option>
         </select>
       </div>
       <div class="row"><button class="primary" id="start" style="flex:1">Start fight</button></div>
-      <p class="hint">Co-op multiplies monster HP by <span id="coopMult"></span>. Stat and tuning changes apply when the next fight starts.</p>
+      <p class="hint" id="coopHint"></p>
+    </div>
+
+    <div class="card">
+      <h2>Rewards &amp; shop</h2>
+      <div class="wallet"><div class="gold"><b id="gold">0</b> gold</div><span>Day <b id="day">1</b></span></div>
+      <p class="hint" id="pump"></p>
+      <div class="workouts">
+        <button data-w="squat">Log squat day</button><button data-w="run">Log run</button><button data-w="circuit">Log circuit</button>
+        <button id="nextDay">Next day ☀</button>
+      </div>
+      <p class="hint">Logging a workout stands in for a real session that counts toward your weekly target: it raises P1's stats (squat +2 STR +1 VIT, run +2 SPD +1 DEX, circuit +2 END +1 DEX), clears Rusty, and starts today's post-workout pump. Next day refills freshness. Gold and items belong to P1.</p>
+      <div class="sub">Freshness (gold per win)</div>
+      <div id="fresh"></div>
+      <div class="sub">Shop</div>
+      <div id="items"></div>
     </div>
 
     <div class="card">
@@ -131,7 +228,8 @@
         <div class="fighter p1" id="f0"></div>
         <div class="fighter p2" id="f1"></div>
       </div>
-      <p class="hint">STR damage · SPD move + attack speed · DEX dodge window, crits, jump height · END stamina · VIT HP</p>
+      <div class="row"><label class="check"><input type="checkbox" id="rusty"> P1 is <b>Rusty</b> (2+ weeks without a workout)</label></div>
+      <p class="hint">STR damage + push · SPD move + attack speed · DEX dodge window, crits, jump height · END stamina · VIT HP. <b>Level</b> only makes the fighter taller (visual only; the hurtbox never grows).</p>
     </div>
 
     <div class="card">
@@ -149,6 +247,15 @@
         <summary>Tuning</summary>
         <div class="tune" id="tune"></div>
         <div class="row"><button id="resetTune">Reset tuning</button></div>
+      </details>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Economy</summary>
+        <div class="tune" id="econ"></div>
+        <div class="row"><button id="resetEcon">Reset economy</button><button id="resetWallet">Wipe wallet</button></div>
+        <p class="hint">Changes apply to the next payout. <b>Wipe wallet</b> clears gold, items, clears and freshness.</p>
       </details>
     </div>
   </aside>
@@ -180,8 +287,7 @@ const DEFAULT_TUNING = {
   reviveMs: 2200, reviveHp: 0.35, reviveRange: 60,
   hitstunMs: 280, knockback: 45,
   monsterHpMult: 1, monsterDmgMult: 1,
-  coopHpMult: 1.6,                    // monster HP × this with 2 players
-  enrageAt: 0.5, enrageMult: 1.3,     // below this HP fraction the monster speeds up
+  enrageAt: 0.5, enrageMult: 1.3,     // bosses and elites below this HP fraction speed up
   inputBufferMs: 180,
   lowDmgMult: 0.8, lowAttackDurMult: 0.85, // crouch attack (low sweep): a bit weaker, a bit faster
   kickRangeBonus: 10,                 // air kick reaches a little farther
@@ -190,6 +296,15 @@ const DEFAULT_TUNING = {
   launchAt: 40,                       // a push this big launches the monster (interrupts its attack)
   launchVy: 700, launchCooldown: 2.5, // launch pop height; no re-launch for this long (anti-juggle)
   staggerMs: 700,                     // monster is stunned this long after landing
+  waveGapMs: 1400,                    // Swarm Waves: pause before the next wave comes in
+  comboMs: 1500,                      // hits closer together than this build the combo counter
+  // Co-op (docs/05#progression-and-gating): boss speed and weight never change
+  coopHpMult: 1.6,                    // monster HP × this with 2 players (two fighters deal about twice the damage)
+  coopHostWeight: 0.7,                // difficulty (HP and damage) = blend of both players' stat totals, this much toward the host (P1, whose rung it is)
+  coopSync: 0.5,                      // partial level sync: a helper's stats above the host's are pulled this far toward the host's
+  ghostStatMult: 0.85,                // the CPU buddy (ghost) fights at this share of its stats: weaker than a real buddy
+  rustyMult: 0.9,                     // Rusty (2+ weeks off): P1's stats × this until one workout clears it
+  heightPerLevel: 0.012,              // visual only: fighters draw this much taller per level (level 50 ≈ 1.6×); hurtboxes don't grow
 };
 let T = { ...DEFAULT_TUNING };
 
@@ -197,7 +312,7 @@ let T = { ...DEFAULT_TUNING };
 const JUICE_TOGGLES = {
   hitstop: 'Hitstop', flash: 'Hit flash', knockback: 'Player knockback', grace: 'Post-hit grace',
   shake: 'Screen shake', numbers: 'Damage numbers', particles: 'Chalk puffs', sound: 'Sound',
-  haptics: 'Haptics', koSlowmo: 'Boss KO slow-mo + POW', reduce: 'Reduce effects',
+  haptics: 'Haptics', koSlowmo: 'Final KO slow-mo + POW', reduce: 'Reduce effects',
 };
 const DEFAULT_JUICE = {
   on: { hitstop: true, flash: true, knockback: true, grace: true, shake: true, numbers: true, particles: true,
@@ -221,11 +336,59 @@ const JUICE_RANGES = {
 };
 let J = structuredClone(DEFAULT_JUICE);
 
-// Durations in ms, distances in px, speeds in px/s. Heights are measured up from the floor.
+// ---------------------------------------------------------------------------
+// Monsters and zones are data (G4). Durations in ms, distances in px, speeds in px/s, heights up from the floor.
+// kit = which AI drives it: heavy (slam/sweep/throw/lob), flyer (dash/swipe), troll (club/smash/grab),
+// snack (bite/crumbs/cheat day), couch (grab and hold), snooze (flies, alarm burst puts you to sleep).
+// Attack heights: high (duck or stand-block), mid (any block), low (jump or crouch-block),
+// grab and ring (can't be blocked: dodge, or jump a grab). Dodge beats everything.
+// ---------------------------------------------------------------------------
 const MONSTERS = {
+  snack: {
+    name: 'Snack Attacker', kit: 'snack', rank: 'minion', hp: 40, width: 34, height: 44, speed: 150, color: '#e8a33a', weight: 0.35,
+    hint: '"I deserve a treat." Fast and fragile, comes in packs. MID bites up close and crumb throws from range (block them). Every few seconds one yells CHEAT DAY! and speeds up nearby minions.',
+    attacks: {
+      bite:   { windup: 380, active: 100, recover: 450, range: 40, dmg: 6, height: 'mid' },
+      crumbs: { windup: 500, recover: 700, dmg: 6, speed: 360, height: 'mid' },
+      cheat:  { every: 7, radius: 170, mult: 1.4, dur: 3 },
+    },
+  },
+  couch: {
+    name: 'Couch Potato', kit: 'couch', rank: 'minion', hp: 110, width: 66, height: 52, speed: 45, color: '#c9a36a', weight: 1.2,
+    hint: '"Just one more episode." Slow and tanky. Its GRAB can\'t be blocked: dodge it or jump it. Caught? It drains your stamina until you mash free (or a buddy hits it).',
+    attacks: {
+      grab: { windup: 750, recover: 900, range: 52, dmg: 4, height: 'grab', drain: 22, escape: 6, hold: 3 },
+    },
+  },
+  snooze: {
+    name: 'Snooze Imp', kit: 'snooze', rank: 'minion', flies: true, hover: 120, dip: 40, hp: 45, width: 38, height: 40, speed: 120, color: '#c9ccd2', weight: 0.3,
+    hint: '"Five more minutes." Flies above punch height (jump-kick it). Its ALARM burst can\'t be blocked and puts you to sleep: dodge it. It dips low after ringing, so punish it then.',
+    attacks: {
+      ring: { windup: 1000, active: 150, recover: 1300, radius: 120, dmg: 4, sleep: 1.4, height: 'ring' },
+    },
+  },
+  troll: {
+    name: 'Bridge Troll', kit: 'troll', rank: 'elite', enrage: true, hp: 520, width: 110, height: 175, speed: 70, color: '#6f8f5a', weight: 2,
+    hint: '"10 push-ups to pass." Club swings at HIGH (duck) and overhead smashes that go LOW (jump). Its GRAB can\'t be blocked: dodge or jump, or get thrown across the arena.',
+    attacks: {
+      club:  { windup: 650, active: 150, recover: 700, range: 150, dmg: 18, height: 'high' },
+      smash: { windup: 850, active: 160, recover: 800, range: 140, dmg: 24, height: 'low' },
+      grab:  { windup: 700, recover: 900, range: 90, dmg: 20, height: 'grab', throwPx: 260 },
+    },
+  },
+  oni: {
+    name: 'Oni Bro', kit: 'heavy', rank: 'boss', enrage: true, hp: 820, width: 120, height: 205, speed: 50, color: '#d04830', weight: 3.2, flexAfterHit: 0.9,
+    hint: '"The rack is mine." The Plate Golem\'s heavy kit with a kanabo: LOW slam shockwave (jump it), HIGH club sweep (duck it), rolling plates at range (LOW), lobbed plates at bench-sitters. HEAVY. He flexes after every hit that lands: free hits.',
+    attacks: {
+      slam:  { windup: 900, active: 160, recover: 900, range: 170, dmg: 30, height: 'low' },
+      sweep: { windup: 650, active: 150, recover: 750, range: 175, dmg: 20, height: 'high' },
+      throw: { windup: 700, recover: 700, dmg: 18, speed: 280, height: 'low' },
+      lob:   { windup: 750, recover: 700, dmg: 20, flight: 0.9, radius: 48, height: 'mid' },
+    },
+  },
   golem: {
-    name: 'Plate Golem', hp: 650, width: 120, height: 200, speed: 45, color: '#8e939c', weight: 3,
-    hint: 'Slow and tanky, built from iron plates, and HEAVY: it takes a lot of STR to launch. Its slam sends a LOW shockwave along the ground (jump it or crouch-block). Its arm sweep is HIGH (duck it or stand-block). It rolls plates (LOW) at distant targets and lobs them at anyone up on a bench.',
+    name: 'Forge Golem', kit: 'heavy', rank: 'boss', enrage: true, hp: 650, width: 120, height: 200, speed: 45, color: '#8e939c', weight: 3,
+    hint: 'Was the Plate Golem. Slow and tanky, built from iron plates, and HEAVY: it takes a lot of STR to launch. Its slam sends a LOW shockwave along the ground (jump it or crouch-block). Its arm sweep is HIGH (duck it or stand-block). It rolls plates (LOW) at distant targets and lobs them at anyone up on a bench.',
     attacks: {
       slam:  { windup: 900, active: 160, recover: 900, range: 170, dmg: 28, height: 'low' },
       sweep: { windup: 650, active: 150, recover: 750, range: 170, dmg: 18, height: 'high' },
@@ -234,14 +397,37 @@ const MONSTERS = {
     },
   },
   wraith: {
-    name: 'Treadmill Wraith', hp: 380, width: 70, height: 110, speed: 170, color: '#bfefff', weight: 0.8,
-    hint: 'Fast and fragile, and it flies. LIGHT: strong hits launch it. Rises to the height of its target, then dashes across at that height (MID: jump over a ground dash, or drop off the bench). Quick HIGH swipes up close (duck under them). Air kicks reach it when it hovers.',
+    name: 'Marathon Wraith', kit: 'flyer', rank: 'elite', enrage: true, flies: true, hp: 380, width: 70, height: 110, speed: 170, color: '#bfefff', weight: 0.8,
+    hint: 'Was the Treadmill Wraith. Fast and fragile, and it flies. LIGHT: strong hits launch it. Rises to the height of its target, then dashes across at that height (MID: jump over a ground dash, or drop off the bench). Quick HIGH swipes up close (duck under them). Air kicks reach it when it hovers.',
     attacks: {
       dash:  { windup: 550, recover: 650, dmg: 16, speed: 900, overshoot: 220, band: 45, height: 'mid' },
       swipe: { windup: 320, active: 120, recover: 450, range: 95, dmg: 10, band: 60, height: 'high' },
     },
   },
 };
+
+// Each zone is a list of levels; each level is a list of waves of monster keys. gold = base gold per win.
+// scout = the scouting report: the stat this level leans on, a suggested value, and the training that builds it.
+const ZONES = [
+  { name: 'Zone 1 · The Comfort Zone', ladder: true, levels: [
+    { key: 'z1swarm', name: 'Excuse Swarm', format: 'Swarm Waves', gold: 30,
+      waves: [['snack', 'snack', 'snack'], ['couch', 'snack', 'snack', 'snack'], ['snooze', 'snooze', 'couch', 'snack', 'snack']],
+      scout: { stat: 'END', want: 20, text: 'The swarm wears you down. END keeps stamina up for dodges and specials, and the special clears packs.' } },
+    { key: 'z1troll', name: 'Bridge Troll', format: 'Elite', gold: 45, waves: [['troll']],
+      scout: { stat: 'STR', want: 24, text: 'The troll is heavy. STR pushes him around and, with a special, launches him off the bridge.' } },
+    { key: 'z1oni', name: 'Oni Bro', format: 'Boss Arena', gold: 70, boss: true, waves: [['oni']],
+      scout: { stat: 'VIT', want: 26, text: 'Oni Bro hits hard. Build VIT by hitting your weekly goal, and STR to launch him.' } },
+  ] },
+  { name: 'Test fights', levels: [
+    { key: 'golem', name: 'Forge Golem', format: 'Boss Arena', gold: 60, boss: true, waves: [['golem']],
+      scout: { stat: 'STR', want: 40, text: 'Heavy: it only launches once your STR outweighs it (about STR 40 for a special).' } },
+    { key: 'wraith', name: 'Marathon Wraith', format: 'Elite', gold: 40, waves: [['wraith']],
+      scout: { stat: 'DEX', want: 22, text: 'It dashes at your height. DEX widens your dodge window and jumps you higher.' } },
+  ] },
+];
+const LEVELS = {};
+ZONES.forEach(z => z.levels.forEach((l, i) => { l.zone = z; l.idx = i; LEVELS[l.key] = l; }));
+const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || lv.idx === 0 || (wallet.clears[lv.zone.levels[lv.idx - 1].key] || 0) > 0;
 
 // Benches: one-way platforms you can jump onto from below.
 const PLATFORMS = [
@@ -258,9 +444,86 @@ const PRESETS = {
   Veteran:     { STR: 24, SPD: 24, DEX: 24, END: 24, VIT: 24 },
 };
 const COLORS = ['#ff7a1a', '#2ec4b6'];
+
+// ---------------------------------------------------------------------------
+// Rewards & shop: gold buys it, training unlocks it (B4/B13). All placeholders.
+// ---------------------------------------------------------------------------
+const DEFAULT_ECON = {
+  firstClearMult: 3,               // the first win vs a level pays this ×
+  freshDecay: 0.5,                 // each win multiplies that level's freshness by this
+  freshFloor: 0.1,                 // freshness never drops below this
+  freshRefill: 0.25,               // freshness regained per day
+  pumpMult: 2, pumpWins: 3,        // post-workout pump: the next N wins that day pay ×
+  coopBonus: 0.25,                 // live co-op (human P2) adds this; the CPU buddy (ghost) doesn't
+  parryMs: 180,                    // Plate Shield: a block started this recently parries
+};
+let E = { ...DEFAULT_ECON };
+
+// Gear adds verbs, not numbers: every weapon trades something away. sig = the level whose win stocks it.
+// mods: range (px added), dmg (×), speed (× attack duration), push (× monster push), parry, plateSpecial, slamSpecial.
+const ITEMS = {
+  fists:     { kind: 'weapon', name: 'Bare Fists', price: 0, req: {}, mods: {},
+               desc: 'The default. Punch, kick, sweep.' },
+  staff:     { kind: 'weapon', name: 'Barbell Staff', price: 150, req: { STR: 12, DEX: 14 }, mods: { range: 40, dmg: 0.75 },
+               desc: 'Long reach, lighter hits. Poke from outside the monster\'s swing.' },
+  shield:    { kind: 'weapon', name: 'Plate Shield', price: 200, req: { VIT: 18, STR: 14 }, mods: { dmg: 0.85, parry: true },
+               desc: 'Block becomes parry: start a block just as a hit lands to take nothing and stagger the monster. Punches are a bit weaker.' },
+  flail:     { kind: 'weapon', name: 'Kettlebell Flail', price: 250, req: { STR: 26, END: 16 }, mods: { speed: 1.6, dmg: 1.35, push: 2.2 },
+               desc: 'Slow swing, huge push. Launches heavy monsters that fists barely move.' },
+  kanabo:    { kind: 'weapon', name: 'Oni Kanabo', price: 300, req: { STR: 22, VIT: 18 }, sig: 'z1oni', mods: { speed: 1.2, slamSpecial: true },
+               desc: 'Oni Bro\'s club. Your special becomes a ground-cracking slam that hits every grounded monster nearby (great vs swarms), but it can\'t touch flyers. Swings a bit slower.' },
+  gauntlets: { kind: 'weapon', name: 'Golem Plate Gauntlets', price: 300, req: { STR: 20 }, sig: 'golem', mods: { plateSpecial: true },
+               desc: 'Your special hurls a rolling plate across the floor instead of a spin. Great from range, useless against flyers.' },
+  headband:  { kind: 'look', name: 'Red Sweatband', price: 40, desc: 'Looks fast.' },
+  goldchalk: { kind: 'look', name: 'Gold Chalk', price: 90, desc: 'Your hit puffs turn gold.' },
+  airhorn:   { kind: 'sound', name: 'Air Horn KO', price: 120, desc: 'An air horn blares on every knockout.' },
+};
+const KIND = { weapon: 'Weapon', look: 'Look', sound: 'Sound' };
+const TRAIN = {
+  STR: 'Squats, deadlifts and presses build STR', SPD: 'Runs, sprints and rides build SPD',
+  DEX: 'Jump rope, box jumps, single-leg and overhead work, and mobility build DEX', END: 'Long cardio, circuits and high-rep sets build END',
+  VIT: 'Hitting your weekly target builds VIT',
+};
+const WORKOUTS = {
+  squat:   { name: 'Squat day', gains: { STR: 2, VIT: 1 } },
+  run:     { name: 'Run', gains: { SPD: 2, DEX: 1 } },
+  circuit: { name: 'Circuit', gains: { END: 2, DEX: 1 } },
+};
+
+const newWallet = () => ({ gold: 0, day: 1, owned: ['fists'], weapon: 'fists', looks: [], fresh: {}, clears: {}, pump: 0, pumpDay: 0 });
+function loadWallet() {
+  try { const w = JSON.parse(localStorage.getItem('bb-brawl-wallet')); if (w && w.owned) return { ...newWallet(), ...w }; } catch (e) {}
+  return newWallet();
+}
+function saveWallet() { try { localStorage.setItem('bb-brawl-wallet', JSON.stringify(wallet)); } catch (e) {} }
+let wallet = loadWallet();
+const freshOf = k => wallet.fresh[k] ?? 1;
+const meetsReq = (item, stats) => Object.entries(item.req || {}).every(([s, v]) => stats[s] >= v);
+const stocked = item => !item.sig || wallet.clears[item.sig] > 0;   // boss signature items appear after that boss falls
+const looksOn = k => wallet.looks.includes(k);
+
+// Pay out a win. Returns { gold, parts, unlock }.
+function payout(lv, coopLive) {
+  const key = lv.key, parts = [], first = !wallet.clears[key];
+  let g = lv.gold;
+  parts.push(`${g} base`);
+  if (first) { g *= E.firstClearMult; parts.push(`×${E.firstClearMult} first clear`); }
+  else { g *= freshOf(key); parts.push(`×${Math.round(freshOf(key) * 100)}% fresh`); }
+  if (wallet.pump > 0) { g *= E.pumpMult; wallet.pump--; parts.push(`×${E.pumpMult} pump`); }
+  if (coopLive) { g *= 1 + E.coopBonus; parts.push(`+${Math.round(E.coopBonus * 100)}% live co-op`); }
+  g = Math.round(g);
+  wallet.gold += g;
+  wallet.clears[key] = (wallet.clears[key] || 0) + 1;
+  wallet.fresh[key] = Math.max(E.freshFloor, freshOf(key) * E.freshDecay);
+  const sig = Object.values(ITEMS).find(it => it.sig === key);
+  const next = lv.zone.ladder && first ? lv.zone.levels[lv.idx + 1] : null;
+  const unlock = [first && sig ? `New in the shop: ${sig.name}` : '', next ? `Unlocked: ${next.name}` : ''].filter(Boolean).join(' · ');
+  saveWallet(); renderShop();
+  return { gold: g, parts, unlock };
+}
 const setup = [
-  { preset: 'Balanced', stats: { ...PRESETS.Balanced } },
-  { preset: 'Runner', stats: { ...PRESETS.Runner } },
+  { preset: 'Balanced', stats: { ...PRESETS.Balanced }, level: 8 },
+  { preset: 'Runner', stats: { ...PRESETS.Runner }, level: 5 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -275,16 +538,20 @@ const sign = v => v < 0 ? -1 : 1;
 const lerp = (a, b, t) => a + (b - a) * t;
 
 let phase = 'ready';   // ready | fight | over
+let paused = false;
 let gt = 0;            // game time, seconds
-let players = [], monster = null, plates = [], floaters = [];
+let players = [], monsters = [], plates = [], shots = [], floaters = [], rings = [];   // shots: player projectiles (gauntlet plates)
+let level = null, waveIdx = 0, waveGap = null, coopScaleNow = { hp: 1, dmg: 1, blend: 1 };
+let combo = 0, comboBest = 0, lastHitAt = -9;
 let result = null;
+let monUid = 0;
 
 // ---------------------------------------------------------------------------
 // Game feel helpers
 // ---------------------------------------------------------------------------
 let shakeAmp = 0, shakeT = 0, shakeDur = 1;   // screen shake (real time)
 let hitstop = 0;                              // seconds of frozen simulation left
-let ko = null;                                // boss KO slow-mo: { t, x, y }
+let ko = null;                                // final KO slow-mo: { t, x, y }
 let puffs = [];                               // chalk-puff particles
 
 function doShake(factor) {
@@ -296,13 +563,15 @@ function doShake(factor) {
 function doHitstop(ms) { if (J.on.hitstop) hitstop = Math.max(hitstop, ms / 1000); }
 const flashTime = () => (J.on.flash && !J.on.reduce ? J.flashMs / 1000 : 0);
 function buzz(pattern) { if (J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
-function chalkPuff(x, y, n) {
+function chalkPuff(x, y, n, color) {
   if (!J.on.particles) return;
   for (let k = 0; k < n; k++) {
     const a = rand(0, Math.PI * 2), sp = rand(40, 170);
-    puffs.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, r: rand(3, 7), t: 0, life: rand(0.25, 0.45) });
+    puffs.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, r: rand(3, 7), t: 0, life: rand(0.25, 0.45), color });
   }
 }
+// Expanding ring effect (alarm bursts, kanabo quakes). y is screen y; flat rings hug the floor.
+function ring(x, y, r1, color, dur = 0.35, flat = false) { rings.push({ x, y, r1, color, dur, flat, t: 0 }); }
 
 // Tiny synthesized sound set (Web Audio). No asset files.
 let ac = null, master = null, noiseBuf = null;
@@ -320,8 +589,8 @@ function ensureAudio() {
 }
 const canPlay = () => J.on.sound && ac && ac.state === 'running';
 const pv = () => 1 + rand(-J.pitchVar, J.pitchVar);
-function tone(freq, dur, type, vol, slideTo) {
-  const t0 = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+function tone(freq, dur, type, vol, slideTo, delay = 0) {
+  const t0 = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t0);
   if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
   g.gain.setValueAtTime(vol * J.volume, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
@@ -346,20 +615,28 @@ const sfx = {
   dodge() { if (!canPlay()) return; noise(0.2, 0.3, 500 * pv(), 'bandpass', 2600); },
   slam() { if (!canPlay()) return; tone(65 * pv(), 0.35, 'sine', 1, 35); noise(0.25, 0.5, 450); },
   ko() { if (!canPlay()) return; tone(80, 0.7, 'sine', 1, 30); noise(0.5, 0.7, 1500, 'lowpass', 200); tone(600, 0.3, 'triangle', 0.2, 1200); },
+  poof() { if (!canPlay()) return; noise(0.14, 0.45, 2400 * pv(), 'bandpass', 600); tone(520 * pv(), 0.1, 'triangle', 0.15, 260); },
+  alarm() { if (!canPlay()) return; for (let k = 0; k < 6; k++) tone(k % 2 ? 1760 : 1480, 0.05, 'square', 0.08, null, k * 0.06); },
+  grab() { if (!canPlay()) return; tone(180 * pv(), 0.2, 'sawtooth', 0.2, 90); },
+  horn() { if (!canPlay()) return; [466, 587, 698].forEach(f => tone(f, 0.7, 'sawtooth', 0.14)); },
+  coin() { if (!canPlay()) return; tone(988, 0.08, 'square', 0.12); tone(1319, 0.25, 'square', 0.12, null, 0.08); },
 };
 
 // Derived player numbers
 const maxHp = s => Math.round(T.hpBase + T.hpPerVit * s.VIT);
 const maxSt = s => Math.round(T.stBase + T.stPerEnd * s.END);
 const moveSpeed = p => T.moveBase + T.movePerSpd * p.stats.SPD;
-const attackDur = p => T.attackBaseMs / 1000 * T.spdRef / (T.spdRef + p.stats.SPD);
+const attackDur = p => T.attackBaseMs / 1000 * T.spdRef / (T.spdRef + p.stats.SPD) * (p.w.speed || 1);
 const moveDur = p => attackDur(p) * (p.move === 'low' ? T.lowAttackDurMult : 1);
 const iframeDur = p => Math.min(T.dodgeMs, T.iframeBaseMs + T.iframePerDex * p.stats.DEX) / 1000;
 const jumpVel = p => T.jumpBase + T.jumpPerDex * p.stats.DEX;
-const dmgOf = p => T.dmgBase + T.dmgPerStr * p.stats.STR;
+const dmgOf = p => (T.dmgBase + T.dmgPerStr * p.stats.STR) * (p.w.dmg || 1);
 const critChance = p => T.critPerDex * p.stats.DEX;
 const regen = p => T.regenBase + T.regenPerEnd * p.stats.END;
 const alive = p => p.state !== 'down';
+const living = () => monsters.filter(m => m.hp > 0);
+const statSum = s => STATS.reduce((a, k) => a + s[k], 0);
+const r1 = v => Math.round(v * 10) / 10;
 
 // ---------------------------------------------------------------------------
 // Input
@@ -371,7 +648,8 @@ const KEYMAP = {
   Quote: [1, 'block'], ShiftRight: [1, 'dodge'], Slash: [1, 'special'], Period: [1, 'flex'],
 };
 const HELD = new Set(['left', 'right', 'block', 'down']);
-const newInput = () => ({ left: false, right: false, block: false, down: false, press: { attack: -1e9, dodge: -1e9, special: -1e9, jump: -1e9, flex: -1e9 } });
+const PRESSES = ['attack', 'dodge', 'special', 'jump', 'flex'];
+const newInput = () => ({ left: false, right: false, block: false, down: false, swipeDir: 0, press: { attack: -1e9, dodge: -1e9, special: -1e9, jump: -1e9, flex: -1e9 } });
 const inputs = [newInput(), newInput()];
 
 function setInput(i, a, down) {
@@ -384,6 +662,7 @@ function pressed(inp, a) {
 }
 window.addEventListener('keydown', e => {
   if (e.code === 'KeyR') { startFight(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
   const m = KEYMAP[e.code];
   if (!m) return;
   if (m[0] === 1 && $('#p2mode').value !== 'human') return;
@@ -394,56 +673,105 @@ window.addEventListener('keyup', e => {
   const m = KEYMAP[e.code];
   if (m && HELD.has(m[1])) setInput(m[0], m[1], false);
 });
-document.querySelectorAll('#touch button').forEach(b => {
-  const a = b.dataset.a;
-  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); setInput(0, a, true); });
-  const up = () => { b.classList.remove('on'); setInput(0, a, false); };
-  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
-});
 
 // ---------------------------------------------------------------------------
 // Fight setup
 // ---------------------------------------------------------------------------
-function makePlayer(i, stats, ctrl) {
+function makePlayer(i, stats, ctrl, weaponKey = 'fists') {
   const p = {
-    i, name: 'P' + (i + 1), color: COLORS[i], stats: { ...stats }, ctrl,
-    x: i === 0 ? 330 : 280, y: 0, vy: 0, onGround: true, support: 0, dropUntil: -1, facing: 1,
+    i, name: 'P' + (i + 1), color: COLORS[i], stats: { ...stats }, ctrl, weaponKey, w: ITEMS[weaponKey].mods, blockStart: -1, parries: 0,
+    level: setup[i].level, x: i === 0 ? 330 : 280, y: 0, vy: 0, kx: 0, onGround: true, support: 0, dropUntil: -1, facing: 1,
     state: 'idle', t: 0, walkPh: 0, flash: 0, iUntil: -1, graceUntil: -1, dodgeDir: 1, hitDone: false,
-    threat: 0, revive: 0, crouch: false, move: 'mid',
-    dmgDealt: 0, dmgTaken: 0, dodges: 0, blocks: 0, revives: 0, flexes: 0, aggroTime: 0, ducks: 0, launches: 0,
-    react: 0.6, seenAttack: -1, flexCd: 0,
+    threat: 0, revive: 0, crouch: false, move: 'mid', sleepUntil: 0, grab: null,
+    dmgDealt: 0, dmgTaken: 0, dodges: 0, blocks: 0, revives: 0, flexes: 0, aggroTime: 0, ducks: 0, launches: 0, kills: 0, escapes: 0,
+    react: 0.6, reacts: new Map(), flexCd: 0,
   };
   p.maxHp = p.hp = maxHp(stats);
   p.maxSt = p.st = maxSt(stats);
   return p;
 }
-function makeMonster(key, coop) {
+function makeMonster(key, x, scale) {
   const def = MONSTERS[key];
-  const hp = Math.round(def.hp * T.monsterHpMult * (coop ? T.coopHpMult : 1));
-  return { key, def, x: 640, y: 0, facing: -1, hp, maxHp: hp, state: 'walk', t: 0, attack: null, cd: 1.2, flash: 0,
-           hitSet: new Set(), dashTo: 0, dashY: 0, seq: 0, trail: [], bob: 0, target: null,
-           vx: 0, vy: 0, launchReadyAt: 0 };
+  const hp = Math.round(def.hp * T.monsterHpMult * scale.hp);
+  return { id: ++monUid, key, def, x: clamp(x, LEFT + def.width / 2, RIGHT - def.width / 2), y: def.flies ? def.hover || 0 : 0, facing: -1,
+           hp, maxHp: hp, dmgMult: scale.dmg, state: 'walk', t: 0, attack: null, cd: rand(0.9, 1.6), flash: 0,
+           hitSet: new Set(), dashTo: 0, dashY: 0, seq: 0, trail: [], bob: rand(0, 6), target: null,
+           vx: 0, vy: 0, launchReadyAt: 0, buffUntil: 0, cheatT: rand(3, 8), holding: null, landed: false, tauntT: 0 };
 }
+// Co-op (docs/05): the helper's stats above the host's are partly synced down; the CPU buddy is a weaker ghost.
+function helperStats(host, helper, ctrl) {
+  const out = {};
+  for (const s of STATS) {
+    let v = helper[s];
+    if (v > host[s]) v = host[s] + (v - host[s]) * (1 - T.coopSync);
+    if (ctrl === 'cpu') v *= T.ghostStatMult;
+    out[s] = r1(v);
+  }
+  return out;
+}
+// Difficulty (boss HP and damage) from a blend of both players' stats, weighted toward the host.
+function coopBlend(host, helper) {
+  const h = statSum(host), b = T.coopHostWeight * h + (1 - T.coopHostWeight) * statSum(helper);
+  return clamp(b / (h || 1), 0.75, 2);
+}
+const rustyStats = s => Object.fromEntries(STATS.map(k => [k, r1(s[k] * T.rustyMult)]));
+const isRusty = () => $('#rusty').checked;
+
+function spawnWave() {
+  const keys = level.waves[waveIdx], n = keys.length;
+  keys.forEach((k, j) => {
+    const def = MONSTERS[k];
+    const x = waveIdx === 0
+      ? (n === 1 ? 640 : 560 + j * Math.min(90, 340 / (n - 1)))
+      : (j % 2 ? LEFT + def.width / 2 + j * 24 : RIGHT - def.width / 2 - j * 24);   // later waves pour in from both edges
+    const m = makeMonster(k, x, coopScaleNow);
+    m.cd += j * 0.35;
+    monsters.push(m);
+  });
+}
+
 function startFight() {
+  const lv = LEVELS[$('#level').value];
+  if (!levelOpen(lv)) { logLine(`🔒 <b>${lv.name}</b> is locked: beat <b>${lv.zone.levels[lv.idx - 1].name}</b> first (or turn off ladder locks).`); return; }
+  level = lv;
   const mode = $('#p2mode').value;
-  players = [makePlayer(0, setup[0].stats, 'human')];
-  if (mode !== 'none') players.push(makePlayer(1, setup[1].stats, mode));
-  monster = makeMonster($('#monster').value, players.length > 1);
-  plates = []; floaters = []; puffs = []; shakeT = 0; hitstop = 0; ko = null; gt = 0; result = null;
+  const wk = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? wallet.weapon : 'fists';   // hard lock: under-trained = fists
+  const host = isRusty() ? rustyStats(setup[0].stats) : { ...setup[0].stats };
+  players = [makePlayer(0, host, 'human', wk)];
+  coopScaleNow = { hp: 1, dmg: 1, blend: 1 };
+  if (mode !== 'none') {
+    const helper = helperStats(host, setup[1].stats, mode);
+    players.push(makePlayer(1, helper, mode));
+    const b = coopBlend(host, helper);
+    coopScaleNow = { hp: T.coopHpMult * b, dmg: b, blend: b };
+  }
+  monsters = []; waveIdx = 0; waveGap = null; spawnWave();
+  plates = []; shots = []; floaters = []; puffs = []; rings = []; shakeT = 0; hitstop = 0; ko = null; gt = 0; result = null; paused = false;
+  combo = 0; comboBest = 0; lastHitAt = -9;
+  if (wk !== wallet.weapon) floater(`Not strong enough for the ${ITEMS[wallet.weapon].name} yet: fists this fight`, W / 2, 100, '#e8c547', 16);
+  if (isRusty()) floater(`RUSTY: stats −${Math.round((1 - T.rustyMult) * 100)}% until you log a workout`, W / 2, 130, '#c98a5a', 16);
   ensureAudio();
   inputs.forEach(inp => Object.assign(inp, newInput()));
   phase = 'fight';
   $('#start').textContent = 'Restart fight (R)';
+  if (playMode) showMenu(null);
 }
 
 // ---------------------------------------------------------------------------
 // Combat helpers
 // ---------------------------------------------------------------------------
 function floater(text, x, y, color, size = 18) { floaters.push({ text, x, y, color, size, t: 0 }); }
+const isEnraged = m => m.def.enrage && m.hp < m.maxHp * T.enrageAt;
+const speedMult = m => (isEnraged(m) ? T.enrageMult : 1) * (gt < m.buffUntil ? MONSTERS.snack.attacks.cheat.mult : 1);
 
 // Can a player at height py reach the monster's body?
 function verticalReach(m, py) {
-  return m.key === 'wraith' ? Math.abs(py - m.y) < 90 : py < m.def.height;
+  return m.def.flies ? Math.abs(py - m.y) < 90 : py < m.def.height;
+}
+function nearestMonster(p) {
+  let best = null;
+  for (const m of monsters) if (m.hp > 0 && (!best || Math.abs(m.x - p.x) < Math.abs(best.x - p.x))) best = m;
+  return best;
 }
 
 // Monster push from a hit: STR against the monster's weight. Big enough pushes launch it.
@@ -454,24 +782,34 @@ function pushMonster(m, p, push) {
   const dir = sign(m.x - p.x);
   if (m.state === 'launched') return;
   if (push >= T.launchAt && gt >= m.launchReadyAt) {
+    release(m);
     m.state = 'launched'; m.t = 0; m.attack = null;
     m.vy = T.launchVy * Math.min(1.6, push / T.launchAt);
-    m.vx = dir * push * 4;
+    m.vx = dir * Math.min(push, 160) * 4;
     m.launchReadyAt = gt + T.launchCooldown;
     p.launches++;
-    floater('LAUNCH!', m.x, FLOOR - m.y - m.def.height - 20, '#ff7a1a', 26);
-    doShake(1); doHitstop(J.hitstopHeavyMs);
+    floater('LAUNCH!', m.x, FLOOR - m.y - m.def.height - 20, '#ff7a1a', m.def.rank === 'minion' ? 18 : 26);
+    doShake(m.def.rank === 'minion' ? 0.5 : 1); doHitstop(J.hitstopHeavyMs);
   } else {
     m.x += dir * push;
   }
   m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
 }
 
+// A normal strike or spin: hits every living monster in reach (punches cleave through a pack).
 function playerHits(p, mult, range, bothSides, move = 'mid') {
-  const m = monster, dx = m.x - p.x, reach = range + m.def.width / 2;
-  const ok = bothSides ? Math.abs(dx) < reach : (dx * p.facing > -m.def.width / 2 && dx * p.facing < reach);
-  const vOk = move === 'low' ? m.y < 30 : verticalReach(m, p.y);   // a low sweep only reaches a grounded monster
-  if (!ok || m.hp <= 0 || !vOk) return;
+  for (const m of monsters) {
+    if (m.hp <= 0) continue;
+    const dx = m.x - p.x, reach = range + m.def.width / 2;
+    const ok = bothSides ? Math.abs(dx) < reach : (dx * p.facing > -m.def.width / 2 && dx * p.facing < reach);
+    const vOk = move === 'low' ? m.y < 30 : verticalReach(m, p.y);   // a low sweep only reaches a grounded monster
+    if (ok && vOk) hitMonster(p, m, mult, move);
+  }
+}
+
+// Apply one hit from p to monster m. at: contact point for effects (defaults to p's fist).
+function hitMonster(p, m, mult, move, at) {
+  if (m.hp <= 0 || phase !== 'fight') return;
   const crit = Math.random() < critChance(p);
   const dmg = Math.round(dmgOf(p) * mult * (crit ? T.critMult : 1));
   const special = mult > 1, heavy = special || crit;
@@ -479,36 +817,64 @@ function playerHits(p, mult, range, bothSides, move = 'mid') {
   m.flash = flashTime();
   p.dmgDealt += dmg;
   p.threat += dmg;
+  combo = gt - lastHitAt <= T.comboMs / 1000 ? combo + 1 : 1; lastHitAt = gt; comboBest = Math.max(comboBest, combo);
+  if (m.holding) release(m);                                          // hitting a grabber frees its victim
   if (J.on.numbers) floater(crit ? `${dmg}!` : `${dmg}`, m.x + rand(-20, 20), FLOOR - m.y - m.def.height + 10, crit ? '#e8c547' : '#fff', crit ? 26 : 18);
-  // Juice: contact point sits near the monster's edge, at arm height.
-  const cx = m.x - sign(m.x - p.x) * m.def.width * 0.35, cy = FLOOR - p.y - 88;
-  chalkPuff(cx, cy, Math.round(J.particleCount * (heavy ? 1.6 : 1)));
+  // Juice: contact point sits near the monster's edge, at arm height (lower for small monsters).
+  const cx = at ? at.x : m.x - sign(m.x - p.x) * m.def.width * 0.35, cy = at ? at.y : FLOOR - m.y - Math.min(m.def.height * 0.6, 88);
+  chalkPuff(cx, cy, Math.round(J.particleCount * (heavy ? 1.6 : 1)), p.i === 0 && looksOn('goldchalk') ? '#e8c547' : null);
   sfx.hit(heavy, crit);
   if (p.ctrl === 'human' && p.i === 0) buzz(J.hapticHitMs);
   if (special) doShake(0.7);
-  if (m.hp > 0) pushMonster(m, p, pushOf(p.stats.STR, m.def.weight, move, special));
-  if (m.hp <= 0) {
+  if (m.hp > 0) {
+    pushMonster(m, p, pushOf(p.stats.STR, m.def.weight, move, special) * (p.w.push || 1));
+    doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
+  } else killMonster(m, p);
+}
+
+// A monster drops. Minions poof mid-fight; the last monster of the last wave gets the KO slow-mo.
+function killMonster(m, p) {
+  release(m);
+  p.kills++;
+  const last = waveIdx >= level.waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0);
+  if (last) {
     doHitstop(J.hitstopFinisherMs);
     sfx.ko(); buzz([60, 40, 120]);
+    if (looksOn('airhorn')) sfx.horn();
     if (J.on.koSlowmo) ko = { t: 0, x: m.x, y: FLOOR - m.y - m.def.height * 0.6 };
     else endFight(true);
   } else {
-    doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
+    m.gone = true;
+    doHitstop(J.hitstopLightMs);
+    sfx.poof();
+    chalkPuff(m.x, FLOOR - m.y - m.def.height / 2, J.particleCount * 2);
+    floater('POOF', m.x, FLOOR - m.y - m.def.height - 10, '#ebe9e2', 16);
+    if (looksOn('airhorn') && m.def.rank !== 'minion') sfx.horn();
   }
 }
 
-// height: 'high' (duck it or stand-block), 'mid' (any block), 'low' (jump it or crouch-block).
-// Returns 'blocked', 'hit', or false (dodged, ducked, or invulnerable).
-function hurtPlayer(p, rawDmg, srcX, height = 'mid') {
-  if (!alive(p) || monster.hp <= 0) return false;
+// height: 'high' (duck it or stand-block), 'mid' (any block), 'low' (jump it or crouch-block),
+// 'grab' / 'ring' (can't be blocked). Returns 'blocked', 'hit', or false (dodged, ducked, or invulnerable).
+function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
+  if (!alive(p) || phase !== 'fight' || ko) return false;
   if (gt < p.iUntil) { p.dodges++; floater('DODGE', p.x, FLOOR - p.y - 140, '#9fe3ff', 16); return false; }
   if (J.on.grace && gt < p.graceUntil) return false;
   if (height === 'high' && p.crouch && p.onGround) { p.ducks++; floater('DUCK', p.x, FLOOR - p.y - 110, '#9fe3ff', 16); return false; }
   let dmg = rawDmg * T.monsterDmgMult;
+  const unblockable = height === 'grab' || height === 'ring';
   const facingSrc = sign(srcX - p.x) === p.facing;
-  const heightOk = height === 'mid' || (height === 'high' ? !p.crouch : p.crouch);
-  const blocked = p.state === 'block' && p.st > 0 && facingSrc && heightOk;
-  if (p.state === 'block' && facingSrc && !heightOk) floater(height === 'low' ? 'BLOCK LOW!' : 'BLOCK HIGH!', p.x, FLOOR - p.y - 160, '#e0555a', 14);
+  const heightOk = !unblockable && (height === 'mid' || (height === 'high' ? !p.crouch : p.crouch));
+  const blocking = p.state === 'block' && p.st > 0 && facingSrc;
+  const blocked = blocking && heightOk;
+  if (blocking && !heightOk) floater(unblockable ? 'CAN\'T BLOCK THAT!' : height === 'low' ? 'BLOCK LOW!' : 'BLOCK HIGH!', p.x, FLOOR - p.y - 160, '#e0555a', 14);
+  // Plate Shield: a freshly started block parries. No damage, and the monster staggers.
+  if (blocked && p.w.parry && gt - p.blockStart <= E.parryMs / 1000) {
+    p.parries++; p.blocks++; p.threat += T.blockThreat * 2;
+    floater('PARRY!', p.x, FLOOR - p.y - 150, '#7ee08a', 24);
+    sfx.block(); doHitstop(J.hitstopHeavyMs); chalkPuff(p.x + p.facing * 24, FLOOR - p.y - 80, J.particleCount);
+    if (m && m.hp > 0 && m.state !== 'launched' && m.state !== 'stagger') { m.state = 'stagger'; m.t = 0; m.attack = null; }
+    return 'blocked';
+  }
   if (blocked) {
     dmg *= 1 - T.blockReduction;
     p.st = Math.max(0, p.st - T.blockCost);
@@ -517,9 +883,11 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid') {
     floater('BLOCK', p.x, FLOOR - p.y - 140, '#e8c547', 14);
     sfx.block();
   } else {
-    p.state = 'hurt'; p.t = 0; p.crouch = false;
-    if (J.on.knockback) p.x = clamp(p.x + sign(p.x - srcX) * T.knockback, LEFT, RIGHT);
+    if (!p.grab) { p.state = 'hurt'; p.t = 0; }
+    p.crouch = false; p.sleepUntil = 0;
+    if (J.on.knockback && !p.grab) p.x = clamp(p.x + sign(p.x - srcX) * T.knockback, LEFT, RIGHT);
     if (J.on.grace) p.graceUntil = gt + J.hurtGraceMs / 1000;
+    if (m) m.landed = true;
     sfx.hurt();
   }
   const heavy = rawDmg * T.monsterDmgMult >= J.heavyHitDmg;
@@ -535,6 +903,7 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid') {
   }
   if (J.on.numbers) floater(`-${dmg}`, p.x, FLOOR - p.y - 120, '#e0555a', 20);
   if (p.hp <= 0) {
+    if (p.grab) release(p.grab.m);
     p.state = 'down'; p.t = 0; p.threat = 0; p.revive = 0;
     if (players.some(alive)) floater('DOWN! Hold Block next to them to revive', p.x, FLOOR - p.y - 160, '#e0555a', 14);
     else endFight(false);
@@ -542,16 +911,51 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid') {
   return blocked ? 'blocked' : 'hit';
 }
 
+// Grabs: the first player in front of the monster, on the ground, and in range.
+function grabTarget(m, a) {
+  return players.find(p => alive(p) && !p.grab && p.y < 30 && (p.x - m.x) * m.facing > -12 && (p.x - m.x) * m.facing < a.range + m.def.width / 2 - 10);
+}
+function release(m) {
+  const p = m.holding;
+  m.holding = null;
+  if (m.state === 'hold') { m.state = 'recover'; m.t = 0; }
+  if (p && p.grab) {
+    p.grab = null;
+    if (alive(p)) { p.state = 'idle'; p.t = 0; p.graceUntil = gt + 0.5; floater('FREE!', p.x, FLOOR - p.y - 150, '#7ee08a', 18); }
+  }
+}
+
+function scoutOf(lv) { return lv && lv.scout ? lv.scout : null; }
+function lossHint() {
+  const sc = scoutOf(level);
+  if (!sc) return '';
+  const have = players[0] ? Math.round(players[0].stats[sc.stat]) : setup[0].stats[sc.stat];
+  return have >= sc.want ? `Your ${sc.stat} ${have} is enough for this rung: it came down to execution. Try again!`
+    : `${level.name} leans on ${sc.stat}: yours is ${have}, ${sc.want}+ recommended. ${TRAIN[sc.stat]}.`;
+}
+
 function endFight(won) {
   if (phase !== 'fight') return;
   phase = 'over';
-  result = { won, time: gt };
-  const m = monster;
-  const who = players.map(p => `<b style="color:${p.color}">${p.name}</b> ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}: ` +
-    `dealt ${p.dmgDealt}, took ${p.dmgTaken}, targeted ${Math.round(100 * p.aggroTime / Math.max(gt, 0.01))}% of the fight, ` +
-    `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.launches} launches, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
+  const coopLive = players.length > 1 && players[1].ctrl === 'human';
+  const reward = won ? payout(level, coopLive) : { gold: 0, parts: ['Losses pay no gold'] };
+  if (won) sfx.coin();
+  const left = monsters.filter(m => m.hp > 0);
+  result = { won, time: gt, reward, hint: won ? '' : lossHint() };
+  const who = players.map(p => `<b style="color:${p.color}">${p.name}</b> ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU ghost)' : ''} · ${ITEMS[p.weaponKey].name}: ` +
+    `dealt ${p.dmgDealt}, took ${p.dmgTaken}, ${p.kills} KOs, targeted ${Math.round(100 * p.aggroTime / Math.max(gt, 0.01))}% of the fight, ` +
+    `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.parries} parries, ${p.launches} launches, ${p.escapes} grab escapes, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
+  const where = level.waves.length > 1 ? ` (wave ${waveIdx + 1}/${level.waves.length}, ${left.length} left)` : left[0] ? ` (monster at ${Math.round(100 * left[0].hp / left[0].maxHp)}%)` : '';
+  const coop = players.length > 1 ? ` · co-op difficulty ×${coopScaleNow.blend.toFixed(2)} (HP ×${coopScaleNow.hp.toFixed(2)})` : '';
+  logLine(`<b>${won ? 'Victory' : 'Defeat'}</b> vs ${level.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : where}${coop}${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}` +
+    ` · <b style="color:#e8c547">+${reward.gold} gold</b> (${reward.parts.join(' · ')})${reward.unlock ? ` · <b style="color:var(--p1)">${reward.unlock}</b>` : ''}` +
+    `${result.hint ? `<br><span style="color:#e8c547">${result.hint}</span>` : ''}<br>${who}`);
+  if (playMode) showMenu('after');
+}
+
+function logLine(html) {
   const d = document.createElement('div');
-  d.innerHTML = `<b>${won ? 'Victory' : 'Defeat'}</b> vs ${m.def.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : ` (monster at ${Math.round(100 * m.hp / m.maxHp)}%)`}<br>${who}`;
+  d.innerHTML = html;
   const box = $('#results');
   if (box.firstElementChild && box.firstElementChild.style.color) box.innerHTML = '';
   box.prepend(d);
@@ -564,6 +968,7 @@ function physics(p, dt) {
   const prevY = p.y;
   p.vy -= T.gravity * dt;
   p.y += p.vy * dt;
+  if (p.kx) { p.x += p.kx * dt; p.kx *= Math.max(0, 1 - 4 * dt); if (Math.abs(p.kx) < 8) p.kx = 0; }   // thrown
   let floorH = 0;
   if (gt >= p.dropUntil) {
     for (const pl of PLATFORMS) {
@@ -572,18 +977,32 @@ function physics(p, dt) {
   }
   if (p.y <= floorH) { p.y = floorH; p.vy = 0; p.onGround = true; p.support = floorH; }
   else p.onGround = false;
+  p.x = clamp(p.x, LEFT, RIGHT);
 }
 
 function updatePlayer(p, dt) {
   p.flash = Math.max(0, p.flash - dt);
   p.flexCd = Math.max(0, p.flexCd - dt);
   p.threat = Math.max(0, p.threat - p.threat * T.threatDecay * dt);
-  physics(p, dt);
+  if (!p.grab) physics(p, dt);
   if (!alive(p)) return;
   const inp = inputs[p.i];
   p.t += dt;
-  if (p.state !== 'block') p.st = Math.min(p.maxSt, p.st + regen(p) * dt);
-  if (p.state !== 'dodge' && p.state !== 'special') p.facing = sign(monster.x - p.x);
+  if (p.state !== 'block' && !p.grab) p.st = Math.min(p.maxSt, p.st + regen(p) * dt);
+  // Grabbed: mash any button to break free.
+  if (p.grab) {
+    for (const a of PRESSES) if (pressed(inp, a)) { p.grab.mash++; chalkPuff(p.x, FLOOR - p.y - 90, 2); }
+    if (p.grab.mash >= p.grab.m.def.attacks.grab.escape) { p.escapes++; release(p.grab.m); }
+    return;
+  }
+  // Asleep (Snooze Imp alarm): no actions until it wears off or something hits you.
+  if (p.state === 'sleep') {
+    PRESSES.forEach(a => pressed(inp, a));
+    if (gt >= p.sleepUntil) { p.state = 'idle'; p.t = 0; }
+    return;
+  }
+  const tm = nearestMonster(p);
+  if (tm && p.state !== 'dodge' && p.state !== 'special') p.facing = sign(tm.x - p.x);
 
   const idleLike = p.state === 'idle' || p.state === 'walk' || p.state === 'block' || p.state === 'crouch';
   if (idleLike) {
@@ -595,7 +1014,7 @@ function updatePlayer(p, dt) {
       p.vy = jumpVel(p); p.onGround = false; p.state = 'idle';
     } else if (p.onGround && pressed(inp, 'dodge') && p.st >= T.dodgeCost) {
       p.st -= T.dodgeCost;
-      p.dodgeDir = inp.left ? -1 : inp.right ? 1 : -p.facing;
+      p.dodgeDir = inp.swipeDir || (inp.left ? -1 : inp.right ? 1 : -p.facing);
       p.state = 'dodge'; p.t = 0; p.iUntil = gt + iframeDur(p);
       sfx.dodge();
     } else if (p.onGround && pressed(inp, 'flex') && p.st >= T.flexCost) {
@@ -608,6 +1027,7 @@ function updatePlayer(p, dt) {
       p.move = !p.onGround ? 'kick' : inp.down ? 'low' : 'mid';      // air kick, low sweep, or normal punch
       p.crouch = p.move === 'low';
     } else if (inp.block && p.st > 0 && p.onGround) {
+      if (p.state !== 'block') p.blockStart = gt;                      // parry timing (Plate Shield)
       p.state = 'block'; p.crouch = inp.down;                          // crouch-block covers low attacks
     } else if (inp.down && p.onGround) {
       p.state = 'crouch'; p.crouch = true;                             // duck under high attacks
@@ -617,6 +1037,7 @@ function updatePlayer(p, dt) {
       p.state = dir ? 'walk' : 'idle';
       if (dir) p.walkPh += dt * moveSpeed(p) / 18;
     }
+    inp.swipeDir = 0;
   } else if (!p.onGround && (p.state === 'attack' || p.state === 'special')) {
     const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);          // keep some air control while swinging
     p.x += dir * moveSpeed(p) * 0.6 * dt;
@@ -626,13 +1047,22 @@ function updatePlayer(p, dt) {
       const dur = moveDur(p);
       if (!p.hitDone && p.t >= dur * 0.45) {
         p.hitDone = true;
-        playerHits(p, p.move === 'low' ? T.lowDmgMult : 1, T.attackRange + (p.move === 'kick' ? T.kickRangeBonus : 0), false, p.move);
+        playerHits(p, p.move === 'low' ? T.lowDmgMult : 1, T.attackRange + (p.w.range || 0) + (p.move === 'kick' ? T.kickRangeBonus : 0), false, p.move);
       }
       if (p.t >= dur) { p.state = 'idle'; p.t = 0; }
       break;
     }
     case 'special':
-      if (!p.hitDone && p.t >= T.specialMs / 1000 * 0.5) { p.hitDone = true; playerHits(p, T.specialMult, T.specialRange, true); }
+      if (!p.hitDone && p.t >= T.specialMs / 1000 * 0.5) {
+        p.hitDone = true;
+        if (p.w.plateSpecial) shots.push({ p, x: p.x + p.facing * 30, vx: p.facing * 520, spin: 0 });   // Golem Plate Gauntlets
+        else if (p.w.slamSpecial) {                                                                    // Oni Kanabo: ground quake
+          doShake(1.2); sfx.slam(); ring(p.x, FLOOR, T.specialRange * 2, '#e8c547', 0.35, true);
+          for (const m of monsters) {
+            if (m.hp > 0 && m.y < 30 && Math.abs(m.x - p.x) < T.specialRange * 2 + m.def.width / 2) hitMonster(p, m, T.specialMult * 0.8, 'low', { x: m.x, y: FLOOR - 16 });
+          }
+        } else playerHits(p, T.specialMult, T.specialRange, true);
+      }
       if (p.t >= T.specialMs / 1000) { p.state = 'idle'; p.t = 0; }
       break;
     case 'dodge':
@@ -673,42 +1103,52 @@ function decayRevives(dt) {
   }
 }
 
-// Simple CPU buddy: revives, draws aggro off a hurt ally, jumps or dodges telegraphs, attacks openings.
+// Does monster t's wound-up attack a threaten player p (d = horizontal distance)?
+function threatens(t, a, p, d) {
+  if (t.attack === 'dash') return t.dashY < 20;
+  if (t.attack === 'throw' || t.attack === 'crumbs') return sign(p.x - t.x) === t.facing;
+  if (t.attack === 'lob') return t.lobTarget === p;
+  if (a.radius) return d < a.radius + 30;
+  return d < (a.range || 0) + t.def.width / 2 + 30;
+}
+
+// Simple CPU buddy: revives, draws aggro off a hurt ally, answers telegraphs by height, attacks openings.
 function cpuThink(p) {
   if (!alive(p)) return;
-  const inp = inputs[p.i], m = monster;
+  const inp = inputs[p.i];
   inp.left = inp.right = inp.block = inp.down = false;
+  if (p.grab || p.state === 'sleep') { inp.press.attack = gt; return; }   // mash free
+  const m = nearestMonster(p);
+  if (!m) return;
   const goTo = x => { if (x > p.x + 6) inp.right = true; else if (x < p.x - 6) inp.left = true; };
   const dist = Math.abs(m.x - p.x), reach = T.attackRange + m.def.width / 2;
-  const highAttack = m.attack === 'swipe' || m.attack === 'sweep';
 
   // 1. Get off the bench; the buddy fights from the ground.
   if (p.onGround && p.support > 0) { inp.down = true; inp.press.jump = gt; return; }
 
-  // Keep ducking while a high attack is live.
-  if (m.state === 'active' && highAttack && dist < m.def.attacks[m.attack].range + 40) { inp.down = true; return; }
-
-  // 2. React to telegraphs.
-  if (m.state === 'windup') {
-    if (p.seenAttack !== m.seq) { p.seenAttack = m.seq; p.react = rand(0.45, 0.9); p.useJump = Math.random() < 0.5; }
-    const a = m.def.attacks[m.attack];
-    const prog = m.t / (a.windup / 1000 / enrage(m));
-    const threatened =
-      (m.attack === 'slam' && dist < a.range + 40) ||
-      (highAttack && dist < a.range + 40) ||
-      (m.attack === 'dash' && m.dashY < 20) ||
-      (m.attack === 'throw');
-    if (threatened && prog > p.react && p.onGround) {
-      const jumpable = m.attack === 'slam' || m.attack === 'dash';
-      if (highAttack && p.useJump) inp.down = true;                   // duck under it
-      else if (jumpable && p.useJump) inp.press.jump = gt;
-      else if (p.st >= T.dodgeCost) inp.press.dodge = gt;
-      else inp.block = true;
-      return;
-    }
+  // 2. React to telegraphs, from any monster.
+  for (const t of living()) {
+    const a = t.attack && t.def.attacks[t.attack];
+    if (!a) continue;
+    const d = Math.abs(t.x - p.x);
+    if (t.state === 'active' && a.height === 'high' && d < (a.range || 0) + 40) { inp.down = true; return; }   // keep ducking
+    if (t.state !== 'windup') continue;
+    const key = t.id + ':' + t.seq;
+    let r = p.reacts.get(key);
+    if (!r) { r = { at: rand(0.45, 0.9), jump: Math.random() < 0.5 }; p.reacts.set(key, r); }
+    const prog = t.t / (a.windup / 1000 / speedMult(t));
+    if (prog < r.at || !p.onGround || !threatens(t, a, p, d)) continue;
+    const h = a.height;
+    if (h === 'high' && r.jump) inp.down = true;                                  // duck under it
+    else if ((h === 'low' || h === 'grab') && r.jump) inp.press.jump = gt;         // jump it
+    else if (p.st >= T.dodgeCost) inp.press.dodge = gt;
+    else if (h !== 'grab' && h !== 'ring') { inp.block = true; inp.down = h === 'low'; }
+    return;
   }
   const plate = plates.find(pl => pl.kind === 'roll' && Math.abs(pl.x - p.x) < 110 && sign(p.x - pl.x) === sign(pl.vx));
   if (plate && p.onGround) { inp.press.jump = gt; return; }
+  const crumb = plates.find(pl => pl.kind === 'crumb' && Math.abs(pl.x - p.x) < 120 && sign(p.x - pl.x) === sign(pl.vx));
+  if (crumb && p.onGround) { inp.block = true; return; }
 
   // 3. Revive a downed ally.
   const down = players.find(q => q !== p && !alive(q));
@@ -718,18 +1158,20 @@ function cpuThink(p) {
     return;
   }
 
-  // 4. Pull aggro off a hurt ally.
+  // 4. Free a grabbed ally, or pull aggro off a hurt one.
   const ally = players.find(q => q !== p && alive(q));
-  if (ally && m.target === ally && ally.hp < ally.maxHp * 0.5 && p.hp > p.maxHp * 0.4 && p.st >= T.flexCost && p.flexCd <= 0 && p.onGround) {
+  if (ally && ally.grab) { const g = ally.grab.m; if (Math.abs(g.x - p.x) < reach - 8) inp.press.attack = gt; else goTo(g.x); return; }
+  if (ally && monsters.some(o => o.hp > 0 && o.target === ally) && ally.hp < ally.maxHp * 0.5 && p.hp > p.maxHp * 0.4 && p.st >= T.flexCost && p.flexCd <= 0 && p.onGround) {
     inp.press.flex = gt; p.flexCd = 4; return;
   }
 
-  // 5. Fight.
-  const canReach = verticalReach(m, p.y) || (m.key === 'wraith' && m.y > 40);
+  // 5. Fight: spin into packs, jump-kick flyers, punch the rest.
+  const canReach = verticalReach(m, p.y) || (m.def.flies && m.y > 40);
   if (dist < reach - 8 && canReach) {
     if (m.state !== 'windup') {
-      if (m.key === 'wraith' && m.y > 40 && p.onGround) inp.press.jump = gt;
-      if (p.st >= T.specialCost + 20 && Math.random() < 0.02) inp.press.special = gt;
+      const pack = living().filter(o => Math.abs(o.x - p.x) < T.specialRange + o.def.width / 2).length;
+      if (m.def.flies && m.y > 40 && p.onGround) inp.press.jump = gt;
+      if (p.st >= T.specialCost + 20 && (pack >= 3 || Math.random() < 0.02)) inp.press.special = gt;
       else inp.press.attack = gt;
     }
   } else {
@@ -738,27 +1180,25 @@ function cpuThink(p) {
 }
 
 // ---------------------------------------------------------------------------
-// Monster update
+// Monster update: a shared state machine (walk → windup → active/recover) with one AI kit per monster type
 // ---------------------------------------------------------------------------
-const enrage = m => m.hp < m.maxHp * T.enrageAt ? T.enrageMult : 1;
-
 // Target the living player with the most threat; switching needs a clear lead.
 function pickTarget(m) {
-  const living = players.filter(alive);
-  if (!living.length) return null;
+  const liv = players.filter(alive);
+  if (!liv.length) return null;
   let cur = m.target && alive(m.target) ? m.target : null;
-  if (!cur) cur = living.reduce((a, b) => Math.abs(a.x - m.x) <= Math.abs(b.x - m.x) ? a : b);
-  for (const p of living) {
+  if (!cur) cur = liv.reduce((a, b) => Math.abs(a.x - m.x) <= Math.abs(b.x - m.x) ? a : b);
+  for (const p of liv) {
     if (p !== cur && p.threat > cur.threat * T.aggroSwitch + 5) {
       cur = p;
-      floater('!', p.x, FLOOR - p.y - 175, '#e0555a', 26);
+      if (m.def.rank !== 'minion') floater('!', p.x, FLOOR - p.y - 175, '#e0555a', 26);
     }
   }
   return cur;
 }
 
 function startAttack(m, name, tgt) {
-  m.state = 'windup'; m.attack = name; m.t = 0; m.seq++; m.hitSet = new Set();
+  m.state = 'windup'; m.attack = name; m.t = 0; m.seq++; m.hitSet = new Set(); m.landed = false;
   if (name === 'dash') {
     const a = m.def.attacks.dash, dir = sign(tgt.x - m.x);
     m.facing = dir;
@@ -767,19 +1207,144 @@ function startAttack(m, name, tgt) {
   }
   if (name === 'lob') m.lobTarget = tgt;
 }
+// Hit every player the test accepts: test(p, rel) with rel = distance in front of the monster.
+function strike(m, a, height, test) {
+  for (const p of players) if (alive(p) && test(p, (p.x - m.x) * m.facing)) hurtPlayer(p, a.dmg * m.dmgMult, m.x, height, m);
+}
+const inFront = (m, a, rel, extra = 0) => rel > -20 && rel < a.range + extra;
+function cheatDay(m) {
+  const c = MONSTERS.snack.attacks.cheat;
+  floater('CHEAT DAY!', m.x, FLOOR - m.y - m.def.height - 24, '#e0555a', 16);
+  for (const o of monsters) if (o.hp > 0 && Math.abs(o.x - m.x) < c.radius) o.buffUntil = gt + c.dur;
+}
+
+const KITS = {
+  heavy: {   // Forge Golem, Oni Bro
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks, elevated = tgt.support > 0 && tgt.onGround;
+      if (m.cd <= 0 && elevated) startAttack(m, 'lob', tgt);
+      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, Math.random() < 0.5 ? 'slam' : 'sweep', tgt);
+      else if (m.cd <= 0 && dist > 280) startAttack(m, 'throw', tgt);
+      else if (dist > A.slam.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
+    },
+    fire(m, a, tgt) {
+      if (m.attack === 'slam') {
+        m.state = 'active'; doShake(1.3); sfx.slam();
+        strike(m, a, 'low', (p, rel) => inFront(m, a, rel) && p.y < 25);         // ground shockwave: jump it or crouch-block
+      } else if (m.attack === 'sweep') {
+        m.state = 'active';
+        strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50);        // head-height sweep: duck it
+      } else if (m.attack === 'throw') {
+        plates.push({ kind: 'roll', owner: m, dmg: a.dmg * m.dmgMult, x: m.x + m.facing * 60, y: 0, vx: m.facing * a.speed, hit: new Set(), spin: 0 });
+        m.state = 'recover';
+      } else if (m.attack === 'lob') {
+        const t = m.lobTarget && alive(m.lobTarget) ? m.lobTarget : tgt;
+        plates.push({ kind: 'lob', owner: m, dmg: a.dmg * m.dmgMult, radius: a.radius, x0: m.x + m.facing * 40, y0: 170, x1: t.x, y1: t.support, t: 0, dur: a.flight, x: m.x, y: 170, spin: 0 });
+        m.state = 'recover';
+      }
+    },
+  },
+  flyer: {   // Marathon Wraith
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks;
+      const wantY = tgt.onGround ? tgt.support : m.y;         // rise to the target's footing, don't chase jumps
+      m.y = lerp(m.y, wantY, Math.min(1, dt * 3));
+      if (m.cd <= 0 && dist < A.swipe.range + 15) startAttack(m, 'swipe', tgt);
+      else if (m.cd <= 0) startAttack(m, 'dash', tgt);
+      else if (dist > 260) m.x += m.facing * m.def.speed * ef * dt;
+      else if (dist < 180) m.x -= m.facing * m.def.speed * 0.8 * ef * dt;
+    },
+    windup(m, dt) { if (m.attack === 'dash') m.y = lerp(m.y, m.dashY, Math.min(1, dt * 6)); },
+    fire(m, a) {
+      if (m.attack === 'swipe') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && Math.abs(p.y - m.y) < a.band); }
+      else m.state = 'dash';
+    },
+    recover(m, dt, tgt) { if (!(tgt.support > 0)) m.y = lerp(m.y, 0, Math.min(1, dt * 2)); },
+  },
+  troll: {   // Bridge Troll
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks;
+      if (m.cd <= 0 && dist < A.grab.range + m.def.width / 2 - 20 && tgt.onGround && Math.random() < 0.4) startAttack(m, 'grab', tgt);
+      else if (m.cd <= 0 && dist < A.club.range + 10) startAttack(m, Math.random() < 0.5 ? 'club' : 'smash', tgt);
+      else if (dist > A.grab.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
+    },
+    fire(m, a) {
+      if (m.attack === 'club') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50); }
+      else if (m.attack === 'smash') { m.state = 'active'; doShake(1.1); sfx.slam(); strike(m, a, 'low', (p, rel) => inFront(m, a, rel) && p.y < 25); }
+      else {
+        m.state = 'recover';
+        const p = grabTarget(m, a);
+        if (p && hurtPlayer(p, a.dmg * m.dmgMult, m.x, 'grab', m) === 'hit' && alive(p)) {   // grab and throw across the arena
+          sfx.grab(); floater('THROWN!', p.x, FLOOR - p.y - 150, '#e0555a', 20);
+          p.kx = m.facing * a.throwPx * 3; p.vy = 560; p.onGround = false; p.state = 'hurt'; p.t = -0.3;
+        }
+      }
+    },
+  },
+  snack: {   // Snack Attacker
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks;
+      m.cheatT -= dt;
+      if (m.cheatT <= 0) { m.cheatT = rand(A.cheat.every * 0.7, A.cheat.every * 1.3); cheatDay(m); }
+      if (m.cd <= 0 && dist < A.bite.range + m.def.width / 2 + 8) startAttack(m, 'bite', tgt);
+      else if (m.cd <= 0 && dist > 220 && Math.random() < dt * 1.2) startAttack(m, 'crumbs', tgt);
+      else if (dist > A.bite.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
+    },
+    fire(m, a) {
+      if (m.attack === 'bite') { m.state = 'active'; strike(m, a, 'mid', (p, rel) => rel > -12 && rel < a.range + m.def.width / 2 && p.y < 40); }
+      else { plates.push({ kind: 'crumb', owner: m, dmg: a.dmg * m.dmgMult, x: m.x + m.facing * 18, y: 64, vx: m.facing * a.speed, spin: 0 }); m.state = 'recover'; }
+    },
+  },
+  couch: {   // Couch Potato
+    walk(m, dt, tgt, dist, ef) {
+      const a = m.def.attacks.grab;
+      if (m.cd <= 0 && dist < a.range + m.def.width / 2 - 6 && tgt.onGround) startAttack(m, 'grab', tgt);
+      else if (dist > a.range * 0.8 + m.def.width / 2) m.x += m.facing * m.def.speed * ef * dt;
+    },
+    fire(m, a) {
+      const p = grabTarget(m, a);
+      if (p && hurtPlayer(p, a.dmg * m.dmgMult, m.x, 'grab', m) === 'hit' && alive(p)) {
+        m.state = 'hold'; m.t = 0; m.holding = p; p.grab = { m, mash: 0 }; p.state = 'grabbed'; p.crouch = false;
+        sfx.grab(); buzz([30, 30, 30]);
+        floater('GRABBED! Mash to break free', p.x, FLOOR - p.y - 160, '#b48cff', 16);
+      } else m.state = 'recover';
+    },
+  },
+  snooze: {   // Snooze Imp
+    walk(m, dt, tgt, dist, ef) {
+      const a = m.def.attacks.ring;
+      m.y = lerp(m.y, m.def.hover + Math.sin(m.bob * 2) * 12, Math.min(1, dt * 2));
+      if (m.cd <= 0 && dist < a.radius * 0.8) startAttack(m, 'ring', tgt);
+      else if (dist > 90) m.x += m.facing * m.def.speed * ef * dt;
+      else if (dist < 40) m.x -= m.facing * m.def.speed * 0.6 * ef * dt;
+    },
+    windup(m, dt) { m.y = lerp(m.y, m.def.hover, Math.min(1, dt * 3)); },
+    fire(m, a) {
+      m.state = 'active'; sfx.alarm();
+      const cy = FLOOR - m.y - 20;
+      ring(m.x, cy, a.radius, '#b48cff', 0.4);
+      for (const p of players) {
+        if (!alive(p) || Math.hypot(p.x - m.x, (FLOOR - p.y - 60) - cy) > a.radius) continue;
+        if (hurtPlayer(p, a.dmg * m.dmgMult, m.x, 'ring', m) === 'hit' && alive(p) && !p.grab) {
+          p.state = 'sleep'; p.sleepUntil = gt + a.sleep; p.crouch = false;
+          floater('Zzz…', p.x, FLOOR - p.y - 150, '#b48cff', 20);
+        }
+      }
+    },
+    recover(m, dt) { m.y = lerp(m.y, m.def.dip, Math.min(1, dt * 2.5)); },   // dips low after ringing: punish it
+  },
+};
 
 function updateMonster(m, dt) {
   m.flash = Math.max(0, m.flash - dt);
   m.bob += dt;
   m.t += dt;
-  const newTarget = pickTarget(m);
-  if (!newTarget) return;
-  if (newTarget !== m.target) m.target = newTarget;
-  const tgt = m.target;
-  tgt.aggroTime += dt;
-  const ef = enrage(m), A = m.def.attacks;
+  if (m.hp <= 0) return;
+  const tgt = m.target = pickTarget(m);
+  if (!tgt) return;
+  tgt.aggroTime += dt / Math.max(1, living().length);   // time as the target, shared across the pack
+  const ef = speedMult(m), A = m.def.attacks, K = KITS[m.def.kit];
   const dist = Math.abs(tgt.x - m.x);
-  const elevated = tgt.support > 0 && tgt.onGround;
 
   // Launched by a big hit: fly, land, stagger. No attacks until it recovers.
   if (m.state === 'launched') {
@@ -787,7 +1352,7 @@ function updateMonster(m, dt) {
     m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
     if (m.y <= 0 && m.vy < 0) {
       m.y = 0; m.vy = 0; m.state = 'stagger'; m.t = 0;
-      doShake(0.6); sfx.slam(); chalkPuff(m.x, FLOOR - 6, J.particleCount * 2);
+      doShake(m.def.rank === 'minion' ? 0.3 : 0.6); sfx.slam(); chalkPuff(m.x, FLOOR - 6, J.particleCount * 2);
     }
     return;
   }
@@ -795,58 +1360,27 @@ function updateMonster(m, dt) {
     if (m.t >= T.staggerMs / 1000) { m.state = 'walk'; m.t = 0; m.cd = 0.6; }
     return;
   }
+  if (m.state === 'taunt') {                                  // Oni Bro flexing after a hit lands: free hits
+    if (m.t >= m.tauntT) { m.state = 'walk'; m.t = 0; m.cd = 0.3; }
+    return;
+  }
+  if (m.state === 'hold') {                                   // Couch Potato holding someone: drain stamina
+    const p = m.holding, a = A.grab;
+    if (!p || !alive(p) || !p.grab) { release(m); return; }
+    p.x = m.x + m.facing * (m.def.width / 2 + 4); p.y = 0; p.vy = 0;
+    p.st = Math.max(0, p.st - a.drain * dt);
+    if (m.t >= a.hold) release(m);
+    return;
+  }
 
   if (m.state === 'walk') {
     m.facing = sign(tgt.x - m.x);
     m.cd -= dt;
-    if (m.key === 'golem') {
-      if (m.cd <= 0 && elevated) startAttack(m, 'lob', tgt);
-      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, Math.random() < 0.5 ? 'slam' : 'sweep', tgt);
-      else if (m.cd <= 0 && dist > 280) startAttack(m, 'throw', tgt);
-      else if (dist > A.slam.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
-    } else {
-      const wantY = tgt.onGround ? tgt.support : m.y;         // rise to the target's footing, don't chase jumps
-      m.y = lerp(m.y, wantY, Math.min(1, dt * 3));
-      if (m.cd <= 0 && dist < A.swipe.range + 15) startAttack(m, 'swipe', tgt);
-      else if (m.cd <= 0) startAttack(m, 'dash', tgt);
-      else if (dist > 260) m.x += m.facing * m.def.speed * ef * dt;
-      else if (dist < 180) m.x -= m.facing * m.def.speed * 0.8 * ef * dt;
-    }
+    K.walk(m, dt, tgt, dist, ef);
   } else if (m.state === 'windup') {
     const a = A[m.attack];
-    if (m.key === 'wraith' && m.attack === 'dash') m.y = lerp(m.y, m.dashY, Math.min(1, dt * 6));
-    if (m.t >= a.windup / 1000 / ef) {
-      m.t = 0;
-      if (m.attack === 'slam') {
-        m.state = 'active';
-        doShake(1.3); sfx.slam();
-        for (const p of players) {
-          const rel = (p.x - m.x) * m.facing;
-          if (rel > -20 && rel < a.range && p.y < 25) hurtPlayer(p, a.dmg, m.x, 'low');   // ground shockwave: jump it or crouch-block
-        }
-      } else if (m.attack === 'sweep') {
-        m.state = 'active';
-        for (const p of players) {
-          const rel = (p.x - m.x) * m.facing;
-          if (rel > -20 && rel < a.range && p.y < 50) hurtPlayer(p, a.dmg, m.x, 'high');  // head-height arm sweep: duck it
-        }
-      } else if (m.attack === 'swipe') {
-        m.state = 'active';
-        for (const p of players) {
-          const rel = (p.x - m.x) * m.facing;
-          if (rel > -20 && rel < a.range && Math.abs(p.y - m.y) < a.band) hurtPlayer(p, a.dmg, m.x, 'high');
-        }
-      } else if (m.attack === 'throw') {
-        plates.push({ kind: 'roll', x: m.x + m.facing * 60, y: 0, vx: m.facing * a.speed, hit: new Set(), spin: 0 });
-        m.state = 'recover';
-      } else if (m.attack === 'lob') {
-        const t = m.lobTarget && alive(m.lobTarget) ? m.lobTarget : tgt;
-        plates.push({ kind: 'lob', x0: m.x + m.facing * 40, y0: 170, x1: t.x, y1: t.support, t: 0, dur: a.flight, x: m.x, y: 170, spin: 0 });
-        m.state = 'recover';
-      } else if (m.attack === 'dash') {
-        m.state = 'dash';
-      }
-    }
+    if (K.windup) K.windup(m, dt, tgt);
+    if (m.t >= a.windup / 1000 / ef) { m.t = 0; K.fire(m, a, tgt); }
   } else if (m.state === 'active') {
     if (m.t >= A[m.attack].active / 1000) { m.state = 'recover'; m.t = 0; }
   } else if (m.state === 'dash') {
@@ -854,29 +1388,65 @@ function updateMonster(m, dt) {
     m.trail.push({ x: m.x, y: m.y, t: gt });
     m.x += dir * a.speed * dt;
     for (const p of players) {
-      if (!m.hitSet.has(p) && Math.abs(p.x - m.x) < 40 && Math.abs(p.y - m.dashY) < a.band) { m.hitSet.add(p); hurtPlayer(p, a.dmg, m.x - dir * 50, 'mid'); }
+      if (!m.hitSet.has(p) && Math.abs(p.x - m.x) < 40 && Math.abs(p.y - m.dashY) < a.band) { m.hitSet.add(p); hurtPlayer(p, a.dmg * m.dmgMult, m.x - dir * 50, 'mid', m); }
     }
     if (sign(m.dashTo - m.x) !== dir) { m.x = m.dashTo; m.state = 'recover'; m.t = 0; }
   } else if (m.state === 'recover') {
-    if (m.key === 'wraith' && !(tgt.support > 0)) m.y = lerp(m.y, 0, Math.min(1, dt * 2));
-    if (m.t >= A[m.attack].recover / 1000 / ef) { m.state = 'walk'; m.t = 0; m.cd = rand(0.4, 1.2) / ef; }
+    if (K.recover) K.recover(m, dt, tgt);
+    if (m.t >= A[m.attack].recover / 1000 / ef) {
+      if (m.landed && m.def.flexAfterHit) {
+        m.state = 'taunt'; m.tauntT = m.def.flexAfterHit; m.t = 0; m.landed = false;
+        floater('FLEX!', m.x, FLOOR - m.y - m.def.height - 20, m.def.color, 22);
+      } else { m.state = 'walk'; m.t = 0; m.cd = rand(0.4, 1.2) / ef; }
+    }
   }
   m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
   m.trail = m.trail.filter(tr => gt - tr.t < 0.18);
 }
 
+// Keep a pack from stacking on one spot.
+function separate(dt) {
+  const live = monsters.filter(m => m.hp > 0 && m.state !== 'launched' && m.state !== 'hold');
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+    const a = live[i], b = live[j];
+    if (!!a.def.flies !== !!b.def.flies) continue;
+    const min = (a.def.width + b.def.width) * 0.38, dx = b.x - a.x;
+    if (Math.abs(dx) >= min) continue;
+    const push = (min - Math.abs(dx)) * 0.5 * Math.min(1, dt * 8), s = dx === 0 ? (i % 2 ? 1 : -1) : sign(dx);
+    a.x = clamp(a.x - s * push, LEFT + a.def.width / 2, RIGHT - a.def.width / 2);
+    b.x = clamp(b.x + s * push, LEFT + b.def.width / 2, RIGHT - b.def.width / 2);
+  }
+}
+
+// Swarm Waves: when a wave is cleared, the next one pours in after a short gap.
+function updateWaves(dt) {
+  monsters = monsters.filter(m => !m.gone);
+  if (monsters.some(m => m.hp > 0) || waveIdx >= level.waves.length - 1) return;
+  if (waveGap === null) {
+    waveGap = T.waveGapMs / 1000;
+    floater(`WAVE ${waveIdx + 2} / ${level.waves.length}`, W / 2, 150, '#ff7a1a', 34);
+  }
+  waveGap -= dt;
+  if (waveGap <= 0) { waveGap = null; waveIdx++; spawnWave(); }
+}
+
 function updatePlates(dt) {
-  const G = MONSTERS.golem.attacks;
   for (const pl of plates) {
     if (pl.kind === 'roll') {
       pl.x += pl.vx * dt; pl.spin += pl.vx * dt / 18;
       for (const p of players) {
         if (!pl.hit.has(p) && Math.abs(p.x - pl.x) < 26 && p.y < 35) {
           pl.hit.add(p);
-          if (hurtPlayer(p, G.throw.dmg, pl.x - pl.vx * 0.1, 'low') === 'blocked') pl.dead = true;
+          if (hurtPlayer(p, pl.dmg, pl.x - pl.vx * 0.1, 'low', pl.owner) === 'blocked') pl.dead = true;
         }
       }
       if (pl.x < -40 || pl.x > W + 40) pl.dead = true;
+    } else if (pl.kind === 'crumb') {
+      pl.x += pl.vx * dt; pl.spin += dt * 14;
+      for (const p of players) {
+        if (alive(p) && Math.abs(p.x - pl.x) < 16 && pl.y > p.y - 4 && pl.y < p.y + 105) { pl.dead = true; hurtPlayer(p, pl.dmg, pl.x - pl.vx * 0.1, 'mid', pl.owner); break; }
+      }
+      if (pl.x < -20 || pl.x > W + 20) pl.dead = true;
     } else {
       pl.t += dt;
       const u = Math.min(1, pl.t / pl.dur);
@@ -887,7 +1457,7 @@ function updatePlates(dt) {
         pl.dead = true;
         doShake(0.85); sfx.slam();
         for (const p of players) {
-          if (Math.abs(p.x - pl.x1) < G.lob.radius && Math.abs(p.y - pl.y1) < 40) hurtPlayer(p, G.lob.dmg, pl.x0, 'mid');
+          if (Math.abs(p.x - pl.x1) < pl.radius && Math.abs(p.y - pl.y1) < 40) hurtPlayer(p, pl.dmg, pl.x0, 'mid', pl.owner);
         }
       }
     }
@@ -895,11 +1465,23 @@ function updatePlates(dt) {
   plates = plates.filter(pl => !pl.dead);
 }
 
+// Player plates (gauntlet special) roll along the floor and hit the first grounded monster.
+function updateShots(dt) {
+  for (const s of shots) {
+    s.x += s.vx * dt; s.spin += s.vx * dt / 18;
+    const m = monsters.find(o => o.hp > 0 && o.y < 40 && Math.abs(s.x - o.x) < o.def.width / 2);
+    if (m) { s.dead = true; hitMonster(s.p, m, T.specialMult, 'mid', { x: s.x, y: FLOOR - 24 }); }
+    if (s.x < -40 || s.x > W + 40) s.dead = true;
+  }
+  shots = shots.filter(s => !s.dead);
+}
+
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
 function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]); ctx.stroke(); }
+function disc(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
 
 function drawPlatforms() {
   for (const pl of PLATFORMS) {
@@ -912,19 +1494,20 @@ function drawPlatforms() {
 }
 
 function drawStick(p) {
-  const s = p.stats;
+  const s = p.stats, k = 1 + T.heightPerLevel * (p.level - 1);   // taller with level: visual only
   ctx.save();
   ctx.translate(p.x, FLOOR - p.y);
   if (!alive(p)) { ctx.translate(0, -8); ctx.rotate(-p.facing * Math.PI / 2); ctx.globalAlpha = 0.45; }
-  ctx.scale(p.facing, 1);
+  else if (p.state === 'sleep') { ctx.rotate(-p.facing * 0.35); }
+  ctx.scale(p.facing * k, k);
   if (p.state === 'dodge') ctx.globalAlpha = gt < p.iUntil ? 0.3 : 0.7;
   else if (alive(p) && (gt < p.iUntil || (J.on.grace && gt < p.graceUntil))) ctx.globalAlpha = 0.6 + 0.3 * Math.sin(gt * 30);
   const col = p.flash > 0 ? '#fff' : p.color;
   ctx.strokeStyle = col; ctx.fillStyle = col;
-  ctx.lineWidth = 3 + s.STR * 0.14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = (3 + s.STR * 0.14) / k; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const crouchPose = p.crouch && p.onGround && alive(p);
-  const crouch = p.state === 'dodge' ? 24 : crouchPose ? 30 : p.state === 'block' ? 8 : 0;
-  const lean = p.state === 'hurt' ? -12 : p.state === 'attack' ? (p.move === 'kick' ? -6 : 8) : p.state === 'dodge' ? 16 : 0;
+  const crouch = p.state === 'dodge' ? 24 : crouchPose ? 30 : p.state === 'block' ? 8 : p.state === 'sleep' ? 14 : 0;
+  const lean = p.state === 'hurt' || p.state === 'grabbed' ? -12 : p.state === 'attack' ? (p.move === 'kick' ? -6 : 8) : p.state === 'dodge' ? 16 : 0;
   const hipY = -50 + crouch, neckY = -98 + crouch * 1.4, headY = neckY - 17;
   const aProg = p.state === 'attack' ? p.t / moveDur(p) : 0;
   const ext = aProg < 0.45 ? aProg / 0.45 : 1 - (aProg - 0.45) / 0.55 * 0.7;   // limb extension through a strike
@@ -943,46 +1526,58 @@ function drawStick(p) {
     poly([[-8, -6], [-10, hipY + 22], [0, hipY]]);                                  // tucked legs in the air
     poly([[10, -12], [8, hipY + 20], [0, hipY]]);
   } else {
-    const sw = p.state === 'walk' ? Math.sin(p.walkPh) * 15 : 0;
+    const sw = p.state === 'walk' ? Math.sin(p.walkPh) * 15 : p.state === 'grabbed' ? Math.sin(gt * 30) * 6 : 0;
     poly([[-9 + sw, 0], [-3 + sw * 0.4, hipY + 24], [0, hipY]]);
     poly([[9 - sw, 0], [5 - sw * 0.4, hipY + 24], [0, hipY]]);
   }
   line(0, hipY, lean, neckY);
   ctx.beginPath(); ctx.arc(lean, headY, 11, 0, Math.PI * 2); ctx.fill();
+  if (p.i === 0 && looksOn('headband')) {                                           // Red Sweatband
+    ctx.strokeStyle = '#e0555a'; ctx.lineWidth = 4 / k;
+    line(lean - 11, headY - 3, lean + 11, headY - 3); poly([[lean - 10, headY - 3], [lean - 20, headY + 2], [lean - 26, headY - 1]]);
+    ctx.strokeStyle = col; ctx.lineWidth = (3 + s.STR * 0.14) / k;
+  }
   const sx = lean, sy = neckY + 6;
+  let fh;                                                                           // front hand, where gear is held
   if (p.state === 'attack' && p.move === 'kick') {
     poly([[sx, sy], [sx - 14, sy + 4], [sx - 26, sy - 4]]);                         // arms flung back for balance
-    poly([[sx, sy], [sx + 8, sy - 12], [sx + 16, sy - 20]]);
+    poly([[sx, sy], [sx + 8, sy - 12], fh = [sx + 16, sy - 20]]);
   } else if (p.state === 'attack' && p.move === 'low') {
     poly([[sx, sy], [sx - 10, sy + 14], [sx - 16, sy + 26]]);                       // hand down to the floor
-    poly([[sx, sy], [sx + 14, sy + 6], [sx + 24, sy + 2]]);
+    poly([[sx, sy], [sx + 14, sy + 6], fh = [sx + 24, sy + 2]]);
   } else if (p.state === 'attack') {
-    poly([[sx, sy], [sx + 12 + ext * 18, sy + 8 - ext * 6], [sx + 14 + ext * 36, sy + 2 - ext * 4]]);
+    poly([[sx, sy], [sx + 12 + ext * 18, sy + 8 - ext * 6], fh = [sx + 14 + ext * 36, sy + 2 - ext * 4]]);
     poly([[sx, sy], [sx - 12, sy + 18], [sx - 4, sy + 30]]);
   } else if (p.state === 'special') {
     const a = p.t / (T.specialMs / 1000) * Math.PI * 4;
-    line(sx, sy, sx + Math.cos(a) * 42, sy + Math.sin(a) * 10);
+    line(sx, sy, ...(fh = [sx + Math.cos(a) * 42, sy + Math.sin(a) * 10]));
     line(sx, sy, sx - Math.cos(a) * 42, sy - Math.sin(a) * 10);
-    ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.ellipse(sx, sy, T.specialRange * 0.8, 16, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    if (!p.w.plateSpecial && !p.w.slamSpecial) { ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.ellipse(sx, sy, T.specialRange * 0.8, 16, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
   } else if (p.state === 'flex') {
-    poly([[sx, sy], [sx + 22, sy - 2], [sx + 20, sy - 26]]);                        // double biceps
+    poly([[sx, sy], [sx + 22, sy - 2], fh = [sx + 20, sy - 26]]);                   // double biceps
     poly([[sx, sy], [sx - 22, sy - 2], [sx - 20, sy - 26]]);
     ctx.beginPath(); ctx.arc(sx + 18, sy - 6, 6 + s.STR * 0.1, 0, Math.PI * 2); ctx.arc(sx - 18, sy - 6, 6 + s.STR * 0.1, 0, Math.PI * 2); ctx.fill();
   } else if (p.state === 'block') {
-    poly([[sx, sy], [sx + 16, sy + 14], [sx + 22, sy - 10]]);
+    poly([[sx, sy], [sx + 16, sy + 14], fh = [sx + 22, sy - 10]]);
     poly([[sx, sy], [sx + 12, sy + 18], [sx + 20, sy - 4]]);
-  } else if (p.state === 'hurt') {
-    poly([[sx, sy], [sx - 16, sy - 8], [sx - 26, sy - 18]]);
-    poly([[sx, sy], [sx - 10, sy + 14], [sx - 22, sy + 8]]);
+  } else if (p.state === 'hurt' || p.state === 'grabbed') {
+    const w = p.state === 'grabbed' ? Math.sin(gt * 30) * 8 : 0;
+    poly([[sx, sy], [sx - 16, sy - 8 + w], fh = [sx - 26, sy - 18 + w]]);
+    poly([[sx, sy], [sx - 10, sy + 14 - w], [sx - 22, sy + 8 - w]]);
+  } else if (p.state === 'sleep') {
+    poly([[sx, sy], [sx + 8, sy + 20], fh = [sx + 4, sy + 34]]);                    // arms hanging
+    poly([[sx, sy], [sx - 6, sy + 20], [sx - 2, sy + 34]]);
   } else if (!p.onGround) {
-    poly([[sx, sy], [sx + 14, sy - 10], [sx + 22, sy - 24]]);
+    poly([[sx, sy], [sx + 14, sy - 10], fh = [sx + 22, sy - 24]]);
     poly([[sx, sy], [sx - 14, sy - 6], [sx - 20, sy - 20]]);
   } else {
     const bob = Math.sin(gt * 3 + p.i) * 2;
-    poly([[sx, sy], [sx + 12, sy + 18 + bob], [sx + 20, sy + 6 + bob]]);
+    poly([[sx, sy], [sx + 12, sy + 18 + bob], fh = [sx + 20, sy + 6 + bob]]);
     poly([[sx, sy], [sx - 8, sy + 20 + bob], [sx + 2, sy + 34 + bob]]);
   }
+  if (alive(p)) drawGear(p, fh, k);
   ctx.restore();
+  const top = FLOOR - p.y - 150 * k;
 
   // Revive progress ring over a downed player
   if (!alive(p) && players.length > 1) {
@@ -993,65 +1588,142 @@ function drawStick(p) {
     ctx.beginPath(); ctx.arc(cx, cy, 18, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
     ctx.fillStyle = '#7ee08a'; ctx.font = '700 11px system-ui'; ctx.textAlign = 'center'; ctx.fillText('+', cx, cy + 4);
   }
-  // Aggro marker: who the monster is after
-  if (alive(p) && monster && monster.target === p && players.length > 1) {
-    const y = FLOOR - p.y - 150 + Math.sin(gt * 6) * 3;
+  // Status: asleep, or grabbed (mash meter)
+  if (alive(p) && p.state === 'sleep') {
+    ctx.fillStyle = '#b48cff'; ctx.font = '800 18px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('z Z z', p.x + 14, top + 20 + Math.sin(gt * 4) * 4);
+  }
+  if (alive(p) && p.grab) {
+    const need = p.grab.m.def.attacks.grab.escape;
+    bar(p.x - 30, top + 10, 60, 7, p.grab.mash / need, '#b48cff');
+    ctx.fillStyle = '#b48cff'; ctx.font = '800 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('MASH!', p.x, top + 4);
+  }
+  // Aggro marker: who the monsters are after
+  if (alive(p) && players.length > 1 && monsters.some(m => m.hp > 0 && m.target === p)) {
+    const y = top + Math.sin(gt * 6) * 3;
     ctx.fillStyle = '#e0555a';
     ctx.beginPath(); ctx.moveTo(p.x - 9, y - 10); ctx.lineTo(p.x + 9, y - 10); ctx.lineTo(p.x, y); ctx.closePath(); ctx.fill();
   }
 }
 
-function drawTelegraph(m) {
-  ctx.save();
-  if (m.state === 'windup') {
-    const a = m.def.attacks[m.attack];
-    const prog = clamp(m.t / (a.windup / 1000 / enrage(m)), 0, 1);
-    ctx.fillStyle = `rgba(224,85,90,${0.12 + prog * 0.35})`;
-    if (m.attack === 'slam' || m.attack === 'swipe' || m.attack === 'sweep') {
-      const x1 = m.x - m.facing * 20, x2 = m.x + m.facing * a.range;
-      const baseY = m.attack === 'swipe' ? m.y : 0;
-      const bandUp = a.height === 'high' ? 104 : 0;                                 // high attacks show at head height
-      ctx.fillRect(Math.min(x1, x2), FLOOR - baseY - bandUp - 6, Math.abs(x2 - x1), 14);
-    } else if (m.attack === 'dash') {
-      ctx.fillRect(Math.min(m.x, m.dashTo), FLOOR - m.dashY - 6, Math.abs(m.dashTo - m.x), 14);
-    } else if (m.attack === 'throw') {
-      ctx.fillRect(m.facing > 0 ? m.x : 0, FLOOR - 6, m.facing > 0 ? W - m.x : m.x, 6);
+// Gear in the front hand, drawn in the fighter's local (facing-flipped, level-scaled) space.
+function drawGear(p, [hx, hy], k) {
+  const key = p.weaponKey;
+  if (key === 'fists') return;
+  ctx.save(); ctx.lineCap = 'round';
+  const swing = p.state === 'attack' ? clamp(p.t / moveDur(p), 0, 1) : -1;
+  if (key === 'staff') {                                 // a barbell held like a bo staff, level when striking
+    const a = swing >= 0 || p.state === 'block' ? 0 : -1.15;
+    const x1 = hx - Math.cos(a) * 26, y1 = hy - Math.sin(a) * 26, x2 = hx + Math.cos(a) * 66, y2 = hy + Math.sin(a) * 66;
+    ctx.strokeStyle = '#c9ccd2'; ctx.lineWidth = 3 / k; line(x1, y1, x2, y2);
+    disc(x1, y1, 6, '#ff7a1a'); disc(x2, y2, 6, '#ff7a1a');
+  } else if (key === 'flail') {                          // kettlebell on a chain: hangs at rest, whips over on a swing
+    const a = swing >= 0 ? -2.1 + swing * 3.1 : p.state === 'special' ? p.t * 18 : 1.35;
+    const bx = hx + Math.cos(a) * 34, by = hy + Math.sin(a) * 34;
+    ctx.strokeStyle = '#9a9ca0'; ctx.lineWidth = 2 / k; ctx.setLineDash([3, 3]); line(hx, hy, bx, by); ctx.setLineDash([]);
+    disc(bx, by + 3, 11, '#50555d');
+    ctx.strokeStyle = '#50555d'; ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(bx, by - 8, 5, Math.PI, 0); ctx.stroke();
+  } else if (key === 'kanabo') {                         // studded club: over the shoulder at rest, down on a swing
+    const a = swing >= 0 ? -1.9 + swing * 2.4 : p.state === 'special' ? -1.9 + Math.min(1, p.t / (T.specialMs / 2000)) * 3.4 : -2.2;
+    const bx = hx + Math.cos(a) * 58, by = hy + Math.sin(a) * 58;
+    ctx.strokeStyle = '#3a2f2a'; ctx.lineWidth = 9 / k; line(hx, hy, bx, by);
+    ctx.fillStyle = '#c9ccd2';
+    for (let s = 0.45; s <= 1; s += 0.18) disc(hx + Math.cos(a) * 58 * s + Math.cos(a + 1.57) * 5, hy + Math.sin(a) * 58 * s + Math.sin(a + 1.57) * 5, 2, '#c9ccd2');
+  } else if (key === 'shield') {                         // a bumper plate on the forearm; green ring = parry window open
+    disc(hx + 4, hy, 17, '#b8bcc4'); disc(hx + 4, hy, 5, '#50555d');
+    if (p.state === 'block' && gt - p.blockStart <= E.parryMs / 1000) {
+      ctx.strokeStyle = '#7ee08a'; ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(hx + 4, hy, 22, 0, Math.PI * 2); ctx.stroke();
     }
-    ctx.fillStyle = '#e0555a'; ctx.font = '800 30px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('!', m.x, FLOOR - m.y - m.def.height - 30 - prog * 6);
-    const tag = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block' }[a.height];
-    if (tag) { ctx.font = '800 13px system-ui'; ctx.fillText(tag, m.x, FLOOR - m.y - m.def.height - 64 - prog * 6); }
-  }
-  // Landing markers for lobbed plates
-  for (const pl of plates) {
-    if (pl.kind !== 'lob') continue;
-    const u = pl.t / pl.dur;
-    ctx.fillStyle = `rgba(224,85,90,${0.2 + u * 0.4})`;
-    ctx.beginPath(); ctx.ellipse(pl.x1, FLOOR - pl.y1, MONSTERS.golem.attacks.lob.radius, 7, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (key === 'gauntlets') {                      // iron fists
+    disc(hx, hy, 8, '#8e939c'); disc(hx, hy, 3, '#50555d');
   }
   ctx.restore();
 }
 
-function drawGolem(m) {
-  const d = m.def, prog = m.state === 'windup' ? clamp(m.t / (d.attacks[m.attack].windup / 1000 / enrage(m)), 0, 1) : 0;
+const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge' };
+const BAND_UP = { high: 104, low: 0, mid: 40, grab: 46 };
+function drawTelegraph(m) {
+  if (m.state !== 'windup' || m.hp <= 0) return;
+  const a = m.def.attacks[m.attack], small = m.def.rank === 'minion';
+  const prog = clamp(m.t / (a.windup / 1000 / speedMult(m)), 0, 1);
+  const unblock = a.height === 'grab' || a.height === 'ring';
   ctx.save();
-  ctx.translate(m.x, FLOOR - m.y);
-  if (m.state === 'launched') ctx.rotate(-sign(m.vx) * Math.min(0.5, m.t * 1.2));    // tumble while airborne
+  ctx.fillStyle = unblock ? `rgba(180,140,255,${0.14 + prog * 0.4})` : `rgba(224,85,90,${0.12 + prog * 0.35})`;
+  if (m.attack === 'dash') {
+    ctx.fillRect(Math.min(m.x, m.dashTo), FLOOR - m.dashY - 6, Math.abs(m.dashTo - m.x), 14);
+  } else if (m.attack === 'throw') {
+    ctx.fillRect(m.facing > 0 ? m.x : 0, FLOOR - 6, m.facing > 0 ? W - m.x : m.x, 6);
+  } else if (m.attack === 'crumbs') {
+    ctx.fillRect(m.facing > 0 ? m.x : m.x - 260, FLOOR - 66, 260, 4);
+  } else if (a.radius && m.attack === 'ring') {
+    ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 3 + prog * 3;
+    ctx.beginPath(); ctx.arc(m.x, FLOOR - m.y - 20, a.radius * (0.35 + 0.65 * prog), 0, Math.PI * 2); ctx.stroke();
+  } else if (a.range) {
+    const reach = a.range + (small ? m.def.width / 2 : 0);
+    const x1 = m.x - m.facing * 20, x2 = m.x + m.facing * reach;
+    const baseY = m.def.flies ? m.y : 0;
+    ctx.fillRect(Math.min(x1, x2), FLOOR - baseY - BAND_UP[a.height] - 6, Math.abs(x2 - x1), small ? 8 : 14);
+  }
+  ctx.fillStyle = unblock ? '#b48cff' : '#e0555a'; ctx.textAlign = 'center';
+  const topY = FLOOR - m.y - m.def.height - (m.def.flies ? 30 : 0);
+  ctx.font = `800 ${small ? 20 : 30}px system-ui`;
+  ctx.fillText('!', m.x, topY - (small ? 14 : 30) - prog * 6);
+  const tag = TAGS[a.height];
+  if (tag && (!small || unblock)) { ctx.font = `800 ${small ? 11 : 13}px system-ui`; ctx.fillText(tag, m.x, topY - (small ? 36 : 64) - prog * 6); }
+  ctx.restore();
+}
+function drawLobMarkers() {
+  for (const pl of plates) {
+    if (pl.kind !== 'lob') continue;
+    const u = pl.t / pl.dur;
+    ctx.fillStyle = `rgba(224,85,90,${0.2 + u * 0.4})`;
+    ctx.beginPath(); ctx.ellipse(pl.x1, FLOOR - pl.y1, pl.radius, 7, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// Monster transform: position, launch tumble, stagger wobble, facing. Returns the body color.
+function monsterFrame(m, lift = 0) {
+  ctx.translate(m.x, FLOOR - m.y - lift);
+  if (m.state === 'launched') ctx.rotate(-sign(m.vx) * Math.min(m.def.rank === 'minion' ? 6 : 0.5, m.t * (m.def.rank === 'minion' ? 10 : 1.2)));
   else if (m.state === 'stagger') ctx.rotate(Math.sin(m.t * 25) * 0.04);
   ctx.scale(m.facing, 1);
-  const col = m.flash > 0 ? '#fff' : d.color, dark = '#50555d';
+  return m.flash > 0 ? '#fff' : m.def.color;
+}
+const windupProg = m => m.state === 'windup' ? clamp(m.t / (m.def.attacks[m.attack].windup / 1000 / speedMult(m)), 0, 1) : 0;
+
+// Forge Golem and Oni Bro share the heavy kit's poses; the body differs.
+function drawHeavy(m) {
+  const d = m.def, prog = windupProg(m), oni = m.key === 'oni';
+  ctx.save();
+  const col = monsterFrame(m), dark = oni ? '#7a2414' : '#50555d';
   ctx.fillStyle = dark;
-  ctx.fillRect(-38, -46, 26, 46); ctx.fillRect(12, -46, 26, 46);
-  [[-62, 60, 20], [-96, 66, 22], [-130, 60, 20]].forEach(([y, rx, ry]) => {           // stacked plates for a body
-    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(0, y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
-  });
-  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, -172, 26, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = enrage(m) > 1 ? '#ff3b3b' : '#e0555a';
-  ctx.fillRect(4, -178, 16, 5);
+  ctx.fillRect(-38, -46, 26, 46); ctx.fillRect(12, -46, 26, 46);                   // legs
+  if (oni) {
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(-50, -48); ctx.lineTo(50, -48); ctx.lineTo(62, -150); ctx.lineTo(-62, -150); ctx.closePath(); ctx.fill();   // torso
+    ctx.fillStyle = '#1b1e22'; ctx.fillRect(-52, -78, 104, 20);                      // lifting belt
+    ctx.fillStyle = '#e8c547'; ctx.fillRect(-10, -76, 20, 16);
+    ctx.fillStyle = '#f0e0c0'; ctx.fillRect(-52, -52, 104, 8);                       // tiger-stripe shorts band
+    disc(0, -176, 27, col);                                                           // head
+    ctx.fillStyle = '#f0e0c0';
+    ctx.beginPath(); ctx.moveTo(-18, -196); ctx.lineTo(-26, -226); ctx.lineTo(-6, -200); ctx.fill();   // horns
+    ctx.beginPath(); ctx.moveTo(10, -200); ctx.lineTo(18, -228); ctx.lineTo(22, -196); ctx.fill();
+    ctx.fillStyle = '#1b1e22'; ctx.fillRect(-4, -210, 30, 8);                        // hair
+    ctx.fillStyle = isEnraged(m) ? '#ffe14a' : '#fff'; ctx.fillRect(6, -182, 14, 5);  // eye
+    ctx.strokeStyle = '#1b1e22'; ctx.lineWidth = 3; line(2, -190, 22, -186);          // brow
+  } else {
+    [[-62, 60, 20], [-96, 66, 22], [-130, 60, 20]].forEach(([y, rx, ry]) => {          // stacked plates for a body
+      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(0, y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+    });
+    disc(0, -172, 26, col);
+    ctx.fillStyle = isEnraged(m) ? '#ff3b3b' : '#e0555a';
+    ctx.fillRect(4, -178, 16, 5);
+  }
   let hand;
   const winding = m.state === 'windup';
-  if (winding && m.attack === 'slam') hand = [20 - prog * 10, -170 - prog * 60];
+  if (m.state === 'taunt') hand = [40, -200];                                         // flexing
+  else if (winding && m.attack === 'slam') hand = [20 - prog * 10, -170 - prog * 60];
   else if (m.state === 'active' && m.attack === 'slam') hand = [110, -12];
   else if (winding && m.attack === 'sweep') hand = [-40 - prog * 30, -110];          // arm pulled back at head height
   else if (m.state === 'active' && m.attack === 'sweep') hand = [150, -108];
@@ -1059,9 +1731,14 @@ function drawGolem(m) {
   else hand = [58, -60 + Math.sin(m.bob * 2) * 4];
   ctx.strokeStyle = col; ctx.lineWidth = 22; ctx.lineCap = 'round';
   line(34, -120, hand[0], hand[1]);
-  if (winding && (m.attack === 'throw' || m.attack === 'lob')) {
-    ctx.fillStyle = '#b8bcc4'; ctx.beginPath(); ctx.arc(hand[0], hand[1], 18, 0, Math.PI * 2); ctx.fill();
+  if (m.state === 'taunt') { line(-34, -120, -40, -200); disc(-40, -168, 16, col); disc(40, -168, 16, col); }
+  if (oni && !(winding && (m.attack === 'throw' || m.attack === 'lob')) && m.state !== 'taunt') {   // kanabo continues past the fist
+    const dx = hand[0] - 34, dy = hand[1] + 120, len = Math.hypot(dx, dy) || 1;
+    const ex = hand[0] + dx / len * 80, ey = hand[1] + dy / len * 80;
+    ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 16; line(hand[0], hand[1], ex, ey);
+    for (let s = 0.3; s <= 1; s += 0.23) disc(hand[0] + (ex - hand[0]) * s + dy / len * 9, hand[1] + (ey - hand[1]) * s - dx / len * 9, 3, '#c9ccd2');
   }
+  if (winding && (m.attack === 'throw' || m.attack === 'lob')) disc(hand[0], hand[1], 18, '#b8bcc4');
   ctx.restore();
   if (m.state === 'active' && m.attack === 'slam') {
     ctx.strokeStyle = 'rgba(232,197,71,.7)'; ctx.lineWidth = 4;
@@ -1074,7 +1751,7 @@ function drawWraith(m) {
   const d = m.def;
   for (const tr of m.trail) {
     ctx.globalAlpha = 0.25 * (1 - (gt - tr.t) / 0.18);
-    ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(tr.x, FLOOR - tr.y - 110, 26, 0, Math.PI * 2); ctx.fill();
+    disc(tr.x, FLOOR - tr.y - 110, 26, d.color);
   }
   ctx.globalAlpha = 1;
   ctx.save();
@@ -1090,25 +1767,129 @@ function drawWraith(m) {
   for (let k = 0; k <= 4; k++) ctx.lineTo(28 - k * 14, -10 + (k % 2 ? -10 : 4) + Math.sin(m.bob * 8 + k) * 3);
   ctx.closePath(); ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = enrage(m) > 1 ? '#ff3b3b' : '#1b2a33';
+  ctx.fillStyle = '#ff7a1a'; ctx.fillRect(-14, -54, 26, 14);                         // race bib
+  ctx.fillStyle = '#15171a'; ctx.font = '800 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText('26', -1, -43);
+  ctx.fillStyle = isEnraged(m) ? '#ff3b3b' : '#1b2a33';
   ctx.beginPath(); ctx.ellipse(8, -74, 5, 8, 0, 0, Math.PI * 2); ctx.ellipse(20, -74, 4, 7, 0, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
-  const prog = m.state === 'windup' ? clamp(m.t / (d.attacks[m.attack].windup / 1000 / enrage(m)), 0, 1) : 0;
+  const prog = windupProg(m);
   if (m.state === 'windup' && m.attack === 'swipe') poly([[20, -50], [30 - prog * 20, -90 - prog * 20]]);
   else if (m.state === 'active' && m.attack === 'swipe') poly([[20, -50], [80, -40]]);
   else poly([[20, -50], [40, -30]]);
   ctx.restore();
 }
 
-function drawPlate(pl) {
+function drawTroll(m) {
+  const prog = windupProg(m), w = m.state === 'windup';
+  ctx.save();
+  const col = monsterFrame(m), dark = '#4a5f3c';
+  ctx.fillStyle = dark; ctx.fillRect(-34, -44, 24, 44); ctx.fillRect(10, -44, 24, 44);
+  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, -96, 50, 60, 0.15, 0, Math.PI * 2); ctx.fill();   // hunched body
+  ctx.fillStyle = '#8fae78'; ctx.beginPath(); ctx.ellipse(10, -84, 28, 34, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#6b4a3a'; ctx.fillRect(-46, -58, 92, 14);                          // loincloth belt
+  disc(30, -150, 24, col);                                                             // head, jutting forward
+  ctx.fillStyle = '#f0e0c0'; ctx.beginPath(); ctx.moveTo(40, -138); ctx.lineTo(44, -152); ctx.lineTo(48, -138); ctx.fill();   // tusk
+  ctx.fillStyle = isEnraged(m) ? '#ff3b3b' : '#e8c547'; ctx.fillRect(34, -160, 9, 5);
+  let hand;
+  if (w && m.attack === 'club') hand = [-40 - prog * 20, -150];
+  else if (m.state === 'active' && m.attack === 'club') hand = [120, -112];
+  else if (w && m.attack === 'smash') hand = [10, -190 - prog * 20];
+  else if (m.state === 'active' && m.attack === 'smash') hand = [100, -14];
+  else if (w && m.attack === 'grab') hand = [30 + prog * 50, -80];
+  else hand = [52, -66 + Math.sin(m.bob * 2) * 4];
+  ctx.strokeStyle = col; ctx.lineWidth = 18; ctx.lineCap = 'round';
+  line(20, -118, hand[0], hand[1]);
+  if (!(w && m.attack === 'grab')) {                                                   // tree-branch club
+    const dx = hand[0] - 20, dy = hand[1] + 118, len = Math.hypot(dx, dy) || 1;
+    ctx.strokeStyle = '#6b4a3a'; ctx.lineWidth = 14; line(hand[0], hand[1], hand[0] + dx / len * 70, hand[1] + dy / len * 70);
+  } else { ctx.strokeStyle = col; ctx.lineWidth = 6; line(hand[0], hand[1], hand[0] + 16, hand[1] - 8); line(hand[0], hand[1], hand[0] + 18, hand[1] + 6); }
+  ctx.restore();
+  if (m.state === 'active' && m.attack === 'smash') {
+    ctx.strokeStyle = 'rgba(232,197,71,.7)'; ctx.lineWidth = 4;
+    const r = 24 + m.t * 700;
+    ctx.beginPath(); ctx.ellipse(m.x + m.facing * 100, FLOOR, r, r * 0.18, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawSnack(m) {
+  const prog = windupProg(m), buffed = gt < m.buffUntil;
+  ctx.save();
+  const col = monsterFrame(m, m.state === 'walk' ? Math.abs(Math.sin(m.bob * 14)) * 4 : 0);
+  ctx.strokeStyle = '#3a2f2a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  const st = m.state === 'walk' ? Math.sin(m.bob * 14) * 3 : 0;
+  line(-7, -6, -9 + st, 0); line(7, -6, 9 - st, 0);
+  ctx.save(); if (m.attack === 'bite' && m.state === 'windup') ctx.rotate(-prog * 0.25); else if (m.attack === 'bite' && m.state === 'active') ctx.rotate(0.3);
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(-15, -6); ctx.lineTo(15, -6); ctx.lineTo(17, -38);                 // chip bag with a crimped top
+  for (let k = 0; k <= 6; k++) ctx.lineTo(17 - k * 34 / 6, k % 2 ? -44 : -40);
+  ctx.lineTo(-17, -38); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#d04830'; ctx.fillRect(-15, -24, 30, 8);
+  ctx.fillStyle = '#15171a'; ctx.fillRect(2, -33, 5, 5); ctx.fillRect(10, -33, 4, 5);          // angry eyes
+  ctx.strokeStyle = '#15171a'; ctx.lineWidth = 2; line(0, -37, 8, -34); line(10, -34, 16, -37);
+  ctx.fillStyle = '#15171a'; ctx.fillRect(4, -14, m.state === 'active' ? 12 : 8, m.state === 'active' ? 6 : 2);   // mouth
+  ctx.restore();
+  if (buffed) { ctx.strokeStyle = 'rgba(224,85,90,.7)'; ctx.lineWidth = 2; ctx.strokeRect(-20, -48, 40, 46); }
+  if (m.state === 'windup' && m.attack === 'crumbs') disc(-14 - prog * 6, -34, 4, '#e8c547');
+  ctx.restore();
+}
+
+function drawCouch(m) {
+  const prog = windupProg(m);
+  ctx.save();
+  const col = monsterFrame(m), couch = m.flash > 0 ? '#fff' : '#6b4a3a';
+  ctx.fillStyle = '#3a2f2a'; ctx.fillRect(-28, -6, 6, 6); ctx.fillRect(22, -6, 6, 6);           // couch legs
+  ctx.fillStyle = couch; ctx.fillRect(-33, -24, 66, 18);                                         // seat
+  ctx.fillRect(-33, -46, 14, 26);                                                                // backrest
+  ctx.fillStyle = '#7d5a48'; ctx.fillRect(-33, -30, 10, 8); ctx.fillRect(25, -30, 8, 8);         // armrests
+  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(2, -36, 20, 15, -0.2, 0, Math.PI * 2); ctx.fill();   // the potato
+  ctx.fillStyle = '#a07e4c'; disc(-6, -40, 2, '#a07e4c'); disc(8, -30, 2, '#a07e4c');
+  ctx.fillStyle = '#15171a'; ctx.fillRect(8, -42, 5, m.state === 'windup' ? 4 : 2); ctx.fillRect(15, -42, 4, m.state === 'windup' ? 4 : 2);   // sleepy eyes
+  ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.lineCap = 'round';                               // grabby arms
+  const reach = m.state === 'hold' ? 36 : m.state === 'windup' ? prog * 30 : 6;
+  line(14, -34, 22 + reach, -30); line(14, -28, 20 + reach, -22);
+  ctx.restore();
+}
+
+function drawSnooze(m) {
+  const prog = windupProg(m);
+  ctx.save();
+  const col = monsterFrame(m, 20 + Math.sin(m.bob * 5) * 3);
+  if (m.state === 'windup') ctx.rotate(Math.sin(m.t * 60) * 0.15 * prog);
+  const flap = Math.sin(m.bob * 18) * 8;
+  ctx.fillStyle = '#6a4a8a';                                                                     // bat wings
+  ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(-38, -14 - flap); ctx.lineTo(-30, 2); ctx.lineTo(-22, -2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(12, -4); ctx.lineTo(38, -14 - flap); ctx.lineTo(30, 2); ctx.lineTo(22, -2); ctx.closePath(); ctx.fill();
+  disc(-11, -18, 6, '#e8c547'); disc(11, -18, 6, '#e8c547');                                     // bells
+  disc(0, 0, 17, col); disc(0, 0, 12, '#f4f2ec');                                                // clock face
+  ctx.strokeStyle = '#15171a'; ctx.lineWidth = 2; line(0, 0, 0, -8); line(0, 0, 6, 2);
+  ctx.fillStyle = isEnraged(m) ? '#e0555a' : '#15171a'; ctx.fillRect(-7, -5, 3, 3); ctx.fillRect(4, -5, 3, 3);
+  ctx.restore();
+}
+
+function drawMonster(m) {
+  if (m.key === 'wraith') drawWraith(m);
+  else if (m.def.kit === 'heavy') drawHeavy(m);
+  else if (m.key === 'troll') drawTroll(m);
+  else if (m.key === 'snack') drawSnack(m);
+  else if (m.key === 'couch') drawCouch(m);
+  else if (m.key === 'snooze') drawSnooze(m);
+  // Small HP bars over each monster in a pack
+  if (m.hp > 0 && !soloLevel()) {
+    const top = FLOOR - m.y - m.def.height - (m.def.flies ? 30 : 8);
+    bar(m.x - 20, top, 40, 4, m.hp / m.maxHp, gt < m.buffUntil ? '#e0555a' : '#b8bcc4');
+  }
+}
+
+function drawPlate(pl, color = '#b8bcc4') {
   ctx.save(); ctx.translate(pl.x, FLOOR - pl.y - (pl.kind === 'roll' ? 20 : 0)); ctx.rotate(pl.spin);
-  ctx.fillStyle = '#b8bcc4'; ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#50555d'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  if (pl.kind === 'crumb') { ctx.fillStyle = '#e8c547'; ctx.fillRect(-5, -4, 10, 8); ctx.restore(); return; }
+  disc(0, 0, 20, color);
+  disc(0, 0, 5, '#50555d');
   ctx.fillRect(-2, -18, 4, 10);
   ctx.restore();
 }
 
-// Boss KO impact frame: a starburst with POW! that punches in, then settles.
+// Final KO impact frame: a starburst with POW! that punches in, then settles.
 function drawPow(k) {
   const u = clamp(k.t / Math.max(0.05, J.koSlowMs / 1000), 0, 1);
   const s = u < 0.15 ? u / 0.15 * 1.25 : 1.25 - 0.25 * (u - 0.15) / 0.85;
@@ -1130,38 +1911,69 @@ function bar(x, y, w, h, frac, color, label) {
   ctx.fillStyle = color; ctx.fillRect(x, y, w * clamp(frac, 0, 1), h);
   if (label) { ctx.fillStyle = '#eceae4'; ctx.font = '600 12px system-ui'; ctx.textAlign = 'left'; ctx.fillText(label, x, y - 4); }
 }
+const soloLevel = () => level && level.waves.length === 1 && level.waves[0].length === 1;
 function drawHud() {
-  const m = monster;
-  if (m) {
+  if (level && phase !== 'ready') {
     ctx.textAlign = 'center'; ctx.fillStyle = '#eceae4'; ctx.font = '700 14px system-ui';
-    ctx.fillText(m.def.name.toUpperCase() + (enrage(m) > 1 ? ' · ENRAGED' : ''), W / 2, 20);
-    bar(W / 2 - 220, 28, 440, 12, m.hp / m.maxHp, enrage(m) > 1 ? '#e0555a' : '#b8bcc4');
+    if (soloLevel() && monsters[0]) {
+      const m = monsters[0];
+      ctx.fillText(m.def.name.toUpperCase() + (isEnraged(m) ? ' · ENRAGED' : ''), W / 2, 20);
+      bar(W / 2 - 220, 28, 440, 12, m.hp / m.maxHp, isEnraged(m) ? '#e0555a' : '#b8bcc4');
+    } else {
+      const live = living();
+      ctx.fillText(`${level.name.toUpperCase()} · WAVE ${waveIdx + 1} / ${level.waves.length} · ${live.length} LEFT`, W / 2, 20);
+      bar(W / 2 - 220, 28, 440, 8, (waveIdx + (1 - live.length / Math.max(1, level.waves[waveIdx].length))) / level.waves.length, '#b8bcc4');
+    }
+    if (combo >= 3 && gt - lastHitAt <= T.comboMs / 1000) {
+      ctx.fillStyle = '#ff7a1a'; ctx.font = `900 ${Math.min(34, 18 + combo)}px system-ui`;
+      ctx.fillText(`${combo} HIT COMBO`, W / 2, 66);
+    }
   }
   players.forEach((p, k) => {
     const y = 26 + k * 42;
-    const tag = !alive(p) ? '  DOWN' : (monster && monster.target === p && players.length > 1 ? '  ◀ TARGET' : '');
-    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}  ${p.hp}/${p.maxHp}${tag}`);
+    const tag = !alive(p) ? '  DOWN' : (players.length > 1 && monsters.some(m => m.hp > 0 && m.target === p) ? '  ◀ TARGET' : '');
+    const wpn = p.weaponKey !== 'fists' ? ' · ' + ITEMS[p.weaponKey].name : '';
+    const rust = p.i === 0 && isRusty() ? ' · RUSTY' : '';
+    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
     bar(16, y + 13, 180, 5, p.st / p.maxSt, '#e8c547');
   });
   ctx.textAlign = 'right'; ctx.fillStyle = '#9a9ca0'; ctx.font = '600 14px system-ui';
-  ctx.fillText(gt.toFixed(1) + 's', W - 16, 22);
+  ctx.fillText(gt.toFixed(1) + 's', W - (playMode ? 110 : 16), 22);
+  ctx.fillStyle = '#e8c547'; ctx.font = '700 14px system-ui';
+  ctx.fillText(`${wallet.gold} gold${wallet.pump > 0 ? `  ·  PUMP ×${E.pumpMult}` : ''}`, W - (playMode ? 110 : 16), 42);
 }
 function drawOverlay() {
-  if (phase === 'fight') return;
+  if (phase === 'fight' && !paused) return;
   ctx.fillStyle = 'rgba(10,11,13,.6)'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
-  if (phase === 'ready') {
-    ctx.fillStyle = '#eceae4'; ctx.font = '800 32px system-ui'; ctx.fillText('Press Start fight', W / 2, 150);
+  if (phase === 'fight') {
+    ctx.fillStyle = '#eceae4'; ctx.font = '800 36px system-ui'; ctx.fillText('PAUSED', W / 2, 120);
+    ctx.font = '500 15px system-ui'; ctx.fillStyle = '#9a9ca0'; ctx.fillText(playMode ? '' : 'Press P or Esc to resume', W / 2, 150);
+  } else if (phase === 'ready') {
+    const lv = LEVELS[$('#level').value], sc = scoutOf(lv);
+    ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui';
+    ctx.fillText(playMode ? 'Pick a fight' : `${lv.name} · press Start fight`, W / 2, 110);
     ctx.font = '500 15px system-ui'; ctx.fillStyle = '#9a9ca0';
-    ctx.fillText('A/D move · S crouch · W jump · J attack · K block · L dodge · I special · U flex', W / 2, 184);
-    ctx.fillText('Red = incoming attack. HIGH: duck or stand-block. LOW: jump or crouch-block. Dodge beats all.', W / 2, 208);
-    ctx.fillText('Attack in the air = kick. Crouch + attack = low sweep. Big STR vs a light monster = LAUNCH.', W / 2, 232);
-    ctx.fillText('Co-op: Flex pulls the monster onto you. Hold Block next to a downed ally to revive.', W / 2, 256);
+    const lines = playMode
+      ? ['Left thumb: move, pull down to crouch. Big button: jump.', LAYOUTS[layoutKey].desc]
+      : ['A/D move · S crouch · W jump · J attack · K block · L dodge · I special · U flex',
+         'Red = incoming attack. HIGH: duck or stand-block. LOW: jump or crouch-block. Purple: can\'t block, dodge!',
+         'Attack in the air = kick. Crouch + attack = low sweep. Big STR vs a light monster = LAUNCH.',
+         'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
+    lines.forEach((t, i) => ctx.fillText(t, W / 2, 146 + i * 24));
+    if (sc && !playMode) { ctx.fillStyle = '#e8c547'; ctx.fillText(`Scouting report: ${sc.text}`, W / 2, 146 + lines.length * 24 + 12); }
   } else {
     ctx.fillStyle = result.won ? '#e8c547' : '#e0555a'; ctx.font = '800 40px system-ui';
-    ctx.fillText(result.won ? 'VICTORY' : 'DEFEATED', W / 2, 170);
+    ctx.fillText(result.won ? 'VICTORY' : 'DEFEATED', W / 2, 120);
     ctx.fillStyle = '#eceae4'; ctx.font = '500 16px system-ui';
-    ctx.fillText(`${result.time.toFixed(1)}s · press R or Start to fight again`, W / 2, 204);
+    ctx.fillText(`${result.time.toFixed(1)}s${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}${playMode ? '' : ' · press R or Start to fight again'}`, W / 2, 152);
+    const r = result.reward;
+    ctx.fillStyle = '#e8c547'; ctx.font = '800 28px system-ui';
+    ctx.fillText(`+${r.gold} gold`, W / 2, 194);
+    ctx.fillStyle = '#9a9ca0'; ctx.font = '500 14px system-ui';
+    ctx.fillText(r.parts.join('  ·  '), W / 2, 218);
+    if (r.unlock) { ctx.fillStyle = '#ff7a1a'; ctx.font = '700 16px system-ui'; ctx.fillText(r.unlock, W / 2, 244); }
+    if (result.hint) { ctx.fillStyle = '#e8c547'; ctx.font = '600 15px system-ui'; ctx.fillText(result.hint, W / 2, 244); }
   }
 }
 
@@ -1172,17 +1984,21 @@ function draw() {
   ctx.fillStyle = '#1b1e22'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
   ctx.strokeStyle = '#2c3036'; ctx.lineWidth = 2; line(0, FLOOR, W, FLOOR);
   drawPlatforms();
-  if (monster) {
-    drawTelegraph(monster);
-    if (monster.key === 'golem') drawGolem(monster); else drawWraith(monster);
-  }
-  plates.forEach(drawPlate);
+  monsters.forEach(drawTelegraph);
+  drawLobMarkers();
+  monsters.forEach(drawMonster);
+  plates.forEach(pl => drawPlate(pl));
+  shots.forEach(s => drawPlate({ kind: 'roll', x: s.x, y: 0, spin: s.spin }, '#ff7a1a'));
   players.forEach(drawStick);
   for (const q of puffs) {
     const u = q.t / q.life;
     ctx.globalAlpha = 0.75 * (1 - u);
-    ctx.fillStyle = '#ebe9e2';
-    ctx.beginPath(); ctx.arc(q.x, q.y, q.r * (1 + u * 1.5), 0, Math.PI * 2); ctx.fill();
+    disc(q.x, q.y, q.r * (1 + u * 1.5), q.color || '#ebe9e2');
+  }
+  for (const r of rings) {
+    const u = r.t / r.dur;
+    ctx.globalAlpha = 0.8 * (1 - u); ctx.strokeStyle = r.color; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r1 * u, r.r1 * u * (r.flat ? 0.18 : 1), 0, 0, Math.PI * 2); ctx.stroke();
   }
   ctx.globalAlpha = 1;
   if (ko) drawPow(ko);
@@ -1204,57 +2020,249 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (phase === 'fight') {
+  if (phase === 'fight' && !paused) {
     if (hitstop > 0) {
       hitstop -= dt;                                   // frozen on impact; drawing and effects keep running
     } else {
-      const sdt = ko ? dt * J.koSlowScale : dt;        // boss KO slow-mo
+      const sdt = ko ? dt * J.koSlowScale : dt;        // final KO slow-mo
       gt += sdt;
       for (const p of players) if (p.ctrl === 'cpu') cpuThink(p);
       players.forEach(p => updatePlayer(p, sdt));
       decayRevives(sdt);
-      if (phase === 'fight' && !ko) updateMonster(monster, sdt);
-      if (phase === 'fight' && !ko) updatePlates(sdt);
+      if (phase === 'fight' && !ko) {
+        monsters.forEach(m => updateMonster(m, sdt));
+        separate(sdt);
+        updatePlates(sdt);
+        updateShots(sdt);
+        updateWaves(sdt);
+      }
       if (ko) { ko.t += dt; if (ko.t >= J.koSlowMs / 1000) { ko = null; endFight(true); } }
     }
   }
-  shakeT = Math.max(0, shakeT - dt);
-  for (const q of puffs) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9; }
-  puffs = puffs.filter(q => q.t < q.life);
-  floaters.forEach(f => f.t += dt);
-  floaters = floaters.filter(f => f.t < 0.9);
+  if (!paused) {
+    shakeT = Math.max(0, shakeT - dt);
+    for (const q of puffs) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9; }
+    puffs = puffs.filter(q => q.t < q.life);
+    rings.forEach(r => r.t += dt); rings = rings.filter(r => r.t < r.dur);
+    floaters.forEach(f => f.t += dt);
+    floaters = floaters.filter(f => f.t < 0.9);
+  }
   draw();
   requestAnimationFrame(frame);
 }
+// Fights pause instantly: P/Esc, the ⏸ button, or putting the phone down (tab hidden).
+function togglePause(force) {
+  if (phase !== 'fight') { if (playMode) showMenu('levels'); return; }
+  paused = force ?? !paused;
+  if (playMode) showMenu(paused ? 'pause' : null);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'fight') togglePause(true); });
+
+// ---------------------------------------------------------------------------
+// Phone play mode (G1): fullscreen landscape, floating left thumbstick, big jump bottom-right,
+// 2–3 action buttons around it, gesture candidates, and switchable layouts to compare.
+// ---------------------------------------------------------------------------
+const TOUCH = {
+  holdMs: 320,      // hold attack this long = special
+  dblMs: 300,       // two block taps this close together = flex
+  swipePx: 40,      // a right-side swipe this long (within swipeMs) = dodge that way
+  swipeMs: 300,
+  stickR: 56,       // thumbstick radius (px); the base follows your thumb past this
+  dead: 0.3,        // horizontal dead zone (fraction of the radius)
+  crouchAt: 0.55,   // pull down this far to crouch
+};
+// Button spots: [right, bottom, size] in vh, around the big jump button in the bottom-right corner.
+const BTN = {
+  jump:    { label: 'JUMP', pos: [3, 5, 28] },
+  attack:  { label: 'HIT', pos: [33, 3, 21] },
+  block:   { label: 'BLOCK', pos: [5, 37, 18] },
+  dodge:   { label: 'DODGE', pos: [26, 29, 16] },
+  special: { label: 'SPECIAL', pos: [56, 4, 14] },
+  flex:    { label: 'FLEX', pos: [45, 27, 13] },
+};
+const LAYOUTS = {
+  A: { name: 'A · 4 buttons', desc: 'Jump, hit, block, dodge. Hold HIT = special. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block', 'dodge'], holdSpecial: true, dblFlex: true, swipeDodge: false },
+  B: { name: 'B · 3 buttons + swipe', desc: 'Jump, hit, block. Swipe the right side to dodge that way. Hold HIT = special. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block'], holdSpecial: true, dblFlex: true, swipeDodge: true },
+  C: { name: 'C · 6 buttons', desc: 'Every move gets its own button, no gestures (for comparison).', buttons: ['jump', 'attack', 'block', 'dodge', 'special', 'flex'], holdSpecial: false, dblFlex: false, swipeDodge: false },
+};
+let playMode = false, menuView = null;
+let prefs = { layout: 'A', stickJump: false };
+try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem('bb-brawl-touch')) }; } catch (e) {}
+let layoutKey = LAYOUTS[prefs.layout] ? prefs.layout : 'A';
+const savePrefs = () => { try { localStorage.setItem('bb-brawl-touch', JSON.stringify({ layout: layoutKey, stickJump: prefs.stickJump })); } catch (e) {} };
+const standalone = () => matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
+
+function buildPad() {
+  const L = LAYOUTS[layoutKey];
+  $('#btns').innerHTML = L.buttons.map(a => {
+    const [r, b, s] = BTN[a].pos;
+    const sub = a === 'attack' && L.holdSpecial ? '<small>hold: special</small>' : a === 'block' && L.dblFlex ? '<small>2× tap: flex</small>' : '';
+    return `<div class="tb ${a}" data-a="${a}" style="right:calc(${r}vh + env(safe-area-inset-right));bottom:calc(${b}vh + env(safe-area-inset-bottom));width:${s}vh;height:${s}vh;font-size:${Math.max(2.4, s * 0.15)}vh"><span>${BTN[a].label}${sub}</span></div>`;
+  }).join('');
+  $('#btns').querySelectorAll('.tb').forEach(el => wireButton(el, el.dataset.a, L));
+  $('#swipe').style.display = L.swipeDodge ? 'block' : 'none';
+  $('#stickHint').textContent = `Left thumb: move · pull down: crouch${prefs.stickJump ? ' · push up: jump' : ''}`;
+}
+let lastBlockTap = 0;
+function wireButton(el, a, L) {
+  let holdTimer = null, fired = false;
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); el.classList.add('on'); ensureAudio();
+    if (a === 'attack' && L.holdSpecial) {       // tap = attack on release; hold = special
+      fired = false;
+      holdTimer = setTimeout(() => { fired = true; el.classList.add('charged'); setInput(0, 'special', true); buzz(20); }, TOUCH.holdMs);
+      return;
+    }
+    if (a === 'block' && L.dblFlex) {
+      const now = performance.now();
+      if (now - lastBlockTap < TOUCH.dblMs) setInput(0, 'flex', true);
+      lastBlockTap = now;
+    }
+    setInput(0, a, true);
+  });
+  const up = () => {
+    el.classList.remove('on', 'charged');
+    if (a === 'attack' && L.holdSpecial) { clearTimeout(holdTimer); if (!fired) setInput(0, 'attack', true); return; }
+    setInput(0, a, false);
+  };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+// Floating thumbstick: appears where the left thumb lands and follows it past the edge.
+const stick = { id: null, x0: 0, y0: 0, up: false };
+const zone = $('#stickZone'), base = $('#stickBase'), knob = $('#stickKnob');
+function stickMove(e) {
+  const R = TOUCH.stickR, box = zone.getBoundingClientRect();
+  let dx = e.clientX - stick.x0, dy = e.clientY - stick.y0;
+  const d = Math.hypot(dx, dy);
+  if (d > R) { stick.x0 += dx * (1 - R / d); stick.y0 += dy * (1 - R / d); dx = e.clientX - stick.x0; dy = e.clientY - stick.y0; }
+  const nx = dx / R, ny = dy / R;
+  setInput(0, 'left', nx < -TOUCH.dead); setInput(0, 'right', nx > TOUCH.dead);
+  setInput(0, 'down', ny > TOUCH.crouchAt);
+  if (prefs.stickJump) { const up = ny < -0.6; if (up && !stick.up) setInput(0, 'jump', true); stick.up = up; }
+  base.style.left = (stick.x0 - box.left) + 'px'; base.style.top = (stick.y0 - box.top) + 'px';
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+zone.addEventListener('pointerdown', e => {
+  if (stick.id !== null) return;
+  e.preventDefault(); ensureAudio();
+  stick.id = e.pointerId; zone.setPointerCapture(e.pointerId);
+  stick.x0 = e.clientX; stick.y0 = e.clientY; base.style.display = 'block';
+  stickMove(e);
+});
+zone.addEventListener('pointermove', e => { if (e.pointerId === stick.id) stickMove(e); });
+const stickUp = e => {
+  if (e.pointerId !== stick.id) return;
+  stick.id = null; stick.up = false; base.style.display = 'none'; knob.style.transform = '';
+  setInput(0, 'left', false); setInput(0, 'right', false); setInput(0, 'down', false);
+};
+zone.addEventListener('pointerup', stickUp); zone.addEventListener('pointercancel', stickUp);
+// Swipe to dodge (layout B): a quick horizontal flick on the right side, away from the buttons.
+let sw = null;
+$('#swipe').addEventListener('pointerdown', e => { sw = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), done: false }; });
+$('#swipe').addEventListener('pointermove', e => {
+  if (!sw || sw.id !== e.pointerId || sw.done) return;
+  const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+  if (performance.now() - sw.t > TOUCH.swipeMs) { sw.done = true; return; }
+  if (Math.abs(dx) > TOUCH.swipePx && Math.abs(dx) > Math.abs(dy)) { sw.done = true; inputs[0].swipeDir = sign(dx); setInput(0, 'dodge', true); }
+});
+$('#swipe').addEventListener('pointerup', () => { sw = null; });
+
+function goFullscreen() {
+  if (standalone() || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+    .then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}))
+    .catch(() => {});
+}
+function enterPlay() {
+  playMode = true; document.body.classList.add('play');
+  buildPad(); goFullscreen();
+  if (phase !== 'fight') showMenu('levels');
+}
+function exitPlay() {
+  playMode = false; paused = false; document.body.classList.remove('play'); showMenu(null);
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+function lvStatus(l) {
+  if (!levelOpen(l)) return `🔒 beat ${l.zone.levels[l.idx - 1].name} first`;
+  const first = !wallet.clears[l.key], g = Math.round(l.gold * (first ? E.firstClearMult : freshOf(l.key)));
+  return `${l.format} · ${first ? `NEW · ${g}g` : `✓ ×${wallet.clears[l.key]} · ${Math.round(freshOf(l.key) * 100)}% fresh · ${g}g`}`;
+}
+function layoutPicker() {
+  return `<div class="sub">Controls layout</div><div class="mrow">${Object.entries(LAYOUTS).map(([k, L]) =>
+    `<button data-m="layout" data-v="${k}" class="${k === layoutKey ? 'sel' : ''}">${L.name}<small>${L.desc}</small></button>`).join('')}</div>
+    <div class="mrow"><button data-m="stickjump" class="${prefs.stickJump ? 'sel' : ''}">Push stick up = jump: ${prefs.stickJump ? 'on' : 'off'}<small>Extra option on top of the jump button</small></button></div>`;
+}
+function showMenu(v) {
+  menuView = v;
+  const el = $('#menu');
+  el.className = v ? 'show ' + v : '';
+  if (!v) { el.innerHTML = ''; return; }
+  const cur = LEVELS[$('#level').value];
+  if (v === 'after') {
+    const next = cur.zone.ladder && cur.zone.levels[cur.idx + 1];
+    el.innerHTML = `<div class="mrow"><button class="primary" data-m="again">Fight again<small>${cur.name}</small></button>` +
+      (result && result.won && next ? `<button data-m="lv" data-v="${next.key}">Next: ${next.name}<small>${lvStatus(next)}</small></button>` : '') +
+      `<button data-m="levels">All fights<small>Levels, buddy, layout</small></button></div>`;
+  } else if (v === 'pause') {
+    el.innerHTML = `<h3>Paused</h3><div class="mrow"><button class="primary" data-m="resume">Resume</button><button data-m="again">Restart</button><button data-m="levels">Quit to fights</button></div>${layoutPicker()}`;
+  } else {
+    const p2 = $('#p2mode').value === 'none' ? 'none' : 'cpu';
+    el.innerHTML = `<h3>Choose a fight</h3>` + ZONES.map(z => `<div class="sub">${z.name}</div><div class="lv">${z.levels.map(l =>
+      `<button data-m="lv" data-v="${l.key}" class="${l.key === cur.key ? 'sel' : ''}" ${levelOpen(l) ? '' : 'disabled'}>${l.name}<small>${lvStatus(l)}</small>${l.scout ? `<small style="color:#e8c547">${l.scout.stat}: ${l.scout.text}</small>` : ''}</button>`).join('')}</div>`).join('') +
+      `<div class="sub">Player 2</div><div class="mrow"><button data-m="p2" data-v="none" class="${p2 === 'none' ? 'sel' : ''}">Solo</button><button data-m="p2" data-v="cpu" class="${p2 === 'cpu' ? 'sel' : ''}">CPU buddy<small>A ghost: weaker than a real buddy</small></button></div>` +
+      layoutPicker() + `<p class="hint">${wallet.gold} gold. Stats, weapons, Rusty and the shop live on the page behind this screen (✕ to see it).</p>`;
+  }
+}
+$('#menu').addEventListener('click', e => {
+  const b = e.target.closest('button[data-m]');
+  if (!b) return;
+  const m = b.dataset.m, v = b.dataset.v;
+  ensureAudio(); goFullscreen();
+  if (m === 'again') startFight();
+  else if (m === 'levels') { paused = false; phase = phase === 'fight' ? 'ready' : phase; showMenu('levels'); }
+  else if (m === 'resume') togglePause(false);
+  else if (m === 'lv') { $('#level').value = v; updateHint(); startFight(); }
+  else if (m === 'p2') { $('#p2mode').value = v; updateHint(); showMenu('levels'); }
+  else if (m === 'layout') { layoutKey = v; savePrefs(); buildPad(); showMenu(menuView); }
+  else if (m === 'stickjump') { prefs.stickJump = !prefs.stickJump; savePrefs(); buildPad(); showMenu(menuView); }
+});
+$('#playBtn').onclick = enterPlay;
+$('#pbExit').onclick = exitPlay;
+$('#pbPause').onclick = () => togglePause();
 
 // ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
+const fighterSync = [];
 function buildFighterPanel(i) {
   const box = $('#f' + i);
   box.innerHTML = `<h3>P${i + 1}</h3>
     <div class="row" style="margin-top:0"><select class="preset">${Object.keys(PRESETS).map(p => `<option>${p}</option>`).join('')}<option>Custom</option></select></div>
     ${STATS.map(s => `<label class="stat"><span>${s}</span><input type="range" min="1" max="50" data-stat="${s}"><output></output></label>`).join('')}
+    <label class="stat"><span>LVL</span><input type="range" min="1" max="50" data-level="1"><output></output></label>
     <div class="total"></div>`;
   const sel = box.querySelector('.preset');
   const sync = () => {
     sel.value = setup[i].preset;
-    box.querySelectorAll('input').forEach(inp => { inp.value = setup[i].stats[inp.dataset.stat]; inp.nextElementSibling.value = inp.value; });
+    box.querySelectorAll('input[data-stat]').forEach(inp => { inp.value = setup[i].stats[inp.dataset.stat]; inp.nextElementSibling.value = inp.value; });
+    const lv = box.querySelector('input[data-level]'); lv.value = setup[i].level; lv.nextElementSibling.value = lv.value;
     const s = setup[i].stats;
-    box.querySelector('.total').textContent = `${STATS.reduce((a, k) => a + s[k], 0)} pts · HP ${maxHp(s)} · stamina ${maxSt(s)}`;
-    if (i === 0) updateHint();
+    box.querySelector('.total').textContent = `${statSum(s)} pts · HP ${maxHp(s)} · stamina ${maxSt(s)}`;
+    updateHint();
+    if (i === 0) renderShop();
   };
+  fighterSync[i] = sync;
   sel.onchange = () => { if (PRESETS[sel.value]) { setup[i].preset = sel.value; setup[i].stats = { ...PRESETS[sel.value] }; } sync(); };
-  box.querySelectorAll('input').forEach(inp => inp.oninput = () => { setup[i].stats[inp.dataset.stat] = +inp.value; setup[i].preset = 'Custom'; sync(); });
+  box.querySelectorAll('input[data-stat]').forEach(inp => inp.oninput = () => { setup[i].stats[inp.dataset.stat] = +inp.value; setup[i].preset = 'Custom'; sync(); });
+  box.querySelector('input[data-level]').oninput = e => { setup[i].level = +e.target.value; sync(); };
   sync();
 }
 function buildTuning() {
   $('#tune').innerHTML = Object.keys(DEFAULT_TUNING).map(k =>
     `<label for="t_${k}">${k}</label><input type="number" id="t_${k}" step="any" value="${T[k]}">`).join('');
   Object.keys(DEFAULT_TUNING).forEach(k => $('#t_' + k).oninput = e => {
-    const v = parseFloat(e.target.value); if (!isNaN(v)) { T[k] = v; $('#coopMult').textContent = '×' + T.coopHpMult; updateHint(); }
+    const v = parseFloat(e.target.value); if (!isNaN(v)) { T[k] = v; updateHint(); }
   });
-  $('#coopMult').textContent = '×' + T.coopHpMult;
 }
 function buildJuice() {
   $('#juiceToggles').innerHTML = Object.entries(JUICE_TOGGLES).map(([k, label]) =>
@@ -1270,21 +2278,124 @@ $('#juiceOff').onclick = () => setAllJuice(false);
 $('#juiceReset').onclick = () => { J = structuredClone(DEFAULT_JUICE); buildJuice(); };
 buildJuice();
 
-const monsterSel = $('#monster');
-monsterSel.innerHTML = Object.entries(MONSTERS).map(([k, m]) => `<option value="${k}">${m.name}</option>`).join('');
-// Monster hint plus a live readout of how hard P1 pushes this monster (STR vs weight).
+const levelSel = $('#level');
+levelSel.innerHTML = ZONES.map(z => `<optgroup label="${z.name}">${z.levels.map(l => `<option value="${l.key}">${l.name} (${l.format})</option>`).join('')}</optgroup>`).join('');
+// Level hint: each monster's tells, a live readout of how hard P1 pushes it (STR vs weight), the scouting report, and co-op scaling.
 function updateHint() {
-  const m = MONSTERS[monsterSel.value], str = setup[0].stats.STR;
-  const push = (move, sp) => pushOf(str, m.weight, move, sp);
-  const fmt = v => `${Math.round(v)} px${v >= T.launchAt ? ' → LAUNCH' : ''}`;
-  $('#monsterHint').innerHTML = `${m.hint}<br><b>Weight ${m.weight}.</b> P1 (STR ${str}) push: punch ${fmt(push('mid'))}, ` +
-    `kick ${fmt(push('kick'))}, special ${fmt(push('mid', true))}. Launch at ${T.launchAt} px.`;
+  if (!$('#f1').innerHTML) return;   // panels still building
+  const lv = LEVELS[levelSel.value], s = isRusty() ? rustyStats(setup[0].stats) : setup[0].stats, str = s.STR;
+  const wItem = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? ITEMS[wallet.weapon] : ITEMS.fists;
+  const fmt = v => `${Math.round(v)}${v >= T.launchAt ? ' LAUNCH' : ''}`;
+  const keys = [...new Set(lv.waves.flat())];
+  $('#monsterHint').innerHTML = (levelOpen(lv) ? '' : `🔒 Locked: beat <b>${lv.zone.levels[lv.idx - 1].name}</b> first.<br>`) +
+    (lv.waves.length > 1 ? `<b>${lv.waves.length} waves:</b> ${lv.waves.map(w => w.map(k => MONSTERS[k].name).join(', ')).join(' → ')}.<br>` : '') +
+    keys.map(k => {
+      const m = MONSTERS[k], push = (move, sp) => pushOf(str, m.weight, move, sp) * (wItem.mods.push || 1);
+      return `<b>${m.name}</b> (${m.rank}, weight ${m.weight}): ${m.hint} <i>P1 push (px): punch ${fmt(push('mid'))}, kick ${fmt(push('kick'))}, special ${fmt(push('mid', true))}.</i>`;
+    }).join('<br>') + `<br>Launch at ${T.launchAt} px.`;
+  const sc = scoutOf(lv);
+  $('#scoutHint').textContent = sc ? `Scouting report (${sc.stat} ${Math.round(s[sc.stat])} / ${sc.want}): ${sc.text}` : '';
+  const mode = $('#p2mode').value;
+  if (mode === 'none') { $('#coopHint').innerHTML = 'Solo: the monsters\' HP and damage are fixed for this rung.'; return; }
+  const helper = helperStats(s, setup[1].stats, mode), b = coopBlend(s, helper);
+  $('#coopHint').innerHTML = `Co-op: P2 fights as ${STATS.map(k => `${k} ${helper[k]}`).join(' ')} (synced ${Math.round(T.coopSync * 100)}% toward P1${mode === 'cpu' ? `, ghost ×${T.ghostStatMult}` : ''}). ` +
+    `Difficulty blend ${Math.round(T.coopHostWeight * 100)}% host: HP ×${(T.coopHpMult * b).toFixed(2)}, damage ×${b.toFixed(2)}. Speed and weight stay fixed.`;
 }
-monsterSel.onchange = updateHint;
-monsterSel.onchange();
+
+// ---------------------------------------------------------------------------
+// Rewards & shop panel
+// ---------------------------------------------------------------------------
+function renderShop() {
+  const s = setup[0].stats;
+  $('#gold').textContent = wallet.gold;
+  $('#day').textContent = wallet.day;
+  $('#pump').innerHTML = wallet.pump > 0
+    ? `<b style="color:#7ee08a">Post-workout pump:</b> your next ${wallet.pump} win${wallet.pump > 1 ? 's' : ''} today pay ×${E.pumpMult}.`
+    : wallet.pumpDay === wallet.day ? 'Pump used up for today. Come back tomorrow.' : 'No pump yet today. Log a workout to get one.';
+  $('#fresh').innerHTML = Object.values(LEVELS).map(l => {
+    const first = !wallet.clears[l.key], f = first ? 1 : freshOf(l.key), g = Math.round(l.gold * (first ? E.firstClearMult : f));
+    return `<div class="fresh"><span>${l.name}</span><div class="bar"><i style="width:${f * 100}%"></i></div>` +
+      `<b>${first ? `NEW ${g}g` : `${Math.round(f * 100)}% ${g}g`}</b></div>`;
+  }).join('');
+  $('#items').innerHTML = Object.entries(ITEMS).map(([k, it]) => {
+    const owned = wallet.owned.includes(k), open = stocked(it), meets = meetsReq(it, s);
+    const eq = it.kind === 'weapon' ? wallet.weapon === k : looksOn(k);
+    let btn;
+    if (!open) btn = `<button disabled>🔒 Beat ${LEVELS[it.sig].name} to stock it</button>`;
+    else if (!owned) btn = `<button data-act="buy" data-k="${k}" ${wallet.gold < it.price ? 'disabled' : ''}>Buy · ${it.price}g</button>`;
+    else if (it.kind === 'weapon') btn = eq ? `<button disabled>Equipped${meets ? '' : ' · too weak, fights with fists'}</button>`
+      : meets ? `<button data-act="equip" data-k="${k}">Equip</button>` : `<button disabled>Owned · train to equip</button>`;
+    else btn = `<button data-act="toggle" data-k="${k}">${eq ? 'On · turn off' : 'Off · turn on'}</button>`;
+    const reqs = Object.entries(it.req || {}).map(([st, v]) =>
+      `<div class="req ${s[st] >= v ? 'ok' : ''}"><span>${st} ${s[st]} / ${v}</span><div class="bar"><i style="width:${Math.min(100, 100 * s[st] / v)}%"></i></div></div>`).join('');
+    const missing = Object.entries(it.req || {}).filter(([st, v]) => s[st] < v).map(([st]) => TRAIN[st]);
+    return `<div class="item ${eq ? 'eq' : ''} ${open ? '' : 'locked'}">
+      <div class="top"><b>${it.name}</b><span class="tag">${KIND[it.kind]}${it.sig ? ' · boss item' : ''} · <em>${it.price ? it.price + 'g' : 'free'}</em></span></div>
+      <p>${it.desc}</p>${reqs}${missing.length && open ? `<div class="train">Train it: ${missing.join('. ')}.</div>` : ''}${btn}</div>`;
+  }).join('');
+}
+
+$('#items').onclick = e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const k = b.dataset.k, it = ITEMS[k];
+  if (b.dataset.act === 'buy' && wallet.gold >= it.price) {
+    wallet.gold -= it.price; wallet.owned.push(k); sfx.coin();
+    if (it.kind !== 'weapon') wallet.looks.push(k);
+    else if (meetsReq(it, setup[0].stats)) wallet.weapon = k;
+    logLine(`Bought <b>${it.name}</b> for ${it.price}g${it.kind === 'weapon' && !meetsReq(it, setup[0].stats) ? ' (locked until you train up)' : ''}`);
+  } else if (b.dataset.act === 'equip') wallet.weapon = k;
+  else if (b.dataset.act === 'toggle') wallet.looks = looksOn(k) ? wallet.looks.filter(x => x !== k) : [...wallet.looks, k];
+  saveWallet(); renderShop(); updateHint();
+};
+
+function logWorkout(key) {
+  const w = WORKOUTS[key];
+  ensureAudio();
+  for (const [st, v] of Object.entries(w.gains)) setup[0].stats[st] = Math.min(50, setup[0].stats[st] + v);
+  setup[0].preset = 'Custom';
+  const wasRusty = isRusty();
+  $('#rusty').checked = false;
+  const pumpNow = wallet.pumpDay !== wallet.day;
+  if (pumpNow) { wallet.pump = E.pumpWins; wallet.pumpDay = wallet.day; }
+  saveWallet();
+  fighterSync[0]();
+  logLine(`Day ${wallet.day}: logged <b>${w.name}</b> (${Object.entries(w.gains).map(([st, v]) => `+${v} ${st}`).join(' ')})` +
+    (wasRusty ? ' · <b>Rusty cleared</b>' : '') +
+    (pumpNow ? ` · <b style="color:#7ee08a">pump ×${E.pumpMult} for ${E.pumpWins} wins</b>` : ' · pump already used today'));
+}
+function nextDay() {
+  wallet.day++;
+  for (const k in wallet.fresh) wallet.fresh[k] = Math.min(1, wallet.fresh[k] + E.freshRefill);
+  wallet.pump = 0;
+  saveWallet(); renderShop();
+}
+document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { logWorkout(b.dataset.w); b.blur(); });
+$('#nextDay').onclick = e => { nextDay(); e.target.blur(); };
+
+function buildEcon() {
+  const priced = Object.entries(ITEMS).filter(([, it]) => it.price);
+  $('#econ').innerHTML = Object.keys(DEFAULT_ECON).map(k =>
+    `<label for="e_${k}">${k}</label><input type="number" id="e_${k}" step="any" value="${E[k]}">`).join('') +
+    Object.values(LEVELS).map(l => `<label for="g_${l.key}">gold: ${l.name}</label><input type="number" id="g_${l.key}" step="5" value="${l.gold}">`).join('') +
+    priced.map(([k, it]) => `<label for="p_${k}">price: ${it.name}</label><input type="number" id="p_${k}" step="10" value="${it.price}">`).join('');
+  Object.keys(DEFAULT_ECON).forEach(k => $('#e_' + k).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { E[k] = v; renderShop(); } });
+  Object.values(LEVELS).forEach(l => $('#g_' + l.key).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { l.gold = v; renderShop(); } });
+  priced.forEach(([k, it]) => $('#p_' + k).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { it.price = v; renderShop(); } });
+}
+$('#resetEcon').onclick = () => { E = { ...DEFAULT_ECON }; buildEcon(); renderShop(); };
+$('#resetWallet').onclick = () => { if (confirm('Wipe gold, items, clears and freshness?')) { wallet = newWallet(); saveWallet(); renderShop(); updateHint(); } };
+buildEcon();
+levelSel.onchange = updateHint;
+$('#p2mode').onchange = updateHint;
+$('#locks').onchange = updateHint;
+$('#rusty').onchange = updateHint;
 $('#start').onclick = () => { startFight(); $('#start').blur(); };
 $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); updateHint(); };
-buildFighterPanel(0); buildFighterPanel(1); buildTuning();
+buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
+level = LEVELS[levelSel.value];
+if (new URLSearchParams(location.search).has('play')) enterPlay();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 requestAnimationFrame(frame);
 </script>
 </body>

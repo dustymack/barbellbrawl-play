@@ -70,7 +70,7 @@
   <h3><span class="style-head"><span class="badge b">B</span> 16-bit SNES-era fighter</span></h3>
   <div class="grid4" id="pixelGear"></div>
 
-  <h2>3 · Special move vs the Plate Golem</h2>
+  <h2>3 · Special move vs the Forge Golem</h2>
   <p>A level 25 fighter lands a special: speed lines, impact frame, POW.</p>
   <div class="scenes">
     <div class="scene"><div class="style-head" style="margin-bottom:8px"><span class="badge">A</span><b>Stick-fight vibe</b></div><canvas id="stickScene"></canvas></div>
@@ -78,7 +78,7 @@
   </div>
 
   <h2>4 · Fusion: stick heroes vs 16-bit monsters <span class="badge" style="vertical-align:middle">A</span> + <span class="badge b" style="vertical-align:middle">B</span></h2>
-  <p>You and your crew are stick figures: cheap to animate, easy to customize, and they match the tracker. The monsters are hand-made 16-bit sprites, so each boss gets real personality and it's always clear who's who. Co-op below: P1 (stick man) and P2 (stick woman) take on the Plate Golem.</p>
+  <p>You and your crew are stick figures: cheap to animate, easy to customize, and they match the tracker. The monsters are hand-made 16-bit sprites, so each boss gets real personality and it's always clear who's who. Co-op below: P1 (stick man) and P2 (stick woman) take on the Forge Golem (the prototype's old Plate Golem).</p>
   <div class="scenes">
     <div class="scene"><div class="style-head" style="margin-bottom:8px"><b>On a 16-bit arena</b><span class="sub">The world is pixel art too; only the heroes are vector.</span></div><canvas id="fusionPixelBg"></canvas></div>
     <div class="scene"><div class="style-head" style="margin-bottom:8px"><b>On a clean dark arena</b><span class="sub">Only the monsters are pixel art, and the arena matches the tracker UI.</span></div><canvas id="fusionCleanBg"></canvas></div>
@@ -89,7 +89,7 @@
   <div class="grid4" id="enemyRoster"></div>
 
   <h2>5 · Bestiary preview</h2>
-  <p>Fantasy and anime creatures first, with a light gym-bro touch. Excuses for skipping a workout make up the swarm. Full roster: <code>docs/09-bestiary.md</code>.</p>
+  <p>Fantasy and anime creatures first, with a light gym-bro touch. Excuses for skipping a workout make up the swarm. Zone 1, the Comfort Zone, gets built first: Snack Attacker, Couch Potato and Snooze Imp as minions, the Bridge Troll as the elite, and Oni Bro as the boss (all playable in the brawl prototype). Full roster: <code>docs/09-bestiary.md</code>.</p>
   <h3>Excuse minions: the swarm</h3>
   <div class="grid4" id="minionRoster"></div>
   <h3>Elites & bosses: fantasy/anime with a gym-bro touch</h3>
@@ -605,9 +605,9 @@ const HEROES = [
 const heroCells = HEROES.map(h => ({ ...h, cv: cell($('#heroOptions'), h.name, h.sub, false) }));
 heroCells.forEach(h => { h.ctx = smooth(h.cv, 180, 220); });
 const ENEMIES = [
-  { make: f => pixelGolem(f, false), w: 56, name: 'Plate Golem', sub: 'Slow, tanky, slams' },
-  { make: pixelWraith, w: 48, name: 'Treadmill Wraith', sub: 'Fast, flies, dashes' },
-  { make: pixelTroll, w: 56, name: 'Bench Troll', sub: "Won't share the bench" },
+  { make: f => pixelGolem(f, false), w: 56, name: 'Forge Golem', sub: 'Was Plate Golem · slow, tanky, slams' },
+  { make: pixelWraith, w: 48, name: 'Marathon Wraith', sub: 'Was Treadmill Wraith · flies, dashes' },
+  { make: pixelTroll, w: 56, name: 'Bridge Troll', sub: 'Zone 1 elite · "10 push-ups to pass"' },
 ];
 const enemyCells = ENEMIES.map(e => { const cv = cell($('#enemyRoster'), e.name, e.sub, true); cv.width = 224; cv.height = 256; const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; return { ...e, cv, ctx: c }; });
 const fusA = smooth($('#fusionPixelBg'), 640, 300), fusB = smooth($('#fusionCleanBg'), 640, 300);
@@ -787,7 +787,7 @@ const MINIONS = [
   { key: 'doom', name: 'Doom Scroller', sub: '"Just checking something" · slowing beam' },
 ];
 const ELITES = [
-  { key: 'oni', name: 'Oni Bro', sub: 'Kanabo slams · lifting belt · "the rack is mine"' },
+  { key: 'oni', name: 'Oni Bro', sub: 'Zone 1 boss · kanabo slams · lifting belt · "the rack is mine"' },
   { key: 'kitsune', name: 'Kitsune Sprinter', sub: 'Nine tails · sweatband · afterimage dashes' },
   { key: 'slime', name: 'Bulk Slime', sub: 'Splits into mini slimes · brags about bulking' },
   { key: 'minotaur', name: 'Minotaur Champion', sub: 'Chalked hands · charges · double axe' },

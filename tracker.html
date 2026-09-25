@@ -172,7 +172,7 @@ function art(key, cls = '') {
 }
 
 // ---------------------------------------------------------------------------
-// Exercise library. The first 8 distributions come from docs/04; the rest are new drafts.
+// Exercise library. Stat splits = the settled B14 table in docs/04 (2026-09-25). Keep in sync with balance-sim.html.
 // kind: barbell | dumbbell | kettlebell | machine | weighted (bodyweight + added load)
 //       | bodyweight (reps only) | timed (seconds) | cardio (minutes)
 // bw: fraction of bodyweight moved per rep, used for XP volume (e.g. a push-up moves ~65% of you)
@@ -180,57 +180,61 @@ function art(key, cls = '') {
 const X = (id, name, kind, art, dist, extra = {}) => ({ id, name, kind, art, dist, ...extra });
 const LIB = [
   // Barbell
-  X('squat', 'Barbell Back Squat', 'barbell', 'squat', { STR: 85, VIT: 5, FREE: 10 }, { inc: 5 }),
-  X('frontsquat', 'Front Squat', 'barbell', 'squat', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('squat', 'Barbell Back Squat', 'barbell', 'squat', { STR: 70, END: 15, DEX: 5, FREE: 10 }, { inc: 5 }),
+  X('frontsquat', 'Front Squat', 'barbell', 'squat', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
   X('bench', 'Bench Press', 'barbell', 'bench', { STR: 90, FREE: 10 }, { inc: 5 }),
-  X('incline', 'Incline Bench Press', 'barbell', 'bench', { STR: 90, FREE: 10 }, { inc: 5 }),
-  X('row', 'Barbell Row', 'barbell', 'row', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
-  X('deadlift', 'Deadlift', 'barbell', 'deadlift', { STR: 85, VIT: 5, FREE: 10 }, { inc: 10 }),
-  X('rdl', 'Romanian Deadlift', 'barbell', 'deadlift', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
-  X('ohp', 'Overhead Press', 'barbell', 'ohp', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
-  X('clean', 'Power Clean', 'barbell', 'clean', { STR: 55, SPD: 20, DEX: 15, FREE: 10 }, { inc: 5 }),
-  X('hipthrust', 'Hip Thrust', 'barbell', 'hipthrust', { STR: 85, FREE: 15 }, { inc: 10 }),
+  X('incline', 'Incline Bench Press', 'barbell', 'bench', { STR: 85, DEX: 5, FREE: 10 }, { inc: 5 }),
+  X('row', 'Barbell Row', 'barbell', 'row', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('deadlift', 'Deadlift', 'barbell', 'deadlift', { STR: 75, END: 10, DEX: 5, FREE: 10 }, { inc: 10 }),
+  X('rdl', 'Romanian Deadlift', 'barbell', 'deadlift', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
+  X('ohp', 'Overhead Press', 'barbell', 'ohp', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
+  X('clean', 'Power Clean', 'barbell', 'clean', { SPD: 45, STR: 35, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('hipthrust', 'Hip Thrust', 'barbell', 'hipthrust', { STR: 75, SPD: 15, FREE: 10 }, { inc: 10 }),
   X('curl', 'Barbell Curl', 'barbell', 'curl', { STR: 90, FREE: 10 }, { inc: 5 }),
   // Dumbbell & kettlebell
-  X('dbbench', 'Dumbbell Bench Press', 'dumbbell', 'bench', { STR: 85, DEX: 5, FREE: 10 }, { inc: 5 }),
-  X('dbrow', 'Dumbbell Row', 'dumbbell', 'row', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
-  X('dbpress', 'Dumbbell Shoulder Press', 'dumbbell', 'ohp', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('dbbench', 'Dumbbell Bench Press', 'dumbbell', 'bench', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('dbrow', 'Dumbbell Row', 'dumbbell', 'row', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('dbpress', 'Dumbbell Shoulder Press', 'dumbbell', 'ohp', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
   X('dbcurl', 'Dumbbell Curl', 'dumbbell', 'curl', { STR: 90, FREE: 10 }, { inc: 5 }),
-  X('arnoldcurl', 'Schwarzenegger Curl', 'dumbbell', 'curl', { STR: 85, END: 5, FREE: 10 }, { inc: 5 }),
-  X('goblet', 'Goblet Squat', 'dumbbell', 'squat', { STR: 75, VIT: 10, FREE: 15 }, { inc: 5 }),
-  X('lunge', 'Dumbbell Lunge', 'dumbbell', 'lunge', { STR: 60, DEX: 25, FREE: 15 }, { inc: 5 }),
-  X('lateral', 'Lateral Raise', 'dumbbell', 'raise', { STR: 85, FREE: 15 }, { inc: 5 }),
-  X('kbswing', 'Kettlebell Swing', 'kettlebell', 'swing', { STR: 40, END: 30, SPD: 15, FREE: 15 }, { inc: 5 }),
+  X('arnoldcurl', 'Schwarzenegger Curl', 'dumbbell', 'curl', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('goblet', 'Goblet Squat', 'dumbbell', 'squat', { STR: 60, DEX: 15, END: 15, FREE: 10 }, { inc: 5 }),
+  X('lunge', 'Dumbbell Lunge', 'dumbbell', 'lunge', { STR: 45, DEX: 45, FREE: 10 }, { inc: 5 }),
+  X('lateral', 'Lateral Raise', 'dumbbell', 'raise', { STR: 65, END: 15, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('farmer', "Farmer's Carry", 'dumbbell', 'generic', { STR: 50, END: 40, FREE: 10 }, { inc: 5 }),   // for now, reps = lengths walked (~20 m)
+  X('kbswing', 'Kettlebell Swing', 'kettlebell', 'swing', { SPD: 40, END: 30, STR: 15, DEX: 5, FREE: 10 }, { inc: 5 }),
   // Machine & cable
-  X('pulldown', 'Lat Pulldown', 'machine', 'pulldown', { STR: 85, FREE: 15 }, { inc: 5 }),
-  X('legpress', 'Leg Press', 'machine', 'legpress', { STR: 85, FREE: 15 }, { inc: 10 }),
-  X('cablerow', 'Seated Cable Row', 'machine', 'row', { STR: 85, FREE: 15 }, { inc: 5 }),
-  X('pushdown', 'Triceps Pushdown', 'machine', 'pushdown', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('pulldown', 'Lat Pulldown', 'machine', 'pulldown', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('legpress', 'Leg Press', 'machine', 'legpress', { STR: 80, END: 10, FREE: 10 }, { inc: 10 }),
+  X('cablerow', 'Seated Cable Row', 'machine', 'row', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('pushdown', 'Triceps Pushdown', 'machine', 'pushdown', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
   // Calisthenics
-  X('pushups', 'Push-up', 'bodyweight', 'pushup', { STR: 60, END: 25, FREE: 15 }, { bw: 0.65 }),
-  X('pikepush', 'Pike Push-up', 'bodyweight', 'pushup', { STR: 65, DEX: 20, FREE: 15 }, { bw: 0.7 }),
-  X('pullups', 'Pull-up', 'bodyweight', 'pullup', { STR: 70, DEX: 15, FREE: 15 }, { bw: 1 }),
-  X('chinups', 'Chin-up', 'bodyweight', 'pullup', { STR: 75, DEX: 10, FREE: 15 }, { bw: 1 }),
-  X('dips', 'Dip', 'bodyweight', 'dip', { STR: 75, END: 10, FREE: 15 }, { bw: 1 }),
-  X('invrow', 'Inverted Row', 'bodyweight', 'invrow', { STR: 70, DEX: 15, FREE: 15 }, { bw: 0.6 }),
-  X('bwsquat', 'Bodyweight Squat', 'bodyweight', 'bwsquat', { END: 50, STR: 30, FREE: 20 }, { bw: 0.7 }),
-  X('pistol', 'Pistol Squat', 'bodyweight', 'bwsquat', { STR: 55, DEX: 30, FREE: 15 }, { bw: 0.9 }),
-  X('legraise', 'Hanging Leg Raise', 'bodyweight', 'legraise', { STR: 50, DEX: 35, FREE: 15 }, { bw: 0.35 }),
-  X('muscleup', 'Muscle-up', 'bodyweight', 'pullup', { STR: 60, DEX: 25, FREE: 15 }, { bw: 1.3 }),
-  X('burpee', 'Burpee', 'bodyweight', 'burpee', { END: 50, SPD: 30, FREE: 20 }, { bw: 0.5 }),
-  X('plank', 'Plank', 'timed', 'plank', { END: 60, VIT: 25, FREE: 15 }, { bw: 0.3 }),
+  X('pushups', 'Push-up', 'bodyweight', 'pushup', { STR: 45, END: 40, DEX: 5, FREE: 10 }, { bw: 0.65 }),
+  X('pikepush', 'Pike Push-up', 'bodyweight', 'pushup', { STR: 55, DEX: 35, FREE: 10 }, { bw: 0.7 }),
+  X('pullups', 'Pull-up', 'bodyweight', 'pullup', { STR: 65, DEX: 25, FREE: 10 }, { bw: 1 }),
+  X('chinups', 'Chin-up', 'bodyweight', 'pullup', { STR: 70, DEX: 20, FREE: 10 }, { bw: 1 }),
+  X('dips', 'Dip', 'bodyweight', 'dip', { STR: 65, END: 25, FREE: 10 }, { bw: 1 }),
+  X('invrow', 'Inverted Row', 'bodyweight', 'invrow', { STR: 55, END: 20, DEX: 15, FREE: 10 }, { bw: 0.6 }),
+  X('bwsquat', 'Bodyweight Squat', 'bodyweight', 'bwsquat', { END: 70, STR: 20, FREE: 10 }, { bw: 0.7 }),
+  X('pistol', 'Pistol Squat', 'bodyweight', 'bwsquat', { DEX: 50, STR: 40, FREE: 10 }, { bw: 0.9 }),
+  X('legraise', 'Hanging Leg Raise', 'bodyweight', 'legraise', { DEX: 50, STR: 30, END: 10, FREE: 10 }, { bw: 0.35 }),
+  X('muscleup', 'Muscle-up', 'bodyweight', 'pullup', { DEX: 45, STR: 35, SPD: 10, FREE: 10 }, { bw: 1.3 }),
+  X('boxjump', 'Box Jump', 'bodyweight', 'burpee', { SPD: 45, DEX: 45, FREE: 10 }, { bw: 0.8 }),
+  X('burpee', 'Burpee', 'bodyweight', 'burpee', { END: 45, SPD: 35, DEX: 10, FREE: 10 }, { bw: 0.5 }),
+  X('plank', 'Plank', 'timed', 'plank', { END: 80, DEX: 10, FREE: 10 }, { bw: 0.3 }),
   // Weighted calisthenics
-  X('pullup', 'Weighted Pull-up', 'weighted', 'pullup', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
+  X('pullup', 'Weighted Pull-up', 'weighted', 'pullup', { STR: 75, DEX: 15, FREE: 10 }, { inc: 2.5, bw: 1 }),
   X('wchinup', 'Weighted Chin-up', 'weighted', 'pullup', { STR: 80, DEX: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
-  X('dip', 'Weighted Dip', 'weighted', 'dip', { STR: 85, FREE: 15 }, { inc: 2.5, bw: 1 }),
+  X('dip', 'Weighted Dip', 'weighted', 'dip', { STR: 80, END: 10, FREE: 10 }, { inc: 2.5, bw: 1 }),
   // Cardio & mobility
-  X('run', 'Running', 'cardio', 'run', { SPD: 80, DEX: 15, FREE: 5 }, { met: 9.8 }),
-  X('bike', 'Cycling', 'cardio', 'bike', { SPD: 55, END: 40, FREE: 5 }, { met: 7.5 }),
-  X('walk', 'Walking', 'cardio', 'walk', { END: 70, VIT: 20, FREE: 10 }, { met: 3.5 }),
-  X('rower', 'Rowing Machine', 'cardio', 'rower', { END: 55, STR: 25, FREE: 20 }, { met: 7 }),
-  X('swim', 'Swimming', 'cardio', 'swim', { END: 60, SPD: 25, FREE: 15 }, { met: 8 }),
-  X('rope', 'Jump Rope', 'cardio', 'rope', { SPD: 50, DEX: 35, FREE: 15 }, { met: 11 }),
-  X('yoga', 'Yoga / Mobility', 'cardio', 'yoga', { DEX: 70, VIT: 20, FREE: 10 }, { met: 2.5 }),
+  X('run', 'Running', 'cardio', 'run', { SPD: 60, END: 15, DEX: 15, FREE: 10 }, { met: 9.8 }),
+  X('sprints', 'Sprint Intervals', 'cardio', 'run', { SPD: 70, DEX: 20, FREE: 10 }, { met: 12 }),
+  X('jog', 'Jogging', 'cardio', 'run', { END: 50, SPD: 35, DEX: 5, FREE: 10 }, { met: 7 }),
+  X('bike', 'Cycling', 'cardio', 'bike', { SPD: 50, END: 40, FREE: 10 }, { met: 7.5 }),
+  X('walk', 'Walking', 'cardio', 'walk', { END: 80, DEX: 10, FREE: 10 }, { met: 3.5 }),
+  X('rower', 'Rowing Machine', 'cardio', 'rower', { END: 60, STR: 20, SPD: 10, FREE: 10 }, { met: 7 }),
+  X('swim', 'Swimming', 'cardio', 'swim', { END: 60, SPD: 20, DEX: 10, FREE: 10 }, { met: 8 }),
+  X('rope', 'Jump Rope', 'cardio', 'rope', { DEX: 60, SPD: 30, FREE: 10 }, { met: 11 }),
+  X('yoga', 'Yoga / Mobility', 'cardio', 'yoga', { DEX: 80, END: 10, FREE: 10 }, { met: 2.5 }),
 ];
 const KIND_LABEL = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', kettlebell: 'Kettlebell', machine: 'Machine / cable',
@@ -308,19 +312,17 @@ function deloadWeight(w, def) {
 }
 
 // Suggested warmups: only a suggestion. The lifter adds them with one tap, then edits them like any set.
-// Barbell: empty bar ×5 twice, then easy plate jumps on a 45 lb bar: 95, 135, 185, 225, 275, 315…
-// (add a 25 per side, then swap it for a 45), up to ~90% of the work weight, with reps tapering.
+// Barbell (StrongLifts-style): empty bar ×5, then easy plate jumps on a 45 lb bar: 95, 135, 185, 225, 275, 315…
+// (add a 25 per side, then swap it for a 45), every jump ×5 up to ~90% of the work weight, and the heaviest one ×3.
+// E.g. squat 255 → 45×5, 95×5, 135×5, 185×5, 225×3.
 const PLATE_JUMPS = Array.from({ length: 12 }, (_, k) => [BAR + 50 + 90 * k, BAR + 90 * (k + 1)]).flat();
+const WARMUP_MAX_PCT = 0.9, WARMUP_REPS = 5, WARMUP_LAST_REPS = 3;
 function suggestWarmups(work, def) {
   if (def.kind === 'weighted') return work > 0 ? [{ w: 0, r: 5 }] : [];
   if (def.kind === 'barbell') {
     if (work <= BAR) return [];
-    const out = [{ w: BAR, r: 5 }, { w: BAR, r: 5 }];
-    for (const w of PLATE_JUMPS) {
-      if (w > work * 0.9) break;
-      const pct = w / work;
-      out.push({ w, r: pct < 0.6 ? 5 : pct < 0.75 ? 3 : pct < 0.85 ? 2 : 1 });
-    }
+    const out = [BAR, ...PLATE_JUMPS.filter(w => w <= work * WARMUP_MAX_PCT)].map(w => ({ w, r: WARMUP_REPS }));
+    if (out.length > 1) out[out.length - 1].r = WARMUP_LAST_REPS;
     return out;
   }
   if (['dumbbell', 'kettlebell', 'machine'].includes(def.kind) && work >= 20) return [{ w: round5(work * 0.5), r: 8 }];
@@ -1046,6 +1048,7 @@ function sessionView() {
         <div class="actions">
           <button class="ghost" data-act="addSet" data-ex="${ei}">+ Set</button>
           <button class="ghost" data-act="addWarm" data-ex="${ei}">+ Warmup</button>
+          ${ex.warmups.length && !ex.warmups.some(s => s.done) ? `<button class="ghost" data-act="clearWarm" data-ex="${ei}">Clear warmups</button>` : ''}
           <span class="grow"></span>
           ${st && !ex.deloaded ? `<button class="ghost" data-act="deload" data-ex="${ei}">Deload −${Math.round(DELOAD_PCT * 100)}%</button>` : ''}
           ${st ? `<button class="ghost" data-act="exSettings" data-exid="${ex.exId}">⚙</button>` : ''}
@@ -1231,14 +1234,19 @@ function handle(act, el, ev) {
     }
     case 'rmSet': {
       const arr = el.dataset.kind === 'warm' ? ex.warmups : ex.sets;
-      if (confirm(el.dataset.kind === 'warm' ? 'Remove this warmup set?' : `Remove set ${+el.dataset.set + 1}?`)) arr.splice(+el.dataset.set, 1);
+      // Warmups are cheap to re-add, so they go without a confirm.
+      if (el.dataset.kind === 'warm' || confirm(`Remove set ${+el.dataset.set + 1}?`)) arr.splice(+el.dataset.set, 1);
       break;
     }
+    case 'clearWarm': ex.warmups = []; break;
     case 'addSet': { const lastSet = ex.sets[ex.sets.length - 1] || { w: isLoaded(def.kind) ? xs(ex.exId).weight : 0, r: defaultReps(def) }; ex.sets.push(newSet(lastSet.w, lastSet.r)); break; }
     case 'addWarm': {
+      // Barbell: the next plate jump above the last warmup (capped at the work weight). Otherwise repeat the last one.
       const prev = ex.warmups[ex.warmups.length - 1];
-      const w = prev ? prev.w : def.kind === 'barbell' ? BAR : 0;
-      ex.warmups.push(newSet(w, 5)); break;
+      const top = Math.max(...ex.sets.map(s => s.w), 0);
+      const w = def.kind !== 'barbell' ? (prev ? prev.w : 0)
+        : !prev ? BAR : Math.min(PLATE_JUMPS.find(j => j > prev.w) ?? prev.w, Math.max(top, prev.w));
+      ex.warmups.push(newSet(w, WARMUP_REPS)); break;
     }
     case 'sugWarm': { const top = Math.max(...ex.sets.map(s => s.w), 0); ex.warmups = suggestWarmups(top, def).map(s => newSet(s.w, s.r)); break; }
     case 'libCat': modal.cat = el.dataset.cat; break;
