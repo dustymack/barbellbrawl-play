@@ -179,7 +179,7 @@
     <div class="card">
       <h2>Controls</h2>
       <div class="keys">
-        <b>Phone</b><span><b>Play fullscreen</b> (or install it: browser menu → <b>Add to Home screen</b>). Left thumb anywhere = floating stick, pull down to crouch. Big <b>JUMP</b> bottom-right. Layouts A/B/C (⏸ menu) compare gestures: hold attack = special, double-tap block = flex, swipe = dodge.</span>
+        <b>Phone</b><span><b>Play fullscreen</b> (or install it: browser menu → <b>Add to Home screen</b>). Left thumb anywhere = floating stick, pull down to crouch. Big <b>JUMP</b> bottom-right. Default layout: HIT, BLOCK and a SPECIAL button that lights up when ready; swipe the right side to dodge; double-tap BLOCK = flex. The ⏸ menu has layouts D and C for comparison.</span>
         <b style="color:var(--p1)">P1</b><span><b>A/D</b> move · <b>S</b> crouch (hold) · <b>W</b> jump · <b>J</b> attack · <b>K</b> block (hold) · <b>L</b> dodge · <b>I</b> special · <b>U</b> flex</span>
         <b style="color:var(--p2)">P2</b><span><b>← →</b> move · <b>↓</b> crouch · <b>↑</b> jump · <b>Enter</b> attack · <b>'</b> block (hold) · <b>Right Shift</b> dodge · <b>/</b> special · <b>.</b> flex</span>
         <b>Moves</b><span>Attack in the air = <b>kick</b> (high) · crouch + attack = <b>low sweep</b> · crouch + block = <b>low block</b></span>
@@ -1786,13 +1786,35 @@ function drawHeavy(m) {
     ctx.fillStyle = isEnraged(m) ? '#ffe14a' : '#fff'; ctx.fillRect(6, -182, 14, 5);  // eye
     ctx.strokeStyle = '#1b1e22'; ctx.lineWidth = 3; line(2, -190, 22, -186);          // brow
   } else {
-    [[-62, 60, 20], [-96, 66, 22], [-130, 60, 20]].forEach(([y, rx, ry]) => {          // stacked plates for a body
-      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(0, y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
-    });
-    disc(0, -172, 26, col);
-    ctx.fillStyle = isEnraged(m) ? '#ff3b3b' : '#e0555a';
-    ctx.fillRect(4, -178, 16, 5);
+    // Forge Golem (concept: art-mockups.html): shaded iron plates with dark outlines, rivets, a forge core and ember eyes
+    const hot = isEnraged(m), pulse = 0.6 + 0.4 * Math.sin(m.bob * (hot ? 9 : 4)), OUT = '#1b1d21';
+    const plate = (y, rx, ry) => {
+      ctx.fillStyle = OUT; ctx.beginPath(); ctx.ellipse(0, y, rx + 3, ry + 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = m.flash > 0 ? '#fff' : '#6f757e'; ctx.beginPath(); ctx.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();          // shade
+      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(-4, y - 3, rx - 5, ry - 4, 0, 0, Math.PI * 2); ctx.fill();                          // face
+      ctx.fillStyle = m.flash > 0 ? '#fff' : '#c9ced6'; ctx.beginPath(); ctx.ellipse(-rx * 0.35, y - ry * 0.45, rx * 0.35, ry * 0.2, -0.2, 0, Math.PI * 2); ctx.fill();   // highlight
+      for (const a of [0.5, 1.6, 2.7, 3.8, 4.9]) disc(Math.cos(a) * (rx - 7), y + Math.sin(a) * (ry - 5), 2.2, '#4a4f57');                    // rivets
+    };
+    ctx.fillStyle = OUT; ctx.fillRect(-41, -48, 32, 48); ctx.fillRect(9, -48, 32, 48);
+    ctx.fillStyle = dark; ctx.fillRect(-38, -46, 26, 46); ctx.fillRect(12, -46, 26, 46);
+    ctx.fillStyle = '#6f757e'; ctx.fillRect(-38, -46, 6, 46); ctx.fillRect(12, -46, 6, 46);
+    plate(-62, 60, 20); plate(-130, 60, 20); plate(-96, 66, 22);
+    // the forge core glows through the middle plate, hotter when enraged
+    ctx.save();
+    if (!J.on.reduce) { ctx.shadowColor = hot ? '#ff3b1a' : '#ff7a1a'; ctx.shadowBlur = 18 * pulse; }
+    disc(0, -96, 15, OUT); disc(0, -96, 12, hot ? '#ff4a1a' : '#ff7a1a'); disc(-2, -98, 6 * pulse + 2, '#ffd36a');
+    ctx.restore();
+    // helm: an anvil-topped head with a glowing visor slit and an iron beard
+    ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(0, -172, 29, 0, Math.PI * 2); ctx.fill();
+    disc(0, -172, 26, m.flash > 0 ? '#fff' : '#6f757e'); disc(-3, -175, 22, col);
+    ctx.fillStyle = OUT; ctx.fillRect(-30, -204, 60, 12); ctx.fillStyle = m.flash > 0 ? '#fff' : '#50555d'; ctx.fillRect(-27, -202, 54, 8);   // anvil top
+    ctx.fillStyle = OUT; ctx.beginPath(); ctx.moveTo(-18, -158); ctx.lineTo(18, -158); ctx.lineTo(4, -134); ctx.lineTo(-6, -134); ctx.closePath(); ctx.fill();   // beard
+    ctx.fillStyle = '#4a4f57'; ctx.beginPath(); ctx.moveTo(-14, -158); ctx.lineTo(14, -158); ctx.lineTo(3, -139); ctx.lineTo(-5, -139); ctx.closePath(); ctx.fill();
+    ctx.save();
+    if (!J.on.reduce) { ctx.shadowColor = '#ff7a1a'; ctx.shadowBlur = 10; }
+    ctx.fillStyle = OUT; ctx.fillRect(-2, -182, 26, 9);
+    ctx.fillStyle = hot ? '#ff3b1a' : '#ffb347'; ctx.fillRect(1, -180, 20, 5);                                                            // ember eyes
+    ctx.restore();
   }
   let hand;
   const winding = m.state === 'windup';
@@ -1803,8 +1825,11 @@ function drawHeavy(m) {
   else if (m.state === 'active' && m.attack === 'sweep') hand = [150, -108];
   else if (winding && (m.attack === 'throw' || m.attack === 'lob')) hand = [-50 - prog * 20, m.attack === 'lob' ? -200 : -140];
   else hand = [58, -60 + Math.sin(m.bob * 2) * 4];
-  ctx.strokeStyle = col; ctx.lineWidth = 22; ctx.lineCap = 'round';
+  ctx.lineCap = 'round';
+  if (!oni) { ctx.strokeStyle = '#1b1d21'; ctx.lineWidth = 28; line(34, -120, hand[0], hand[1]); }
+  ctx.strokeStyle = col; ctx.lineWidth = 22;
   line(34, -120, hand[0], hand[1]);
+  if (!oni) disc(hand[0], hand[1], 15, m.flash > 0 ? '#fff' : '#6f757e');   // iron fist
   if (m.state === 'taunt') { line(-34, -120, -40, -200); disc(-40, -168, 16, col); disc(40, -168, 16, col); }
   if (oni && !(winding && (m.attack === 'throw' || m.attack === 'lob')) && m.state !== 'taunt') {   // kanabo continues past the fist
     const dx = hand[0] - 34, dy = hand[1] + 120, len = Math.hypot(dx, dy) || 1;
@@ -2465,9 +2490,10 @@ const BTN = {
   special: { label: 'SPECIAL', pos: [56, 4, 14] },
   flex:    { label: 'FLEX', pos: [45, 27, 13] },
 };
+// A is the founder's pick (A7, 2026-09-28): a dedicated SPECIAL button and swipe to dodge. D and C stay for comparison.
+// pos overrides a button's spot for that layout: [right, bottom, size] in vh.
 const LAYOUTS = {
-  A: { name: 'A · 4 buttons', desc: 'Jump, hit, block, dodge. Hold HIT = special. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block', 'dodge'], holdSpecial: true, dblFlex: true, swipeDodge: false },
-  B: { name: 'B · 3 buttons + swipe', desc: 'Jump, hit, block. Swipe the right side to dodge that way. Hold HIT = special. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block'], holdSpecial: true, dblFlex: true, swipeDodge: true },
+  A: { name: 'A · special button + swipe', desc: 'Jump, hit, block and SPECIAL (it lights up when you have the stamina). Swipe the right side to dodge that way. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block', 'special'], pos: { special: [26, 29, 17] }, holdSpecial: false, dblFlex: true, swipeDodge: true },
   D: { name: 'D · 5 buttons', desc: 'Jump, hit, block, dodge, and a SPECIAL button that lights up when you have the stamina. Double-tap BLOCK = flex.', buttons: ['jump', 'attack', 'block', 'dodge', 'special'], holdSpecial: false, dblFlex: true, swipeDodge: false },
   C: { name: 'C · 6 buttons', desc: 'Every move gets its own button, no gestures (for comparison).', buttons: ['jump', 'attack', 'block', 'dodge', 'special', 'flex'], holdSpecial: false, dblFlex: false, swipeDodge: false },
 };
@@ -2481,7 +2507,7 @@ const standalone = () => matchMedia('(display-mode: fullscreen), (display-mode: 
 function buildPad() {
   const L = LAYOUTS[layoutKey];
   $('#btns').innerHTML = L.buttons.map(a => {
-    const [r, b, s] = BTN[a].pos;
+    const [r, b, s] = (L.pos && L.pos[a]) || BTN[a].pos;
     lastReady = null;
     const sub = a === 'attack' && L.holdSpecial ? '<small>hold: special</small>' : a === 'block' && L.dblFlex ? '<small>2× tap: flex</small>' : '';
     return `<div class="tb ${a}" data-a="${a}" style="right:calc(${r}vh + env(safe-area-inset-right));bottom:calc(${b}vh + env(safe-area-inset-bottom));width:${s}vh;height:${s}vh;font-size:${Math.max(2.4, s * 0.15)}vh"><span>${BTN[a].label}${sub}</span></div>`;
