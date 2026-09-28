@@ -1995,6 +1995,10 @@ const SPR = (() => {
     leaf:   ['#0c2a08', '#2e7a1c', '#4ea830', '#80d050', '#c0f090'],
     troll:  ['#12200a', '#3a6a24', '#5e9a3a', '#8ccc5a', '#c8f0a0'],
     belly:  ['#2a3a14', '#8aa058', '#b8cc80', '#dce8a8', '#f4ffd8'],
+    plate:  ['#16181e', '#4a505c', '#7a818e', '#a8b0bc', '#e0e6ee'],
+    forge:  ['#3a0a04', '#a02c0c', '#ff7a1a', '#ffc04a', '#fff0a0'],
+    ghost:  ['#1a2a3a', '#6a9ab8', '#aee0f4', '#dcf6ff', '#ffffff'],
+    bib:    ['#4a2008', '#c85a10', '#ff7a1a', '#ffb060', '#fff0d0'],
   };
   const S = { R: 5, round: 1.6, t1: 0.25, t2: 0.8, hi: 0.97 };
   const LIGHT = (() => { const v = [-0.5, -0.7, 0.55], n = Math.hypot(...v); return v.map(a => a / n); })();
@@ -2009,7 +2013,8 @@ const SPR = (() => {
   const L = (t, w, a, b) => { t.lineWidth = w; t.lineCap = 'round'; t.beginPath(); t.moveTo(a[0], a[1]); t.lineTo(b[0], b[1]); t.stroke(); };
   const rot = (t, cx, cy, a) => { t.translate(cx, cy); t.rotate(a); t.translate(-cx, -cy); };
   const FONT = { C: ['111', '100', '100', '100', '111'], H: ['101', '101', '111', '101', '101'], I: ['111', '010', '010', '010', '111'],
-                 P: ['110', '101', '110', '100', '100'], S: ['111', '100', '111', '001', '111'], Z: ['111', '001', '010', '100', '111'] };
+                 P: ['110', '101', '110', '100', '100'], S: ['111', '100', '111', '001', '111'], Z: ['111', '001', '010', '100', '111'],
+                 2: ['111', '001', '111', '100', '111'], 6: ['111', '100', '111', '101', '111'] };
   // big anime eye: ink, colored iris, a white shine
   const eye = (q, x, y, iris, w = 3, h = 5) => { q(x, y, INK, w, h); q(x, y + h - 3, iris, w, 2); q(x, y + h - 1, INK, w, 1); q(x, y, '#fff', w > 3 ? 2 : 1, 2); q(x + w - 1, y + h - 2, '#fff'); };
 
@@ -2204,6 +2209,55 @@ const SPR = (() => {
         q(19, 30 + u, RAMPS.oni[3], 3, 1); q(42, 30 + u, RAMPS.oni[3], 3, 1);
       } };
     } },
+
+    // Forge Golem (was Plate Golem): a dwarven forge golem of stacked iron plates with a big anvil-helm head,
+    // a forge core glowing through its chest and ember eyes. Same heavy-kit poses as Oni Bro.
+    golem: { W: 110, H: 72, pad: [26, 22], ax: 32, scale: 2.8, build: (part, o) => {   // o: b, ang + lift (arm), plate, rage
+      const u = o.b, sh = [44, 42 + u], arm = t => { t.translate(0, -o.lift); rot(t, ...sh, o.ang); };
+      part('iron', t => { RR(t, 21, 57, 9, 11, 2); RR(t, 35, 57, 9, 11, 2); }, { r: 2 });
+      part('plate', t => { RR(t, 17, 66, 15, 5, 2); RR(t, 33, 66, 15, 5, 2); }, { r: 2 });
+      part('plate', t => E(t, 32, 57, 17, 6), { r: 4 });
+      part('plate', t => E(t, 32, 47 + u, 20, 7.5), { r: 5 });
+      part('forge', t => E(t, 32, 47 + u, 6, 4.5), { r: 3 });
+      part('plate', t => E(t, 32, 37 + u, 17, 6), { r: 4 });
+      part('plate', t => RR(t, 14, 9 + u, 36, 25, 8), { r: 6 });                                  // big chibi helm
+      part('iron', t => P(t, [[10, 5 + u], [50, 5 + u], [58, 7 + u], [50, 11 + u], [16, 11 + u]]), { r: 2 });   // anvil top
+      part('iron', t => RR(t, 18, 17 + u, 28, 8, 3), { r: 2 });                                   // visor
+      part('iron', t => P(t, [[19, 29 + u], [45, 29 + u], [37, 40 + u], [27, 40 + u]]), { r: 2 });   // iron beard
+      part('plate', t => L(t, 6, [18, 38 + u], [11, 49]));
+      part('plate', t => E(t, 11, 51, 5.5, 5), { r: 3 });
+      // the striking arm is drawn in front of the body so its windup always shows (overhead = LOW slam, pulled back = HIGH sweep)
+      part('plate', t => { arm(t); L(t, 7, sh, [53, 40 + u]); });
+      part('plate', t => { arm(t); E(t, 55, 39 + u, 7.5, 7); }, { r: 4 });                        // iron fist
+      if (o.plate) part('metal', t => { arm(t); E(t, 56, 30 + u, 8, 8); }, { r: 3 });              // a plate to throw
+      return { rim: '#ffb060', after: q => {
+        const ember = o.rage ? '#ff3b3b' : '#ffb347';
+        q(21, 20 + u, ember, 7, 3); q(36, 20 + u, ember, 7, 3); q(22, 20 + u, '#fff4c0', 2, 1); q(37, 20 + u, '#fff4c0', 2, 1);
+        q(30, 45 + u, '#fff0a0', 3, 2); q(28, 47 + u, '#ffd36a', 2, 1);
+        [[18, 13], [45, 13], [18, 29], [45, 29]].forEach(([x, y]) => q(x, y + u, RAMPS.plate[0]));
+        [[16, 47], [48, 47], [18, 57], [46, 57]].forEach(([x, y]) => q(x, y, RAMPS.plate[4]));
+        q.line(26, 32 + u, 30, 36 + u, RAMPS.iron[0]); q.line(38, 32 + u, 34, 36 + u, RAMPS.iron[0]);
+      } };
+    } },
+
+    // Marathon Wraith (was Treadmill Wraith): an undead runner who never stops, still wearing a race bib and its shoes.
+    wraith: { W: 50, H: 52, pad: [6, 10], ax: 22, scale: 2.0, build: (part, o) => {   // o: b, arm ('rest' | 'up' | 'out'), dash, rage
+      const u = o.b, lean = o.dash ? 3 : 0;
+      part('ghost', t => { if (o.arm === 'up') L(t, 3.5, [30, 26 + u], [38, 12 + u]); else if (o.arm === 'out') L(t, 3.5, [30, 27 + u], [46, 25 + u]); else L(t, 3.5, [30, 27 + u], [36, 35 + u]); });
+      part('ghost', t => P(t, [[10 - lean, 20 + u], [34, 20 + u], [37, 33], [33, 44], [29, 38], [25, 49], [21, 40], [16, 47], [12, 38], [5 - lean * 2, 34]]), { r: 4 });
+      part('bib', t => RR(t, 13, 25 + u, 16, 10, 1), { r: 1 });
+      part('ghost', t => E(t, 22 + lean, 14 + u, 13.5, 12.5), { r: 6 });
+      part('red', t => { RR(t, 12, 47, 8, 4, 2); RR(t, 24, 49, 8, 4, 2); }, { r: 2 });            // its running shoes
+      part('ghost', t => L(t, 3.5, [13, 27 + u], [8, 35 + u]));
+      return { rim: '#9fe3ff', after: q => {
+        const iris = o.rage ? '#ff3b3b' : '#3ad0ff', x = 22 + lean;
+        q(x - 8, 11 + u, INK, 5, 6); q(x + 3, 11 + u, INK, 5, 6);                                  // hollow eyes with a glint
+        q(x - 7, 14 + u, iris, 3, 2); q(x + 4, 14 + u, iris, 3, 2);
+        q(x - 2, 19 + u, INK, 4, 3);                                                                // panting
+        q(12, 49, '#fff', 3, 1); q(24, 51, '#fff', 3, 1);                                           // laces
+        if (o.dash) [[1, 18], [0, 24], [2, 30]].forEach(([xx, yy]) => q(xx, yy + u, '#dcf6ff', 3, 1));   // speed lines
+      }, label: q => q.text('26', 17, 27 + u, RAMPS.bib[0]) };
+    } },
   };
 
   const cache = new Map();
@@ -2233,6 +2287,14 @@ function spritePose(m) {
       else if (w && atk === 'grab') o.open = true;
       return o;
     }
+    case 'golem': {
+      const o = { b: idle, ang: 0, lift: 0, plate: false, rage };
+      if (w && atk === 'slam') Object.assign(o, { ang: -0.9, lift: 30 }); else if (a && atk === 'slam') o.ang = 2.0;
+      else if (w && atk === 'sweep') o.ang = -1.9; else if (a && atk === 'sweep') o.ang = 1.3;
+      else if (w && (atk === 'throw' || atk === 'lob')) Object.assign(o, { ang: atk === 'lob' ? 0.2 : 0.4, lift: atk === 'lob' ? 20 : 12, plate: true });
+      return o;
+    }
+    case 'wraith': return { b: Math.sin(m.bob * 4) > 0 ? 1 : 0, arm: w && atk === 'swipe' ? 'up' : a && atk === 'swipe' ? 'out' : 'rest', dash: m.state === 'dash' || (w && atk === 'dash'), rage };
     case 'oni': {
       const o = { b: idle, ang: 0, lift: 0, club: true, plate: false, flex: false, rage };
       if (m.state === 'taunt') Object.assign(o, { club: false, flex: true });
@@ -2246,7 +2308,9 @@ function spritePose(m) {
 
 function drawSpriteMonster(m) {
   const d = SPR.box(m.key), s = d.scale, prog = windupProg(m);
-  const lift = m.key === 'snooze' ? 20 + Math.sin(m.bob * 5) * 3 : 0;
+  if (m.key === 'wraith') for (const tr of m.trail) { ctx.globalAlpha = 0.25 * (1 - (gt - tr.t) / 0.18); disc(tr.x, FLOOR - tr.y - 90, 24, m.def.color); ctx.globalAlpha = 1; }
+  const lift = m.key === 'snooze' ? 20 + Math.sin(m.bob * 5) * 3
+    : m.key === 'wraith' ? 36 + (m.state === 'dash' || m.state === 'launched' ? 0 : Math.sin(m.bob * 4) * 6) : 0;
   const sp = SPR.get(m.key, spritePose(m));
   ctx.save();
   monsterFrame(m, lift);
@@ -2267,8 +2331,8 @@ function drawSpriteMonster(m) {
   ctx.restore();
   if (m.state === 'active' && (m.attack === 'slam' || m.attack === 'smash')) {   // ground crack
     ctx.strokeStyle = 'rgba(232,197,71,.7)'; ctx.lineWidth = 4;
-    const r = (m.key === 'oni' ? 30 : 24) + m.t * (m.key === 'oni' ? 900 : 700);
-    ctx.beginPath(); ctx.ellipse(m.x + m.facing * (m.key === 'oni' ? 110 : 100), FLOOR, r, r * 0.18, 0, 0, Math.PI * 2); ctx.stroke();
+    const heavy = m.def.kit === 'heavy', r = (heavy ? 30 : 24) + m.t * (heavy ? 900 : 700);
+    ctx.beginPath(); ctx.ellipse(m.x + m.facing * (heavy ? 110 : 100), FLOOR, r, r * 0.18, 0, 0, Math.PI * 2); ctx.stroke();
   }
 }
 
