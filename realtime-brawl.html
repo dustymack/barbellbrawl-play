@@ -327,6 +327,7 @@ const DEFAULT_TUNING = {
   throwMult: 1.8,                     // damage to the thrown monster when it lands
   throwVx: 620, throwVy: 300,         // throw speed (low and flat, to bowl); distance × clamp(STR ÷ (throwStrRef × weight), 0.5, 1.5)
   throwStrRef: 25, throwAnimMs: 320,
+  spinMs: 380, spinTurns: 1,          // spin throw: whirl the minion around this many times first (a throw behind adds half a turn)
   bowlOn: 1,                          // launched and thrown monsters knock down what they fly into
   bowlMult: 1.2,                      // damage to each monster hit by a flying one (the thrower's damage × this)
   bowlMinVx: 180,                     // a flying monster slower than this no longer bowls
@@ -387,7 +388,7 @@ const MONSTERS = {
     },
   },
   couch: {
-    name: 'Couch Potato', kit: 'couch', rank: 'minion', hp: 110, width: 66, height: 52, speed: 45, color: '#c9a36a', weight: 1.2,
+    name: 'Couch Potato', kit: 'couch', rank: 'minion', hp: 110, width: 84, height: 68, speed: 45, color: '#c9a36a', weight: 1.2,
     hint: '"Just one more episode." Slow and tanky. Its GRAB can\'t be blocked: dodge it or jump it. Caught? It drains your stamina until you mash free (or a buddy hits it).',
     attacks: {
       grab: { windup: 750, recover: 900, range: 52, dmg: 4, height: 'grab', drain: 22, escape: 6, hold: 3 },
@@ -932,12 +933,26 @@ function dropHeld(p, wriggled = false) {
   if (!m) return;
   p.held = null; m.heldBy = null;
   if (m.hp > 0 && m.state === 'held') { m.state = wriggled ? 'walk' : 'stagger'; m.t = 0; m.cd = 0.4; m.y = 0; }
-  if (p.state === 'grip') { p.state = 'idle'; p.t = 0; }
+  if (p.state === 'grip' || p.state === 'spin') { p.state = 'idle'; p.t = 0; }
   if (wriggled) floater('SLIPPED FREE', m.x, FLOOR - m.def.height - 20, '#9a9ca0', 14);
 }
-// Throw the held minion (dir = ±1). It flies like a launch (so it bowls), and takes throw damage when it lands.
+// Throw the held minion (dir = ±1): a spin first, whirling it around you, then the release.
 function throwHeld(p, dir) {
-  const m = p.held;
+  p.state = 'spin'; p.t = 0;
+  p.spin = { dir, from: p.facing, total: Math.PI * 2 * T.spinTurns + (dir === p.facing ? 0 : Math.PI) };
+  sfx.dodge();
+}
+const spinAngle = p => p.spin.total * clamp(p.t / (T.spinMs / 1000), 0, 1);
+// Where the whirled minion is: circling at arm's length (side view, so only x changes), lifted off the ground mid-spin.
+function swingHeld(p) {
+  const m = p.held, u = clamp(p.t / (T.spinMs / 1000), 0, 1);
+  m.x = clamp(p.x + p.spin.from * Math.cos(spinAngle(p)) * (m.def.width * 0.4 + T.bodyRadius + 6), LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
+  m.y = 8 + 26 * Math.sin(u * Math.PI);
+  m.facing = -sign(m.x - p.x);
+}
+// Let go at the end of the spin. It flies like a launch (so it bowls), and takes throw damage when it lands.
+function releaseThrow(p) {
+  const m = p.held, dir = p.spin.dir;
   p.held = null; m.heldBy = null;
   p.facing = dir; p.state = 'throw'; p.t = 0; p.throws++;
   const pow = clamp(p.stats.STR / (T.throwStrRef * m.def.weight), 0.5, 1.5);
@@ -946,7 +961,7 @@ function throwHeld(p, dir) {
   launchMonster(m, p, dir * T.throwVx * pow, T.throwVy);
   m.thrownBy = p; m.facing = -dir;
   floater('THROW!', p.x, FLOOR - p.y - 150, p.color, 22);
-  sfx.dodge(); doHitstop(J.hitstopLightMs);
+  sfx.hit(true, false); doHitstop(J.hitstopLightMs);
 }
 
 // A monster drops. Minions poof mid-fight; the last monster of the last wave gets the KO slow-mo.
@@ -1135,7 +1150,7 @@ function updatePlayer(p, dt) {
     return;
   }
   const tm = nearestMonster(p);
-  if (tm && p.state !== 'dodge' && p.state !== 'special' && p.state !== 'grip' && p.state !== 'throw') p.facing = sign(tm.x - p.x);
+  if (tm && p.state !== 'dodge' && p.state !== 'special' && p.state !== 'grip' && p.state !== 'spin' && p.state !== 'throw') p.facing = sign(tm.x - p.x);
 
   const idleLike = p.state === 'idle' || p.state === 'walk' || p.state === 'block' || p.state === 'crouch';
   if (idleLike) {
@@ -1205,6 +1220,13 @@ function updatePlayer(p, dt) {
         else { p.knees++; p.kneeT = T.kneeMs / 1000; hitMonster(p, m, T.kneeMult, 'mid', { x: m.x - p.facing * m.def.width * 0.3, y: FLOOR - 40 }, 0); }
       } else if (pressed(inp, 'dodge') || pressed(inp, 'jump')) dropHeld(p, true);
       else if (p.t >= T.holdMs / 1000) dropHeld(p, true);
+      break;
+    }
+    case 'spin': {
+      const m = p.held;
+      if (!m || m.hp <= 0 || m.state !== 'held') { dropHeld(p); break; }
+      if (p.t >= T.spinMs / 1000) releaseThrow(p);
+      else swingHeld(p);
       break;
     }
     case 'throw':
@@ -1697,7 +1719,9 @@ function drawStick(p) {
   ctx.translate(p.x, FLOOR - p.y);
   if (!alive(p)) { ctx.translate(0, -8); ctx.rotate(-p.facing * Math.PI / 2); ctx.globalAlpha = 0.45; }
   else if (p.state === 'sleep') { ctx.rotate(-p.facing * 0.35); }
-  ctx.scale(p.facing * k, k);
+  let turn = 1;                                                     // spin throw: the fighter turns (edge-on halfway round)
+  if (p.state === 'spin' && p.spin) { const c = Math.cos(spinAngle(p)); turn = sign(c) * Math.max(0.2, Math.abs(c)); }
+  ctx.scale((p.state === 'spin' && p.spin ? p.spin.from : p.facing) * turn * k, k);
   if (p.state === 'dodge') ctx.globalAlpha = gt < p.iUntil ? 0.3 : 0.7;
   else if (alive(p) && (gt < p.iUntil || (J.on.grace && gt < p.graceUntil))) ctx.globalAlpha = 0.6 + 0.3 * Math.sin(gt * 30);
   const ink = p.flash > 0 ? '#e0555a' : INK, accent = p.i === 0 && looksOn('headband') ? '#e0555a' : p.color;
@@ -1706,7 +1730,7 @@ function drawStick(p) {
   const crouchPose = p.crouch && p.onGround && alive(p);
   const crouch = p.state === 'dodge' ? 24 : crouchPose ? 30 : p.state === 'block' ? 8 : p.state === 'sleep' ? 14 : 0;
   const lean = p.state === 'hurt' || p.state === 'grabbed' ? -12 : p.state === 'attack' ? (p.move === 'kick' ? -6 : p.move === 'finisher' ? -10 : 8)
-    : p.state === 'dodge' ? 16 : p.state === 'throw' ? -10 : p.state === 'grip' ? 6 : 4;
+    : p.state === 'dodge' ? 16 : p.state === 'throw' ? -10 : p.state === 'grip' ? 6 : p.state === 'spin' ? -6 : 4;
   const hipY = -50 + crouch, neckY = -98 + crouch * 1.4, headY = neckY - 14 - headR * 0.3;
   const aProg = p.state === 'attack' ? p.t / moveDur(p) : 0;
   const ext = aProg < 0.45 ? aProg / 0.45 : 1 - (aProg - 0.45) / 0.55 * 0.7;   // limb extension through a strike
@@ -1755,7 +1779,7 @@ function drawStick(p) {
   } else if (p.state === 'attack') {
     A([[sx, sy], [sx - 12, sy + 18], [sx - 4, sy + 30]]);
     A([[sx, sy], [sx + 12 + ext * 18, sy + 8 - ext * 6], fh = [sx + 14 + ext * 36, sy + 2 - ext * 4]]);
-  } else if (p.state === 'grip') {                                                  // both hands on the minion
+  } else if (p.state === 'grip' || p.state === 'spin') {                            // both hands on the minion
     A([[sx, sy], [sx + 14, sy + 12], [sx + 26, sy + 6]]);
     A([[sx, sy], [sx + 16, sy + 16], fh = [sx + 28, sy + 12]]);
   } else if (p.state === 'throw') {                                                 // follow-through, arms flung forward
@@ -1830,6 +1854,12 @@ function drawStick(p) {
   if (alive(p)) drawGear(p, fh, k);
   ctx.restore();
   const top = FLOOR - p.y - 150 * k;
+  // Spin throw: a whoosh ring traced by the whirled minion
+  if (p.state === 'spin' && p.held && !J.on.reduce) {
+    const m = p.held, reach = m.def.width * 0.4 + T.bodyRadius + 6, cy = FLOOR - m.y - m.def.height * 0.5;
+    ctx.save(); ctx.strokeStyle = p.color; ctx.lineWidth = 4; ctx.globalAlpha = 0.45;
+    ctx.beginPath(); ctx.ellipse(p.x, cy, reach, 14, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
 
   // Revive progress ring over a downed player
   if (!alive(p) && players.length > 1) {
@@ -2283,7 +2313,7 @@ const SPR = (() => {
       };
     } },
 
-    couch: { W: 72, H: 37, ax: 22, scale: 1.4, build: (part, o) => {   // o: b, reach (0–24 sprite px), wide (eyes open)
+    couch: { W: 72, H: 37, ax: 22, scale: 1.9, build: (part, o) => {   // o: b, reach (0–24 sprite px), wide (eyes open)
       const y = o.b - 4;
       part('couch', t => RR(t, 5, 12, 34, 14, 4), { r: 3 });
       part('leaf', t => { L(t, 1.5, [21, 9 + y], [21, 6 + y]); E(t, 18, 6.5 + y, 3.4, 2, 0.4); E(t, 24, 6 + y, 3.4, 2, -0.4); }, { r: 1 });
