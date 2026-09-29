@@ -529,7 +529,12 @@ function loadWallet() {
   try { const w = JSON.parse(localStorage.getItem('bb-brawl-wallet')); if (w && w.owned) return { ...newWallet(), ...w }; } catch (e) {}
   return newWallet();
 }
-function saveWallet() { try { localStorage.setItem('bb-brawl-wallet', JSON.stringify(wallet)); } catch (e) {} }
+// In the app (G2) the wallet lives in the app's database: every change is posted back. In a browser it stays in localStorage.
+let appWallet = false;
+function saveWallet() {
+  if (appWallet && window.ReactNativeWebView) { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'wallet', wallet })); return; }
+  try { localStorage.setItem('bb-brawl-wallet', JSON.stringify(wallet)); } catch (e) {}
+}
 let wallet = loadWallet();
 const freshOf = k => wallet.fresh[k] ?? 1;
 const meetsReq = (item, stats) => Object.entries(item.req || {}).every(([s, v]) => stats[s] >= v);
@@ -1072,6 +1077,7 @@ function endFight(won) {
   if (phase !== 'fight') return;
   phase = 'over';
   const coopLive = players.length > 1 && players[1].ctrl === 'human';
+  const firstWin = won && !wallet.clears[level.key];
   const reward = won ? payout(level, coopLive) : { gold: 0, parts: ['Losses pay no gold'] };
   if (won) sfx.coin();
   const left = monsters.filter(m => m.hp > 0);
@@ -1086,7 +1092,7 @@ function endFight(won) {
     `${result.hint ? `<br><span style="color:#e8c547">${result.hint}</span>` : ''}<br>${who}`);
   // App bridge (G2): hand the result back to the Expo app. No-op in a browser.
   if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, gold: reward.gold, hint: result.hint }));
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, key: level.key, first: firstWin, gold: reward.gold, unlock: reward.unlock || '', hint: result.hint }));
   }
   if (playMode) showMenu('after');
 }
@@ -3092,10 +3098,17 @@ $('#start').onclick = () => { startFight(); $('#start').blur(); };
 $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); updateHint(); };
 buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
 level = LEVELS[levelSel.value];
-// App bridge (G2): the Expo app calls window.bbInit({ stats, level }) after the page loads, and also sets
-// window.BB_INIT in case its script runs first. P1 takes the real stats and the page opens in play mode.
+// App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet }) after the page loads, and also sets
+// window.BB_INIT in case its script runs first. P1 takes the real stats, the wallet comes from the app (already moved
+// to today: freshness refilled, pump granted by a real workout), ladder locks are on, and the page opens in play mode.
 // In a browser neither happens and nothing changes.
 window.bbInit = init => {
+  if (init && init.wallet) {
+    appWallet = true;
+    wallet = { ...newWallet(), ...init.wallet };
+    $('#locks').checked = true;
+    renderShop(); updateHint();
+  }
   if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; }
   if (init && init.level) setup[0].level = init.level;
   if (init && 'rusty' in init) $('#rusty').checked = !!init.rusty;

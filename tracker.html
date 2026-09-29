@@ -248,7 +248,7 @@ const LIB = [
   X('dbrow', 'Dumbbell Row', 'dumbbell', 'row', { STR: 75, DEX: 15, FREE: 10 }, 'la|bi fa', { inc: 5, perSide: true }),
   X('dbpress', 'Dumbbell Shoulder Press', 'dumbbell', 'ohp', { STR: 70, DEX: 20, FREE: 10 }, 'sh|tr', { inc: 5, impl: 2 }),
   X('dbcurl', 'Dumbbell Curl', 'dumbbell', 'curl', { STR: 90, FREE: 10 }, 'bi|fa', { inc: 5, impl: 2 }),
-  X('arnoldcurl', 'Schwarzenegger Curl', 'dumbbell', 'curl', { STR: 80, END: 10, FREE: 10 }, 'bi|fa sh', { inc: 5, impl: 2 }),
+  X('arnoldcurl', 'Arnold Press', 'dumbbell', 'ohp', { STR: 80, END: 10, FREE: 10 }, 'bi sh|tr fa', { inc: 5, impl: 2 }),
   X('goblet', 'Goblet Squat', 'dumbbell', 'squat', { STR: 60, DEX: 15, END: 15, FREE: 10 }, 'qu gl|co', { inc: 5 }),
   X('lunge', 'Dumbbell Lunge', 'dumbbell', 'lunge', { STR: 45, DEX: 45, FREE: 10 }, 'qu gl|hm co', { inc: 5, impl: 2 }),
   X('lateral', 'Lateral Raise', 'dumbbell', 'raise', { STR: 65, END: 15, DEX: 10, FREE: 10 }, 'sh|tp', { inc: 5, impl: 2 }),
@@ -483,7 +483,7 @@ const bwSorted = () => [...S.bwLog].sort((a, b) => a.t - b.t);
 function bwAt(t) {
   const log = bwSorted();
   let w = log.length ? log[0].w : 180;
-  for (const e of log) if (e.t <= t + DAY / 2) w = e.w;
+  for (const e of log) if (e.t <= dayStart(t)) w = e.w;   // weigh-ins are stored at midnight; one counts from its own day
   return w;
 }
 const bodyweight = () => bwAt(Date.now());
