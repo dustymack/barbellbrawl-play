@@ -313,6 +313,7 @@ const XPC = {
   grit: 0.25,                 // B7: +25% on a set you confirm "went to failure"
   e1rmDays: 60,               // your estimated max comes from the last 60 days
   prAll: 0.20, prRecent: 0.10, prDays: 60,   // PR bonus: 🏆 all-time (big), ⭐ recent best in 60 days (smaller)
+  maxBonusWeekly: true,       // above-max effort (up to 1.25×) and the PR bonus each pay once per exercise per calendar week
   fastWindow: 0.10,           // fastest PR: a typed-in run counts for a standard distance if it's 0–10% longer (C7)
   milestoneXp: 200,           // one-time firsts (mile, 5K, 10K, half, marathon), placeholder size
   consBase: 0.10, consStep: 0.02, consCap: 0.30,   // weekly target hit: +10% XP, +2% per streak week, cap +30%
@@ -528,7 +529,8 @@ function recentExercises(n = 8) {
 // ---------------------------------------------------------------------------
 const epley = (w, r) => w * (1 + r / 30);   // estimated 1-rep max
 const liftLoad = (def, w, bw) => w * (def.impl || 1) + bw * (def.bw || 0);
-const effRaw = (load, reps, e1) => Math.min(reps, XPC.repCap) * Math.min(1.25, Math.max(XPC.cMin, (load / e1 - XPC.cFloor) / (1 - XPC.cFloor)));
+// hi: the most a set can score vs your max (1.25, or 1.0 once this week's above-max bonus for the exercise is used)
+const effRaw = (load, reps, e1, hi = 1.25) => Math.min(reps, XPC.repCap) * Math.min(hi, Math.max(XPC.cMin, (load / e1 - XPC.cFloor) / (1 - XPC.cFloor)));
 function kcalRaw(load, reps, bw) {
   const kg = bw / LB, loadKg = load / LB;
   return loadKg * 9.81 * XPC.rom * reps / 0.2 / 4184 + XPC.liftMet * kg * reps * XPC.secPerRep / 3600;
@@ -545,9 +547,9 @@ function calib() {
   return (K = { eff: XPC.refXp / eff, kcal: XPC.refXp / kcal });
 }
 // Lift XP for one exercise: hardest sets by effort, each blended 70/30 with its working-time calories; grit on confirmed failures.
-function liftXp(sets, bw, e1) {
+function liftXp(sets, bw, e1, hi = 1.25) {
   const k = calib();
-  const per = sets.map(s => ({ eff: effRaw(s.load, s.reps, e1), kcal: kcalRaw(s.load, s.reps, bw), grit: s.toFailure }))
+  const per = sets.map(s => ({ eff: effRaw(s.load, s.reps, e1, hi), kcal: kcalRaw(s.load, s.reps, bw), grit: s.toFailure }))
     .sort((a, b) => b.eff - a.eff).slice(0, XPC.setsCounted);
   let base = 0, grit = 0;
   for (const p of per) { const x = (1 - XPC.kcalBlend) * k.eff * p.eff + XPC.kcalBlend * k.kcal * p.kcal; base += x; if (p.grit) grit += x * XPC.grit; }
@@ -657,6 +659,11 @@ function scoreSession(sess, prior) {
   const ranMilestones = new Set();
   for (const h of prior) for (const e of h.exercises) if ((e.exId === 'run' || e.exId === 'jog') && e.cardio && e.cardio.done)
     for (const [name, d] of MILESTONES) if (e.cardio.m >= d) ranMilestones.add(name);
+  // Once per exercise per calendar week (XPC.maxBonusWeekly): above-max effort and the PR bonus.
+  const wk = weekStart(sess.started), usedMax = new Set(), usedPr = new Set(), bonusUsed = { max: [], pr: [] };
+  if (XPC.maxBonusWeekly) for (const h of prior) if (h.bonusUsed && weekStart(h.started) === wk) {
+    h.bonusUsed.max.forEach(x => usedMax.add(x)); h.bonusUsed.pr.forEach(x => usedPr.add(x));
+  }
   for (const ex of sess.exercises) {
     const def = exById(ex.exId);
     let x = 0, found = [];
@@ -680,12 +687,17 @@ function scoreSession(sess, prior) {
       for (const h of prior) if (h.started >= e1Since) for (const e of h.exercises) if (e.exId === ex.exId && e.sets)
         for (const s of e.sets) if (s.done && s.repsDone > 0) e1 = Math.max(e1, epley(liftLoad(def, s.w, h.bodyweight), repsOf(s)));
       if (!e1) e1 = Math.max(...sets.map(s => epley(s.load, s.reps)));
-      const r = liftXp(sets, bw, e1);
+      let r = liftXp(sets, bw, e1);
+      if (XPC.maxBonusWeekly) {
+        const capped = liftXp(sets, bw, e1, 1);
+        if (r.base > capped.base + 1e-9) { if (usedMax.has(ex.exId)) r = capped; else { usedMax.add(ex.exId); bonusUsed.max.push(ex.exId); } }
+      }
       x = r.base + r.grit; gritXp += r.grit;
       if (!sess.circuit) found = findPRs(def, ex, prior, since);
     }
     if (found.length) {
-      const b = found.some(p => p.tier === 'all') ? XPC.prAll : XPC.prRecent;
+      let b = found.some(p => p.tier === 'all') ? XPC.prAll : XPC.prRecent;
+      if (XPC.maxBonusWeekly) { if (usedPr.has(ex.exId)) b = 0; else { usedPr.add(ex.exId); bonusUsed.pr.push(ex.exId); } }   // the PR still shows
       prXp += x * b; x *= 1 + b;
       found.forEach(p => prs.push({ ...p, text: `${def.name}: ${p.text}` }));
     }
@@ -693,7 +705,7 @@ function scoreSession(sess, prior) {
     xp += x;
     for (const [k, v] of Object.entries(def.dist)) byStat[k] = (byStat[k] || 0) + x * v / 100;
   }
-  return { xp: Math.round(xp), prXp: Math.round(prXp), gritXp: Math.round(gritXp), msXp, volume: Math.round(volume), byStat, prs, milestones, perEx, counts: sessionCounts(sess) };
+  return { xp: Math.round(xp), prXp: Math.round(prXp), gritXp: Math.round(gritXp), msXp, volume: Math.round(volume), byStat, prs, milestones, perEx, counts: sessionCounts(sess), bonusUsed };
 }
 // Rebuild every session's XP from its logged sets, oldest first (PRs and your max only look backwards).
 function rescoreAll() {

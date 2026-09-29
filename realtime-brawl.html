@@ -25,6 +25,13 @@
   block = flex, swipe = dodge), and switchable layouts (LAYOUTS) to compare. Installable via
   brawl.webmanifest.
 
+  Beat-'em-up moves (Final Fight style, each switchable in TUNING: chainOn, grabOn, bowlOn):
+    Chain   tapping attack on the ground = jab, jab, finisher kick. Jabs must land to continue; they barely push
+            and never launch, the finisher pushes hard (launches minions). Hit minions flinch (windup interrupted).
+    Grab    walk into a minion to grab it. Attack = knee, direction + attack (or the 3rd attack) = throw.
+            Throw distance scales with STR vs the minion's weight.
+    Bowling a launched or thrown monster knocks down the monsters it flies into; light enough ones fly too.
+
   Stat effects:
     STR  damage per hit, and push (launch) vs monster weight
     SPD  movement speed and attack speed
@@ -182,7 +189,8 @@
         <b>Phone</b><span><b>Play fullscreen</b> (or install it: browser menu → <b>Add to Home screen</b>). Left thumb anywhere = floating stick, pull down to crouch. Big <b>JUMP</b> bottom-right. Default layout: HIT, BLOCK and a SPECIAL button that lights up when ready; swipe the right side to dodge; double-tap BLOCK = flex. The ⏸ menu has layouts D and C for comparison.</span>
         <b style="color:var(--p1)">P1</b><span><b>A/D</b> move · <b>S</b> crouch (hold) · <b>W</b> jump · <b>J</b> attack · <b>K</b> block (hold) · <b>L</b> dodge · <b>I</b> special · <b>U</b> flex</span>
         <b style="color:var(--p2)">P2</b><span><b>← →</b> move · <b>↓</b> crouch · <b>↑</b> jump · <b>Enter</b> attack · <b>'</b> block (hold) · <b>Right Shift</b> dodge · <b>/</b> special · <b>.</b> flex</span>
-        <b>Moves</b><span>Attack in the air = <b>kick</b> (high) · crouch + attack = <b>low sweep</b> · crouch + block = <b>low block</b></span>
+        <b>Moves</b><span>Tap attack = <b>jab, jab, KICK</b> (keep the jabs landing; the kick knocks minions flying) · attack in the air = <b>kick</b> (high) · crouch + attack = <b>low sweep</b> · crouch + block = <b>low block</b></span>
+        <b>Grab</b><span>Walk into a minion to <b>grab</b> it: attack = <b>knee</b>, direction + attack (or a third attack) = <b>throw</b>. Anything flying (launched or thrown) <b>bowls over</b> the monsters it hits.</span>
         <b>Heights</b><span><b>HIGH</b> attacks: duck or stand-block · <b>LOW</b>: jump or crouch-block · <b>MID</b>: any block · <b>GRAB</b> and <b>ALARM</b> can't be blocked: dodge (or jump a grab) · dodge beats everything</span>
         <b>Both</b><span>Grabbed? Mash any button. Hold <b>crouch + jump</b> to drop off a bench · hold <b>block</b> next to a downed ally to revive · <b>R</b> restart · <b>P</b>/<b>Esc</b> pause</span>
       </div>
@@ -302,6 +310,27 @@ const DEFAULT_TUNING = {
   staggerMs: 700,                     // monster is stunned this long after landing
   waveGapMs: 1400,                    // Swarm Waves: pause before the next wave comes in
   comboMs: 1500,                      // hits closer together than this build the combo counter
+  // Beat-'em-up trio (Final Fight style). Each has an on/off switch (1/0) to compare against the old fight.
+  chainOn: 1,                         // tapping attack on the ground = jab, jab, ..., finisher kick
+  chainLength: 3,                     // hits in the chain, the last one is the finisher
+  chainWindowMs: 350,                 // after a jab lands, the next press within this long continues the chain
+  chainCancelAt: 0.75,                // a landed jab can be cancelled into the next hit this far through its swing
+  jabMult: 0.8,                       // jab damage; a full chain deals about 10% more per second than plain punches
+  jabKbMult: 0.2,                     // jabs barely push and never launch, so the target stays in reach
+  finisherMult: 1.5, finisherKbMult: 2.5, finisherDurMult: 1.3, finisherRange: 12,
+  finisherLift: 0.4,                  // a finisher launch is a low, long knockdown (× launch height) so it bowls into the pack
+  flinchMs: 320,                      // a hit minion flinches: its windup is interrupted (elites and bosses don't flinch)
+  grabOn: 1,                          // walk into a minion to grab it; attack = knee, direction + attack = throw
+  grabContactMs: 150,                 // push into the minion this long to grab it
+  holdMs: 1600,                       // a held minion wriggles free after this long
+  kneeMult: 0.7, kneeMs: 260, kneesBeforeThrow: 2,   // after this many knees, the next attack throws
+  throwMult: 1.8,                     // damage to the thrown monster when it lands
+  throwVx: 620, throwVy: 300,         // throw speed (low and flat, to bowl); distance × clamp(STR ÷ (throwStrRef × weight), 0.5, 1.5)
+  throwStrRef: 25, throwAnimMs: 320,
+  bowlOn: 1,                          // launched and thrown monsters knock down what they fly into
+  bowlMult: 1.2,                      // damage to each monster hit by a flying one (the thrower's damage × this)
+  bowlMinVx: 180,                     // a flying monster slower than this no longer bowls
+  bowlWeightRatio: 1.5,               // a victim this much heavier than the projectile (or less) gets knocked flying too
   // Co-op (docs/05#progression-and-gating): boss speed and weight never change
   coopHpMult: 1.6,                    // monster HP × this with 2 players (two fighters deal about twice the damage)
   coopHostWeight: 0.7,                // difficulty (HP and damage) = blend of both players' stat totals, this much toward the host (P1, whose rung it is)
@@ -631,7 +660,7 @@ const maxHp = s => Math.round(T.hpBase + T.hpPerVit * s.VIT);
 const maxSt = s => Math.round(T.stBase + T.stPerEnd * s.END);
 const moveSpeed = p => T.moveBase + T.movePerSpd * p.stats.SPD;
 const attackDur = p => T.attackBaseMs / 1000 * T.spdRef / (T.spdRef + p.stats.SPD) * (p.w.speed || 1);
-const moveDur = p => attackDur(p) * (p.move === 'low' ? T.lowAttackDurMult : 1);
+const moveDur = p => attackDur(p) * (p.move === 'low' ? T.lowAttackDurMult : p.move === 'finisher' ? T.finisherDurMult : 1);
 const iframeDur = p => Math.min(T.dodgeMs, T.iframeBaseMs + T.iframePerDex * p.stats.DEX) / 1000;
 const jumpVel = p => T.jumpBase + T.jumpPerDex * p.stats.DEX;
 const dmgOf = p => (T.dmgBase + T.dmgPerStr * p.stats.STR) * (p.w.dmg || 1);
@@ -687,7 +716,9 @@ function makePlayer(i, stats, ctrl, weaponKey = 'fists') {
     level: setup[i].level, x: i === 0 ? 330 : 280, y: 0, vy: 0, kx: 0, onGround: true, support: 0, dropUntil: -1, facing: 1,
     state: 'idle', t: 0, walkPh: 0, flash: 0, iUntil: -1, graceUntil: -1, dodgeDir: 1, hitDone: false,
     threat: 0, revive: 0, crouch: false, move: 'mid', sleepUntil: 0, grab: null,
+    chainStep: 0, chainNext: 0, chainUntil: -1, held: null, grabPush: 0, knees: 0, kneeT: 0,
     dmgDealt: 0, dmgTaken: 0, dodges: 0, blocks: 0, revives: 0, flexes: 0, aggroTime: 0, ducks: 0, launches: 0, kills: 0, escapes: 0,
+    finishers: 0, throws: 0, strikes: 0,
     react: 0.6, reacts: new Map(), flexCd: 0,
   };
   p.maxHp = p.hp = maxHp(stats);
@@ -700,7 +731,8 @@ function makeMonster(key, x, scale) {
   return { id: ++monUid, key, def, x: clamp(x, LEFT + def.width / 2, RIGHT - def.width / 2), y: def.flies ? def.hover || 0 : 0, facing: -1,
            hp, maxHp: hp, dmgMult: scale.dmg, state: 'walk', t: 0, attack: null, cd: rand(0.9, 1.6), flash: 0,
            hitSet: new Set(), dashTo: 0, dashY: 0, seq: 0, trail: [], bob: rand(0, 6), target: null,
-           vx: 0, vy: 0, launchReadyAt: 0, buffUntil: 0, cheatT: rand(3, 8), holding: null, landed: false, tauntT: 0 };
+           vx: 0, vy: 0, launchReadyAt: 0, buffUntil: 0, cheatT: rand(3, 8), holding: null, landed: false, tauntT: 0,
+           heldBy: null, launchedBy: null, thrownBy: null, bowled: new Set() };
 }
 // Co-op (docs/05): the helper's stats above the host's are partly synced down; the CPU buddy is a weaker ghost.
 function helperStats(host, helper, ctrl) {
@@ -770,7 +802,7 @@ const speedMult = m => (isEnraged(m) ? T.enrageMult : 1) * (gt < m.buffUntil ? M
 
 // Each move reaches a band of heights above the attacker's feet; it hits a monster whose body overlaps it.
 // A low sweep from a bench only reaches bench height, so it can't hit monsters on the floor.
-const MOVE_BAND = { low: [-5, 30], mid: [35, 105], kick: [0, 85], spin: [10, 110] };
+const MOVE_BAND = { low: [-5, 30], mid: [35, 105], jab: [35, 105], finisher: [20, 100], kick: [0, 85], spin: [10, 110] };
 const bodyOf = m => { const b = m.def.body || [0, m.def.height]; return [m.y + b[0], m.y + b[1]]; };
 function reaches(p, m, move) {
   const [a, b] = MOVE_BAND[move] || MOVE_BAND.mid, [lo, hi] = bodyOf(m);
@@ -783,17 +815,23 @@ function nearestMonster(p) {
 }
 
 // Monster push from a hit: STR against the monster's weight. Big enough pushes launch it.
+const MOVE_KB = { kick: 'kickKbMult', jab: 'jabKbMult', finisher: 'finisherKbMult' };
 const pushOf = (str, weight, move, special) =>
-  T.kbPerStr * str / weight * (move === 'kick' ? T.kickKbMult : 1) * (special ? T.specialKbMult : 1);
+  T.kbPerStr * str / weight * (MOVE_KB[move] ? T[MOVE_KB[move]] : 1) * (special ? T.specialKbMult : 1);
 
-function pushMonster(m, p, push) {
+// Send a monster flying. p gets the credit for whatever it bowls over (and for a throw's landing).
+function launchMonster(m, p, vx, vy) {
+  release(m);
+  m.state = 'launched'; m.t = 0; m.attack = null; m.vx = vx; m.vy = vy;
+  m.launchedBy = p; m.thrownBy = null; m.bowled = new Set();
+}
+
+function pushMonster(m, p, push, move) {
   const dir = sign(m.x - p.x);
-  if (m.state === 'launched') return;
-  if (push >= T.launchAt && gt >= m.launchReadyAt) {
-    release(m);
-    m.state = 'launched'; m.t = 0; m.attack = null;
-    m.vy = T.launchVy * Math.min(1.6, push / T.launchAt);
-    m.vx = dir * Math.min(push, 160) * 4;
+  if (m.state === 'launched' || m.state === 'held') return;
+  if (move !== 'jab' && push >= T.launchAt && gt >= m.launchReadyAt) {
+    const low = move === 'finisher';
+    launchMonster(m, p, dir * Math.min(push, 160) * (low ? 5 : 4), T.launchVy * Math.min(1.6, push / T.launchAt) * (low ? T.finisherLift : 1));
     m.launchReadyAt = gt + T.launchCooldown;
     p.launches++;
     floater('LAUNCH!', m.x, FLOOR - m.y - m.def.height - 20, '#ff7a1a', m.def.rank === 'minion' ? 18 : 26);
@@ -804,22 +842,33 @@ function pushMonster(m, p, push) {
   m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
 }
 
-// A normal strike or spin: hits every living monster in reach (punches cleave through a pack).
+// A normal strike or spin: hits every living monster in reach (punches cleave through a pack). Returns how many it hit.
 function playerHits(p, mult, range, bothSides, move = 'mid') {
+  let n = 0;
   for (const m of monsters) {
     if (m.hp <= 0) continue;
     const dx = m.x - p.x, reach = range + m.def.width / 2;
     const ok = bothSides ? Math.abs(dx) < reach : (dx * p.facing > -m.def.width / 2 && dx * p.facing < reach);
-    if (ok && reaches(p, m, move)) hitMonster(p, m, mult, move);
+    if (ok && reaches(p, m, move)) { hitMonster(p, m, mult, move); n++; }
   }
+  return n;
+}
+
+// Minions flinch when hit: an interrupted windup, a beat of hitstun. Elites and bosses shrug hits off.
+const SPECIAL_MOVES = new Set(['spin', 'slam', 'plate']);   // the special and its gear variants
+const FLINCHABLE = new Set(['walk', 'windup', 'recover', 'flinch']);
+function flinch(m) {
+  if (T.flinchMs <= 0 || m.def.rank !== 'minion' || !FLINCHABLE.has(m.state)) return;
+  m.state = 'flinch'; m.t = 0; m.attack = null;
 }
 
 // Apply one hit from p to monster m. at: contact point for effects (defaults to p's fist).
-function hitMonster(p, m, mult, move, at) {
+// push: override the push in px (0 = none); by default it comes from STR vs weight and the move.
+function hitMonster(p, m, mult, move, at, push) {
   if (m.hp <= 0 || phase !== 'fight') return;
   const crit = Math.random() < critChance(p);
   const dmg = Math.round(dmgOf(p) * mult * (crit ? T.critMult : 1));
-  const special = mult > 1, heavy = special || crit;
+  const special = SPECIAL_MOVES.has(move), heavy = special || mult > 1 || crit;
   m.hp = Math.max(0, m.hp - dmg);
   m.flash = flashTime();
   p.dmgDealt += dmg;
@@ -834,14 +883,76 @@ function hitMonster(p, m, mult, move, at) {
   if (p.ctrl === 'human' && p.i === 0) buzz(J.hapticHitMs);
   if (special) doShake(0.7);
   if (m.hp > 0) {
-    pushMonster(m, p, pushOf(p.stats.STR, m.def.weight, move, special) * (p.w.push || 1));
+    flinch(m);
+    pushMonster(m, p, push ?? pushOf(p.stats.STR, m.def.weight, move, special) * (p.w.push || 1), move);
     doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
   } else killMonster(m, p);
+}
+
+// Bowling: a monster flying sideways knocks over every monster it hits (once each per flight). Victims no heavier than
+// bowlWeightRatio × the projectile get knocked flying too, so they can bowl over more. Credit goes to whoever sent it.
+function bowl(m) {
+  const p = m.launchedBy;
+  if (!T.bowlOn || !p || Math.abs(m.vx) < T.bowlMinVx) return;
+  const [lo, hi] = bodyOf(m);
+  for (const o of monsters) {
+    if (o === m || o.hp <= 0 || o.gone || o.state === 'held' || m.bowled.has(o)) continue;
+    const [olo, ohi] = bodyOf(o);
+    if (lo > ohi || hi < olo || Math.abs(o.x - m.x) > (m.def.width + o.def.width) * 0.4) continue;
+    m.bowled.add(o);
+    const flies = o.state !== 'launched' && o.def.weight <= m.def.weight * T.bowlWeightRatio;
+    p.strikes++;
+    floater(flies ? 'STRIKE!' : 'BONK!', o.x, FLOOR - o.y - o.def.height - 24, '#e8c547', 20);
+    doShake(0.4);
+    hitMonster(p, o, T.bowlMult, 'bowl', { x: (m.x + o.x) / 2, y: FLOOR - o.y - Math.min(o.def.height, m.def.height) * 0.5 }, 0);
+    if (o.hp > 0 && flies) {
+      launchMonster(o, p, m.vx * 0.75, T.launchVy * T.finisherLift);
+      o.bowled.add(m);                                                  // no ping-pong between the two
+    }
+  }
+}
+
+// Grabs: walk into a minion (on the ground, not mid-attack) and keep pushing for a moment.
+const GRABBABLE = new Set(['walk', 'windup', 'recover', 'flinch', 'stagger']);
+function tryGrab(p, dir, dt) {
+  const m = T.grabOn && dir && p.onGround ? monsters.find(o => o.hp > 0 && !o.gone && o.def.rank === 'minion' && !o.def.flies && GRABBABLE.has(o.state) &&
+    o.y < 20 && Math.abs(o.y - p.y) < 20 && sign(o.x - p.x) === dir && Math.abs(o.x - p.x) < o.def.width * 0.4 + T.bodyRadius + 3) : null;
+  p.grabPush = m ? p.grabPush + dt : 0;
+  if (!m || p.grabPush < T.grabContactMs / 1000) return false;
+  p.grabPush = 0; p.held = m; p.knees = 0; p.kneeT = 0; p.facing = dir;
+  p.state = 'grip'; p.t = 0; p.chainNext = 0;
+  m.heldBy = p; m.state = 'held'; m.t = 0; m.attack = null;
+  floater('GRAB!', m.x, FLOOR - m.def.height - 20, p.color, 18);
+  sfx.grab();
+  return true;
+}
+// Let go of a held minion: it wriggled free (walks off) or you got hit (it staggers).
+function dropHeld(p, wriggled = false) {
+  const m = p.held;
+  if (!m) return;
+  p.held = null; m.heldBy = null;
+  if (m.hp > 0 && m.state === 'held') { m.state = wriggled ? 'walk' : 'stagger'; m.t = 0; m.cd = 0.4; m.y = 0; }
+  if (p.state === 'grip') { p.state = 'idle'; p.t = 0; }
+  if (wriggled) floater('SLIPPED FREE', m.x, FLOOR - m.def.height - 20, '#9a9ca0', 14);
+}
+// Throw the held minion (dir = ±1). It flies like a launch (so it bowls), and takes throw damage when it lands.
+function throwHeld(p, dir) {
+  const m = p.held;
+  p.held = null; m.heldBy = null;
+  p.facing = dir; p.state = 'throw'; p.t = 0; p.throws++;
+  const pow = clamp(p.stats.STR / (T.throwStrRef * m.def.weight), 0.5, 1.5);
+  m.x = clamp(p.x + dir * (m.def.width / 2 + T.bodyRadius), LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
+  m.y = 10;
+  launchMonster(m, p, dir * T.throwVx * pow, T.throwVy);
+  m.thrownBy = p; m.facing = -dir;
+  floater('THROW!', p.x, FLOOR - p.y - 150, p.color, 22);
+  sfx.dodge(); doHitstop(J.hitstopLightMs);
 }
 
 // A monster drops. Minions poof mid-fight; the last monster of the last wave gets the KO slow-mo.
 function killMonster(m, p) {
   release(m);
+  if (m.heldBy) dropHeld(m.heldBy);
   p.kills++;
   const last = waveIdx >= level.waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0);
   if (last) {
@@ -890,6 +1001,7 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
     floater('BLOCK', p.x, FLOOR - p.y - 140, '#e8c547', 14);
     sfx.block();
   } else {
+    if (p.held) dropHeld(p);
     if (!p.grab) { p.state = 'hurt'; p.t = 0; }
     p.crouch = false; p.sleepUntil = 0;
     if (J.on.knockback && !p.grab) p.x = clamp(p.x + sign(p.x - srcX) * T.knockback, LEFT, RIGHT);
@@ -951,12 +1063,16 @@ function endFight(won) {
   result = { won, time: gt, reward, hint: won ? '' : lossHint() };
   const who = players.map(p => `<b style="color:${p.color}">${p.name}</b> ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU ghost)' : ''} · ${ITEMS[p.weaponKey].name}: ` +
     `dealt ${p.dmgDealt}, took ${p.dmgTaken}, ${p.kills} KOs, targeted ${Math.round(100 * p.aggroTime / Math.max(gt, 0.01))}% of the fight, ` +
-    `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.parries} parries, ${p.launches} launches, ${p.escapes} grab escapes, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
+    `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.parries} parries, ${p.launches} launches, ${p.finishers} finishers, ${p.throws} throws, ${p.strikes} bowled over, ${p.escapes} grab escapes, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
   const where = level.waves.length > 1 ? ` (wave ${waveIdx + 1}/${level.waves.length}, ${left.length} left)` : left[0] ? ` (monster at ${Math.round(100 * left[0].hp / left[0].maxHp)}%)` : '';
   const coop = players.length > 1 ? ` · co-op difficulty ×${coopScaleNow.blend.toFixed(2)} (HP ×${coopScaleNow.hp.toFixed(2)})` : '';
   logLine(`<b>${won ? 'Victory' : 'Defeat'}</b> vs ${level.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : where}${coop}${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}` +
     ` · <b style="color:#e8c547">+${reward.gold} gold</b> (${reward.parts.join(' · ')})${reward.unlock ? ` · <b style="color:var(--p1)">${reward.unlock}</b>` : ''}` +
     `${result.hint ? `<br><span style="color:#e8c547">${result.hint}</span>` : ''}<br>${who}`);
+  // App bridge (G2): hand the result back to the Expo app. No-op in a browser.
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, gold: reward.gold, hint: result.hint }));
+  }
   if (playMode) showMenu('after');
 }
 
@@ -987,6 +1103,15 @@ function physics(p, dt) {
   p.x = clamp(p.x, LEFT, RIGHT);
 }
 
+// Attack button: air kick, low sweep, or (standing) the next hit of the chain: jab, jab, ..., finisher kick.
+function startAttackMove(p, inp) {
+  p.state = 'attack'; p.t = 0; p.hitDone = false;
+  const step = p.chainNext > 0 && gt <= p.chainUntil ? p.chainNext : 0;
+  p.chainStep = step; p.chainNext = 0;
+  p.move = !p.onGround ? 'kick' : inp.down ? 'low' : !T.chainOn ? 'mid' : step >= T.chainLength - 1 ? 'finisher' : 'jab';
+  p.crouch = p.move === 'low';
+}
+
 function updatePlayer(p, dt) {
   p.flash = Math.max(0, p.flash - dt);
   p.flexCd = Math.max(0, p.flexCd - dt);
@@ -1010,7 +1135,7 @@ function updatePlayer(p, dt) {
     return;
   }
   const tm = nearestMonster(p);
-  if (tm && p.state !== 'dodge' && p.state !== 'special') p.facing = sign(tm.x - p.x);
+  if (tm && p.state !== 'dodge' && p.state !== 'special' && p.state !== 'grip' && p.state !== 'throw') p.facing = sign(tm.x - p.x);
 
   const idleLike = p.state === 'idle' || p.state === 'walk' || p.state === 'block' || p.state === 'crouch';
   if (idleLike) {
@@ -1032,9 +1157,7 @@ function updatePlayer(p, dt) {
       if (p.st >= T.specialCost) { p.st -= T.specialCost; p.state = 'special'; p.t = 0; p.hitDone = false; }
       else { p.stFlash = 0.7; floater('NEED STAMINA', p.x, FLOOR - p.y - 150, '#e8c547', 16); }
     } else if (pressed(inp, 'attack')) {
-      p.state = 'attack'; p.t = 0; p.hitDone = false;
-      p.move = !p.onGround ? 'kick' : inp.down ? 'low' : 'mid';      // air kick, low sweep, or normal punch
-      p.crouch = p.move === 'low';
+      startAttackMove(p, inp);
     } else if (inp.block && p.st > 0 && p.onGround) {
       if (p.state !== 'block') p.blockStart = gt;                      // parry timing (Plate Shield)
       p.state = 'block'; p.crouch = inp.down;                          // crouch-block covers low attacks
@@ -1042,9 +1165,11 @@ function updatePlayer(p, dt) {
       p.state = 'crouch'; p.crouch = true;                             // duck under high attacks
     } else {
       const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
-      p.x += dir * moveSpeed(p) * dt;
-      p.state = dir ? 'walk' : 'idle';
-      if (dir) p.walkPh += dt * moveSpeed(p) / 18;
+      if (!tryGrab(p, dir, dt)) {
+        p.x += dir * moveSpeed(p) * dt;
+        p.state = dir ? 'walk' : 'idle';
+        if (dir) p.walkPh += dt * moveSpeed(p) / 18;
+      }
     }
     inp.swipeDir = 0;
   } else if (!p.onGround && (p.state === 'attack' || p.state === 'special')) {
@@ -1056,11 +1181,35 @@ function updatePlayer(p, dt) {
       const dur = moveDur(p);
       if (!p.hitDone && p.t >= dur * 0.45) {
         p.hitDone = true;
-        playerHits(p, p.move === 'low' ? T.lowDmgMult : 1, T.attackRange + (p.w.range || 0) + (p.move === 'kick' ? T.kickRangeBonus : 0), false, p.move);
+        const mult = p.move === 'low' ? T.lowDmgMult : p.move === 'finisher' ? T.finisherMult : p.move === 'jab' ? T.jabMult : 1;
+        const range = T.attackRange + (p.w.range || 0) + (p.move === 'kick' ? T.kickRangeBonus : p.move === 'finisher' ? T.finisherRange : 0);
+        const n = playerHits(p, mult, range, false, p.move);
+        // Chain: a jab that lands opens the next hit; a whiff or the finisher resets it.
+        p.chainNext = p.move === 'jab' && n > 0 ? p.chainStep + 1 : 0;
+        p.chainUntil = gt + dur * 0.55 + T.chainWindowMs / 1000;
+        if (p.move === 'finisher' && n > 0) p.finishers++;
       }
-      if (p.t >= dur) { p.state = 'idle'; p.t = 0; }
+      if (p.move === 'jab' && p.chainNext > 0 && p.t >= dur * T.chainCancelAt && pressed(inp, 'attack')) startAttackMove(p, inp);
+      else if (p.t >= dur) { p.state = 'idle'; p.t = 0; }
       break;
     }
+    case 'grip': {                                                   // holding a minion: knee it or throw it
+      const m = p.held;
+      if (!m || m.hp <= 0 || m.state !== 'held') { dropHeld(p); break; }
+      m.x = clamp(p.x + p.facing * (m.def.width * 0.4 + T.bodyRadius - 2), LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
+      m.y = 8; m.facing = -p.facing;
+      p.kneeT = Math.max(0, p.kneeT - dt);
+      const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+      if (p.kneeT <= 0 && pressed(inp, 'attack')) {
+        if (dir || p.knees >= T.kneesBeforeThrow) throwHeld(p, dir || p.facing);   // direction + attack (or the last hit) throws
+        else { p.knees++; p.kneeT = T.kneeMs / 1000; hitMonster(p, m, T.kneeMult, 'mid', { x: m.x - p.facing * m.def.width * 0.3, y: FLOOR - 40 }, 0); }
+      } else if (pressed(inp, 'dodge') || pressed(inp, 'jump')) dropHeld(p, true);
+      else if (p.t >= T.holdMs / 1000) dropHeld(p, true);
+      break;
+    }
+    case 'throw':
+      if (p.t >= T.throwAnimMs / 1000) { p.state = 'idle'; p.t = 0; }
+      break;
     case 'special':
       if (!p.hitDone && p.t >= T.specialMs / 1000 * 0.5) {
         p.hitDone = true;
@@ -1068,7 +1217,7 @@ function updatePlayer(p, dt) {
         else if (p.w.slamSpecial) {                                                                    // Oni Kanabo: ground quake
           doShake(1.2); sfx.slam(); ring(p.x, FLOOR, T.specialRange * 2, '#e8c547', 0.35, true);
           for (const m of monsters) {
-            if (m.hp > 0 && m.y < 30 && Math.abs(m.x - p.x) < T.specialRange * 2 + m.def.width / 2) hitMonster(p, m, T.specialMult * 0.8, 'low', { x: m.x, y: FLOOR - 16 });
+            if (m.hp > 0 && m.y < 30 && Math.abs(m.x - p.x) < T.specialRange * 2 + m.def.width / 2) hitMonster(p, m, T.specialMult * 0.8, 'slam', { x: m.x, y: FLOOR - 16 });
           }
         } else playerHits(p, T.specialMult, T.specialRange, true, 'spin');
       }
@@ -1359,10 +1508,19 @@ function updateMonster(m, dt) {
   if (m.state === 'launched') {
     m.vy -= T.gravity * 0.8 * dt; m.y += m.vy * dt; m.x += m.vx * dt; m.vx *= Math.max(0, 1 - 2 * dt);
     m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
+    bowl(m);
     if (m.y <= 0 && m.vy < 0) {
-      m.y = 0; m.vy = 0; m.state = 'stagger'; m.t = 0;
+      m.y = 0; m.vy = 0; m.state = 'stagger'; m.t = 0; m.launchedBy = null;
       doShake(m.def.rank === 'minion' ? 0.3 : 0.6); sfx.slam(); chalkPuff(m.x, FLOOR - 6, J.particleCount * 2);
+      const thrower = m.thrownBy;                                 // a throw hurts on landing
+      m.thrownBy = null;
+      if (thrower) hitMonster(thrower, m, T.throwMult, 'throw', { x: m.x, y: FLOOR - 10 }, 0);
     }
+    return;
+  }
+  if (m.state === 'held') return;                             // a player is holding it (they move it)
+  if (m.state === 'flinch') {
+    if (m.t >= T.flinchMs / 1000) { m.state = 'walk'; m.t = 0; m.cd = Math.max(m.cd, 0.35); }
     return;
   }
   if (m.state === 'stagger') {
@@ -1420,7 +1578,7 @@ function collideBodies() {
   for (const p of players) {
     if (!alive(p) || p.grab) continue;
     for (const m of monsters) {
-      if (m.hp <= 0 || m.gone || m.state === 'launched' || m.state === 'dash' || m.holding) continue;
+      if (m.hp <= 0 || m.gone || m.state === 'launched' || m.state === 'dash' || m.holding || m.state === 'held') continue;
       const [lo, hi] = bodyOf(m);
       if (p.y >= hi - 8 || lo >= p.y + 95) continue;                          // above it (a jump) or under a flyer
       if (p.state === 'dodge' && T.dodgeThroughMinions && m.def.rank === 'minion') continue;
@@ -1436,7 +1594,7 @@ function collideBodies() {
 
 // Keep a pack from stacking on one spot.
 function separate(dt) {
-  const live = monsters.filter(m => m.hp > 0 && m.state !== 'launched' && m.state !== 'hold');
+  const live = monsters.filter(m => m.hp > 0 && m.state !== 'launched' && m.state !== 'hold' && m.state !== 'held');
   for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
     const a = live[i], b = live[j];
     if (!!a.def.flies !== !!b.def.flies) continue;
@@ -1500,7 +1658,7 @@ function updateShots(dt) {
   for (const s of shots) {
     s.x += s.vx * dt; s.spin += s.vx * dt / 18;
     const m = monsters.find(o => o.hp > 0 && o.y < 40 && Math.abs(s.x - o.x) < o.def.width / 2);
-    if (m) { s.dead = true; hitMonster(s.p, m, T.specialMult, 'mid', { x: s.x, y: FLOOR - 24 }); }
+    if (m) { s.dead = true; hitMonster(s.p, m, T.specialMult, 'plate', { x: s.x, y: FLOOR - 24 }); }
     if (s.x < -40 || s.x > W + 40) s.dead = true;
   }
   shots = shots.filter(s => !s.dead);
@@ -1547,7 +1705,8 @@ function drawStick(p) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const crouchPose = p.crouch && p.onGround && alive(p);
   const crouch = p.state === 'dodge' ? 24 : crouchPose ? 30 : p.state === 'block' ? 8 : p.state === 'sleep' ? 14 : 0;
-  const lean = p.state === 'hurt' || p.state === 'grabbed' ? -12 : p.state === 'attack' ? (p.move === 'kick' ? -6 : 8) : p.state === 'dodge' ? 16 : 4;
+  const lean = p.state === 'hurt' || p.state === 'grabbed' ? -12 : p.state === 'attack' ? (p.move === 'kick' ? -6 : p.move === 'finisher' ? -10 : 8)
+    : p.state === 'dodge' ? 16 : p.state === 'throw' ? -10 : p.state === 'grip' ? 6 : 4;
   const hipY = -50 + crouch, neckY = -98 + crouch * 1.4, headY = neckY - 14 - headR * 0.3;
   const aProg = p.state === 'attack' ? p.t / moveDur(p) : 0;
   const ext = aProg < 0.45 ? aProg / 0.45 : 1 - (aProg - 0.45) / 0.55 * 0.7;   // limb extension through a strike
@@ -1557,6 +1716,12 @@ function drawStick(p) {
   if (p.state === 'attack' && p.move === 'kick') {
     L([[0, hipY], [-10, hipY + 20], [-2, hipY + 32]]);                                                   // tucked leg
     L([[0, hipY], [16 + ext * 10, hipY + 12 + ext * 4], [22 + ext * 30, hipY + 20 + ext * 12]]);        // kicking leg
+  } else if (p.state === 'attack' && p.move === 'finisher') {
+    L([[0, hipY], [-8, hipY + 25], [-12, 0]]);                                                           // planted leg
+    L([[0, hipY], [12 + ext * 10, hipY - 4 - ext * 4], [18 + ext * 38, hipY - 8 - ext * 6]]);           // chain-ending side kick
+  } else if (p.state === 'grip' && p.kneeT > 0) {
+    L([[-11, 0], [-6, hipY + 25], [0, hipY]]);
+    L([[0, hipY], [18, hipY - 8], [14, hipY + 18]]);                                                     // knee up into the held minion
   } else if (crouchPose) {
     if (p.state === 'attack' && p.move === 'low') {
       L([[0, hipY], [-14, -14], [-12, 0]]);
@@ -1581,9 +1746,22 @@ function drawStick(p) {
   } else if (p.state === 'attack' && p.move === 'low') {
     A([[sx, sy], [sx - 10, sy + 14], [sx - 16, sy + 26]]);                          // hand down to the floor
     A([[sx, sy], [sx + 14, sy + 6], fh = [sx + 24, sy + 2]]);
+  } else if (p.state === 'attack' && p.move === 'finisher') {
+    A([[sx, sy], [sx - 14, sy + 6], [sx - 24, sy - 2]]);
+    A([[sx, sy], [sx + 10, sy + 12], fh = [sx + 18, sy + 2]]);
+  } else if (p.state === 'attack' && p.move === 'jab' && p.chainStep % 2) {       // second jab: the other hand
+    A([[sx, sy], [sx + 12 + ext * 18, sy + 10 - ext * 6], [sx + 14 + ext * 34, sy + 4 - ext * 4]]);
+    A([[sx, sy], [sx + 14, sy + 14], fh = [sx + 20, sy - 4]]);
   } else if (p.state === 'attack') {
     A([[sx, sy], [sx - 12, sy + 18], [sx - 4, sy + 30]]);
     A([[sx, sy], [sx + 12 + ext * 18, sy + 8 - ext * 6], fh = [sx + 14 + ext * 36, sy + 2 - ext * 4]]);
+  } else if (p.state === 'grip') {                                                  // both hands on the minion
+    A([[sx, sy], [sx + 14, sy + 12], [sx + 26, sy + 6]]);
+    A([[sx, sy], [sx + 16, sy + 16], fh = [sx + 28, sy + 12]]);
+  } else if (p.state === 'throw') {                                                 // follow-through, arms flung forward
+    const u = clamp(p.t / (T.throwAnimMs / 1000), 0, 1);
+    A([[sx, sy], [sx + 10, sy - 10], [sx + 20 + u * 8, sy - 22 + u * 10]]);
+    A([[sx, sy], [sx + 14, sy - 6], fh = [sx + 26 + u * 8, sy - 16 + u * 10]]);
   } else if (p.state === 'special') {
     const a = p.t / (T.specialMs / 1000) * Math.PI * 4;
     A([[sx, sy], [sx - Math.cos(a) * 42, sy - Math.sin(a) * 10]]);
@@ -1760,6 +1938,8 @@ function monsterFrame(m, lift = 0) {
   ctx.translate(m.x, FLOOR - m.y - lift);
   if (m.state === 'launched') ctx.rotate(-sign(m.vx) * Math.min(m.def.rank === 'minion' ? 6 : 0.5, m.t * (m.def.rank === 'minion' ? 10 : 1.2)));
   else if (m.state === 'stagger') ctx.rotate(Math.sin(m.t * 25) * 0.04);
+  else if (m.state === 'held') ctx.rotate(Math.sin(gt * 30) * 0.08);                                  // squirming
+  else if (m.state === 'flinch') ctx.rotate(-m.facing * 0.2 * (1 - clamp(m.t / (T.flinchMs / 1000), 0, 1)));   // rocked back
   ctx.scale(m.facing, 1);
   return m.flash > 0 ? '#fff' : m.def.color;
 }
@@ -2429,6 +2609,7 @@ function drawOverlay() {
     const lines = playMode
       ? ['Left thumb: move, pull down to crouch. Big button: jump.', LAYOUTS[layoutKey].desc]
       : ['A/D move · S crouch · W jump · J attack · K block · L dodge · I special · U flex',
+         'Tap J: jab, jab, KICK. Walk into a minion to grab it, J to knee, direction + J to throw it into the others.',
          'Red = incoming attack. HIGH: duck or stand-block. LOW: jump or crouch-block. Purple: can\'t block, dodge!',
          'Attack in the air = kick. Crouch + attack = low sweep. Big STR vs a light monster = LAUNCH.',
          'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
@@ -2777,7 +2958,8 @@ function updateHint() {
     (lv.waves.length > 1 ? `<b>${lv.waves.length} waves:</b> ${lv.waves.map(w => w.map(k => MONSTERS[k].name).join(', ')).join(' → ')}.<br>` : '') +
     keys.map(k => {
       const m = MONSTERS[k], push = (move, sp) => pushOf(str, m.weight, move, sp) * (wItem.mods.push || 1);
-      return `<b>${m.name}</b> (${m.rank}, weight ${m.weight}): ${m.hint} <i>P1 push (px): punch ${fmt(push('mid'))}, kick ${fmt(push('kick'))}, special ${fmt(push('mid', true))}.</i>`;
+      const punch = T.chainOn ? `jab ${Math.round(push('jab'))} (never launches), finisher ${fmt(push('finisher'))}` : `punch ${fmt(push('mid'))}`;
+      return `<b>${m.name}</b> (${m.rank}, weight ${m.weight}): ${m.hint} <i>P1 push (px): ${punch}, kick ${fmt(push('kick'))}, special ${fmt(push('spin', true))}.</i>`;
     }).join('<br>') + `<br>Launch at ${T.launchAt} px.`;
   const sc = scoutOf(lv);
   $('#scoutHint').textContent = sc ? `Scouting report (${sc.stat} ${Math.round(s[sc.stat])} / ${sc.want}): ${sc.text}` : '';
@@ -2880,7 +3062,18 @@ $('#start').onclick = () => { startFight(); $('#start').blur(); };
 $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); updateHint(); };
 buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
 level = LEVELS[levelSel.value];
-if (new URLSearchParams(location.search).has('play')) enterPlay();
+// App bridge (G2): the Expo app calls window.bbInit({ stats, level }) after the page loads, and also sets
+// window.BB_INIT in case its script runs first. P1 takes the real stats and the page opens in play mode.
+// In a browser neither happens and nothing changes.
+window.bbInit = init => {
+  if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; }
+  if (init && init.level) setup[0].level = init.level;
+  if (init && 'rusty' in init) $('#rusty').checked = !!init.rusty;
+  fighterSync[0]();
+  if (!playMode) enterPlay();
+};
+if (window.BB_INIT) window.bbInit(window.BB_INIT);
+else if (new URLSearchParams(location.search).has('play')) enterPlay();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 requestAnimationFrame(frame);
 </script>

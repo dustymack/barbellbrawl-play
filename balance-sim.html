@@ -205,6 +205,9 @@ const DEFAULTS = {
   cardioModel: 'pace', milestoneXp: 200,
   // PR bonus (docs/03: all-time "big", 60-day recent best "smaller")
   prAll: 0.20, prRecent: 0.10, prDays: 60,
+  // 2026-09-28: above-max effort (sets past your estimated max score up to 1.25×) and the PR bonus each pay at most
+  // once per exercise per week (1 = on). Later sessions that week cap effort at 1.0× and get no PR bonus.
+  maxBonusWeekly: 1,
   // consistency: hit your weekly target → base + step × streak weeks, capped
   consBase: 0.10, consStep: 0.02, consCap: 0.30,
   // streak freezes (B12): every freezeEvery target weeks earns a freeze (bank at most freezeMax); a missed week spends one instead of resetting
@@ -255,6 +258,7 @@ const CONTROLS = [
   ['prAll', 'All-time PR bonus', 0, 1, 0.05],
   ['prRecent', 'Recent-best bonus (inside the window)', 0, 0.5, 0.05],
   ['prDays', 'Recent-best window (days)', 14, 180, 1],
+  ['maxBonusWeekly', 'Above-max effort + PR bonus once per exercise per week (1 = on)', 0, 1, 1],
   ['consBase', 'Weekly target hit: bonus', 0, 0.5, 0.01],
   ['consStep', 'Extra bonus per streak week', 0, 0.1, 0.01],
   ['consCap', 'Consistency bonus cap', 0, 1, 0.05],
@@ -403,7 +407,8 @@ function cardioKcal(def, it, kg, c) {
 const MILESTONES = [['first mile', 1], ['first 5K', 3.107], ['first 10K', 6.214], ['first half marathon', 13.109], ['first marathon', 26.219]];
 
 // Raw (unscaled) lift score for one exercise's done work sets: [{load, reps}].
-function rawLift(f, sets, bw, c, e1rm) {
+// hi: the most a set can score relative to your max (1.25 normally; 1.0 once the week's above-max bonus is used).
+function rawLift(f, sets, bw, c, e1rm, hi = 1.25) {
   if (f === 'e') {
     // Effort per set from reps in reserve (Epley: reps possible at this load = 30 × (max ÷ load − 1)).
     // Hardest set counts fully; each further set of the exercise counts eSetDecay × the one before.
@@ -417,7 +422,7 @@ function rawLift(f, sets, bw, c, e1rm) {
     // Hardest sets first; after cSetsFull sets of the same exercise, each extra set counts cSetDecay × the one before
     const vals = sets.map(s => {
       const pct = e1rm > 0 ? s.load / e1rm : 0;
-      const i = Math.max(c.cMin, Math.min(1.25, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp)));
+      const i = Math.max(c.cMin, Math.min(hi, Math.pow(Math.max(0, (pct - c.cFloor) / (1 - c.cFloor)), c.cExp)));
       return Math.min(s.reps, c.cRepCap) * i;
     }).sort((a, b) => b - a);
     return vals.reduce((a, v, i) => a + v * Math.pow(c.cSetDecay, Math.max(0, i - c.cSetsFull + 1)), 0);
@@ -464,8 +469,8 @@ function kcalRaw(sets, bw, c) {
   return v.reduce((a, x, i) => a + x * Math.pow(c.cSetDecay, Math.max(0, i - c.cSetsFull + 1)), 0);
 }
 // Lift XP for one exercise: effort part blended with the calorie part (formulas (c) and (e) only).
-function liftXp(f, sets, bw, c, e1rm, K) {
-  const eff = K[f] * rawLift(f, sets, bw, c, e1rm);
+function liftXp(f, sets, bw, c, e1rm, K, hi = 1.25) {
+  const eff = K[f] * rawLift(f, sets, bw, c, e1rm, hi);
   if (!c.kcalBlend || (f !== 'c' && f !== 'e')) return eff;
   return (1 - c.kcalBlend) * eff + c.kcalBlend * K.kcal * kcalRaw(sets, bw, c);
 }
@@ -487,6 +492,7 @@ function simPlayer(P, idx, c, f, K, start = null) {
   const L = {};
   for (const [ex, [w, cap, g, inc, reps = 5]] of Object.entries(P.lifts)) L[ex] = { w, cap, g, inc, reps, miss: 0 };
   const st = { ab: 0 }, hist = {};
+  const usedMax = {}, usedPr = {};   // maxBonusWeekly: the week each exercise last used its above-max effort / PR bonus
   const R = {
     P, xp: 0, level: 1, into: 0, pool: {}, stats: Object.fromEntries(STATS.map(s => [s, c.startStat])),
     gained: { STR: 0, SPD: 0, DEX: 0, END: 0, VIT: 0, FREE: 0 }, sessions: 0, liftSessions: 0, prSessions: 0,
@@ -577,6 +583,11 @@ function simPlayer(P, idx, c, f, K, start = null) {
             e1 = win.length ? Math.max(...win.map(h => h.e1rm)) : bestE1rm(sets);
           }
           x = liftXp(f, sets, bw, c, e1, K);
+          if (c.maxBonusWeekly) {
+            // Above-max effort pays once per exercise per week; after that sets cap at 1.0× your max.
+            const capped = liftXp(f, sets, bw, c, e1, K, 1);
+            if (x > capped + 1e-9) { if (usedMax[it.ex] === w) x = capped; else usedMax[it.ex] = w; }
+          }
           // grit boost: a set short of the plan triggers "Went to failure?" (the sim assumes yes)
           const short = reps.filter(r => r < it.reps).length;
           if (c.grit && short) x *= 1 + c.grit * Math.min(short, c.cSetsFull) / Math.min(reps.length, c.cSetsFull);
@@ -592,6 +603,7 @@ function simPlayer(P, idx, c, f, K, start = null) {
             const rBest = recent.length ? Math.max(...recent.map(h => h.metric)) : -Infinity;
             if (metric > all) bonus = c.prAll; else if (recent.length && metric > rBest) bonus = c.prRecent;
           }
+          if (bonus > 0 && c.maxBonusWeekly) { if (usedPr[it.ex] === w) bonus = 0; else usedPr[it.ex] = w; }
         }
         if (bonus > 0) { hadPR = true; R.prXp += x * bonus; }
         (hist[it.ex] = hist[it.ex] || []).push({ day, metric, circuit: !!it.circuit, e1rm: sets ? bestE1rm(sets) : 0 });
@@ -654,6 +666,24 @@ const FAIR = [
   { id: 'vet', name: '30 mi/week runner', short: 'Veteran', bw: 160, bwPerWeek: () => 0, target: 5, skip: 0.05, skipWeek: 0, lifts: {},
     plan(w, d) { return d === 6 ? { name: 'Long run', items: [{ ex: 'run', min: 76, pace: 9.5 }] } : [0, 1, 3, 4].includes(d) ? { name: 'Run', items: [{ ex: 'run', min: 47, pace: 8.5 }] } : null; } },
 ];
+// Starting light (2026-09-28): You's program and real strength, but restarting StrongLifts from the empty bar.
+// The app judges effort against your logged sets (maxSource 'history'), so every early session beats the "max" the
+// app knows about. Compared with You (starting at real working weights), rule off and on.
+const LIGHT = {
+  ...PLAYERS[0], id: 'light', name: 'Starting light (StrongLifts from the empty bar)', short: 'Light', bwPerWeek: () => 0,
+  lifts: { squat: [45, 275, 2.5, 5], bench: [45, 215, 1.2, 5], row: [65, 185, 1.5, 5], ohp: [45, 135, 0.8, 5], deadlift: [95, 335, 3, 10], pullup: [0, 45, 0.6, 2.5, 8] },
+};
+function startingLight(c) {
+  const run = on => {
+    const cc = { ...c, maxSource: 'history', maxBonusWeekly: on };
+    const K = calibrate(cc);
+    const [you, light] = [PLAYERS[0], LIGHT].map(P => simPlayer(P, 0, cc, cc.formula, K));   // same random stream: same skipped days
+    const early = r => { const l = r.log.filter(x => x.isLift && x.week < 6); return l.reduce((a, x) => a + x.xp, 0) / (l.length || 1); };
+    return { you, light, ratio: early(light) / (early(you) || 1), levelRatio: light.weekly.at(-1).level / you.weekly.at(-1).level };
+  };
+  return { off: run(0), on: run(1) };
+}
+
 function runnerFairness(c) {
   const K = calibrate(c);
   const [c25k, vet] = FAIR.map((P, i) => simPlayer(P, 10 + i, c, c.formula, K));
@@ -754,7 +784,11 @@ function findings(c, sim, compare) {
   // 8. Runner fairness (C7): a couch-to-5K beginner vs a 30 mi/week runner, cardio only, same rules
   const fair = runnerFairness(c);
   out.push([fair.levelRatio > 2 ? 'flag' : 'info', `Runner fairness (C7): after ${c.weeks} weeks the 30 mi/week runner (160 lb) has ${fair.xpRatio.toFixed(1)}× the couch-to-5K runner's XP (200 lb) but only ${fair.levelRatio.toFixed(2)}× the level (L${r1(fair.vet.weekly.at(-1).level)} vs L${r1(fair.c25k.weekly.at(-1).level)}). Milestones: C25K ${fair.c25k.milestones.join(', ') || 'none'} (${pct(fair.c25k.msXp / (fair.c25k.xp || 1))} of its XP); veteran ${fair.vet.milestones.length}.${fair.levelRatio > 2 ? ' Over 2×: the curve is not closing the gap enough.' : ''}`]);
-  // 9. Bodyweight sensitivity for You under each formula
+  // 9. Starting light: restarting from the empty bar shouldn't out-earn lifting your real weights
+  const sl = startingLight(c);
+  const cur = c.maxBonusWeekly ? sl.on : sl.off;
+  out.push([cur.ratio > 1.1 ? 'flag' : 'ok', `Starting light: a lifter with You's strength who restarts StrongLifts from the empty bar earns ${cur.ratio.toFixed(2)}× You's XP per lifting session in weeks 1–6 (effort judged against logged sets, as in the app). Once-a-week above-max + PR bonus: off ${sl.off.ratio.toFixed(2)}× → on ${sl.on.ratio.toFixed(2)}×. After ${c.weeks} weeks: L${r1(cur.light.weekly.at(-1).level)} vs You L${r1(cur.you.weekly.at(-1).level)}.${cur.ratio > 1.1 ? ' Over 1.1×: easy early sessions pay like max efforts.' : ''}`]);
+  // 10. Bodyweight sensitivity for You under each formula
   const drift = compare.map(cmp => { const lg = cmp.res[0].log.filter(l => l.isLift && l.name === 'Workout A'); const a = lg.slice(0, 2), b = lg.slice(-2); const avg = x => x.reduce((s, l) => s + l.base, 0) / (x.length || 1); return `${cmp.f} ${avg(b) / avg(a) >= 1 ? '+' : ''}${pct(avg(b) / avg(a) - 1)}`; });
   out.push(['info', `You, Workout A base XP (no bonuses) from the first two to the last two sessions: ${drift.join(', ')}. Includes weight gains on the bar and bodyweight change.`]);
   return out;

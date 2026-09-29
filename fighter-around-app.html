@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fighter Around the App</title>
+<!--
+  Throwaway prototype (docs/06-art-style.md, "Your fighter around the app").
+  Your stick fighter idling on the home screen, reacting to events, and doing loading animations.
+  Everything is drawn live from one skeleton (2-bone IK from hand/foot targets), so the same fighter
+  follows your level (bulk + height), hair and player color. Animations live in ANIMS; add one there.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #111317; --panel: #1a1d22; --panel2: #2d3138; --line: #33373d; --text: #f2efe8; --muted: #9a9ca0;
+          --p1: #ff7a1a; --gold: #ffe27a; --disp: "Anton", Impact, "Arial Narrow", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.45 "Barlow Condensed", "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  a { color: var(--p1); }
+  h1 { font: 34px/1.1 var(--disp); letter-spacing: .5px; margin: 6px 0 4px; }
+  h1 span { color: var(--p1); }
+  h2 { font: 24px/1.1 var(--disp); letter-spacing: .5px; margin: 34px 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 14px; max-width: 760px; }
+  .controls { position: sticky; top: 0; z-index: 5; background: rgba(17,19,23,.94); backdrop-filter: blur(6px);
+              border-bottom: 1px solid var(--line); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .controls label { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 15px; }
+  .controls select, .controls input[type=range] { accent-color: var(--p1); }
+  select, button { font: inherit; font-size: 15px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.on { border-color: var(--p1); color: var(--p1); }
+  .events { display: flex; gap: 6px; flex-wrap: wrap; }
+  #lvlOut { color: var(--text); min-width: 118px; }
+
+  /* phones */
+  .phones { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; }
+  .pwrap { width: 320px; max-width: 100%; }
+  .pwrap h3 { font: 19px var(--disp); letter-spacing: .5px; margin: 0 0 2px; }
+  .pwrap p { color: var(--muted); font-size: 15px; margin: 0 0 10px; min-height: 64px; }
+  .phone { width: 320px; max-width: 100%; height: 600px; background: #0c0d10; border: 2px solid #2a2d33; border-radius: 30px; padding: 10px; }
+  .screen { height: 100%; background: var(--bg); border-radius: 22px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .sbar { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding: 6px 16px 0; }
+  .appbar { display: flex; justify-content: space-between; align-items: center; padding: 4px 14px 8px; font: 20px var(--disp); letter-spacing: .5px; }
+  .appbar b { color: var(--p1); font-weight: 400; }
+  .appbar small { font: 600 13px "Barlow Condensed", sans-serif; color: var(--muted); }
+  .body { flex: 1; overflow: hidden; padding: 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  .hero { position: relative; background: radial-gradient(ellipse at 50% 70%, #262a31 0%, var(--panel) 70%); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .hero canvas { display: block; cursor: pointer; }
+  .hero .tagl { position: absolute; left: 10px; top: 8px; font-size: 14px; color: var(--muted); }
+  .hero .tagl b { font: 18px var(--disp); color: var(--text); letter-spacing: .5px; margin-right: 4px; }
+  .xp { height: 5px; background: var(--panel2); border-radius: 3px; margin: 0 10px 9px; }
+  .xp i { display: block; height: 100%; width: 62%; background: var(--p1); border-radius: 3px; }
+  .start { background: var(--p1); color: #111; border: 0; border-radius: 12px; font: 22px var(--disp); letter-spacing: 1px; padding: 12px; width: 100%; }
+  .start small { display: block; font: 600 13px "Barlow Condensed", sans-serif; letter-spacing: 0; opacity: .8; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-size: 15px; }
+  .card .k { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .6px; }
+  .card b { font: 20px var(--disp); letter-spacing: .5px; font-weight: 400; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .strip { display: flex; gap: 4px; margin-top: 4px; }
+  .strip i { flex: 1; height: 8px; border-radius: 2px; background: var(--panel2); }
+  .strip i.l { background: var(--p1); } .strip i.c { background: #5c94f0; }
+  .list .it { display: flex; justify-content: space-between; padding: 5px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .list .it:first-child { border-top: 0; }
+  .list .it span { color: var(--muted); }
+  .tabs { display: flex; justify-content: space-around; border-top: 1px solid var(--line); padding: 8px 0 12px; font-size: 13px; color: var(--muted); }
+  .tabs .on { color: var(--p1); }
+  .buddy { cursor: pointer; display: block; }
+  .floor { display: block; cursor: pointer; border-top: 1px solid var(--line); }
+
+  /* loaders */
+  .sizes { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 15px; }
+  .loaders { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 120px; justify-content: center; }
+  .tile canvas { display: block; }
+  .tile .nm { font: 16px var(--disp); letter-spacing: .5px; }
+  .tile .ln { color: var(--muted); font-size: 14px; min-height: 20px; text-align: center; }
+  .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
+  .demo { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .demo h3 { font: 18px var(--disp); letter-spacing: .5px; margin: 0 0 2px; }
+  .demo p { color: var(--muted); font-size: 15px; margin: 0 0 10px; }
+  .savebtn { background: var(--p1); color: #111; border: 0; border-radius: 10px; font: 19px var(--disp); letter-spacing: 1px; padding: 10px 16px; min-width: 210px;
+             display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; }
+  .savebtn canvas { display: block; }
+  .ptr { position: relative; height: 250px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #0d0f12; touch-action: none; user-select: none; }
+  .ptr canvas { position: absolute; left: 0; top: 0; }
+  .ptr .plist { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: var(--panel); padding: 6px 12px; cursor: grab; }
+  .ptr .hint { color: var(--muted); font-size: 13px; text-align: center; padding: 2px 0 4px; }
+  .notes { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; margin-top: 12px; }
+  .notes li { margin: 4px 0; }
+  .notes b { color: var(--gold); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html">← All prototypes</a>
+  <h1>YOUR FIGHTER <span>AROUND THE APP</span></h1>
+  <p class="sub">Throwaway prototype. Your stick fighter lives on the home screen and in the loading animations, drawn live from your level, hair and color (not a GIF), so it grows as you train. Tap a fighter for a reaction. Everything here uses the same skeleton as the art mockups.</p>
+
+  <div class="controls">
+    <label>Level <input type="range" id="lvl" min="1" max="50" value="12"> <span id="lvlOut"></span></label>
+    <label>Hair <select id="hair"><option>spiky</option><option>ponytail</option><option>bun</option><option>buzz</option></select></label>
+    <label>Color <select id="color"><option value="0">Orange</option><option value="1">Teal</option><option value="2">Violet</option><option value="3">Green</option></select></label>
+    <label>You train like a <select id="style"><option value="lifter">Lifter</option><option value="runner">Runner</option><option value="hybrid">Hybrid</option></select></label>
+    <label>Idle <select id="idle"><option value="auto">Auto-cycle</option></select></label>
+    <label>Speed <input type="range" id="speed" min="0.3" max="2" step="0.1" value="1"></label>
+    <label><input type="checkbox" id="fx" checked> Anime FX</label>
+    <div class="events">
+      <button data-ev="done">Finished workout</button>
+      <button data-ev="pr">New PR</button>
+      <button data-ev="lvl">Level up</button>
+      <button id="rusty">Rusty (14 days off)</button>
+    </div>
+  </div>
+
+  <h2>1 · Home screen: three placements</h2>
+  <p class="sub">Same fighter, three amounts of screen. The Start button never moves and the fighter never delays it. "You train like a…" changes which idle moves come up.</p>
+  <div class="phones">
+    <div class="pwrap">
+      <h3>A · Hero card</h3>
+      <p>Your fighter is the top of the home screen, with level and XP. The biggest "this is a game" signal, at the cost of about a third of the screen.</p>
+      <div class="phone"><div class="screen">
+        <div class="sbar"><span>9:41</span><span>5G ▮▮▮</span></div>
+        <div class="appbar"><span>BARBELL <b>BRAWL</b></span><small>⚙</small></div>
+        <div class="body">
+          <div class="hero">
+            <div class="tagl"><b class="lvlTxt">LV 12</b><span class="titleTxt">Gym Regular</span></div>
+            <canvas id="cA"></canvas>
+            <div class="xp"><i></i></div>
+          </div>
+          <button class="start">START WORKOUT B<small>Last time: Workout A · Tue</small></button>
+          <div class="card row"><div><div class="k">This week</div><b>2 / 3</b></div><div style="flex:1;max-width:150px"><div class="strip"><i class="l"></i><i></i><i class="l"></i><i></i><i></i><i></i><i></i></div></div></div>
+          <div class="card list"><div class="it">Workout A <span>Tue · 5 exercises</span></div><div class="it">Saturday Run <span>Sat · 3.1 mi</span></div></div>
+        </div>
+        <div class="tabs"><span class="on">Home</span><span>Workouts</span><span>History</span><span>Brawl</span></div>
+      </div></div>
+    </div>
+
+    <div class="pwrap">
+      <h3>B · Buddy on the week card</h3>
+      <p>The tracker stays first. A small fighter stands next to your week progress and reacts to it. Cheapest on space.</p>
+      <div class="phone"><div class="screen">
+        <div class="sbar"><span>9:41</span><span>5G ▮▮▮</span></div>
+        <div class="appbar"><span>BARBELL <b>BRAWL</b></span><small><span class="lvlTxt">LV 12</span> ⚙</small></div>
+        <div class="body">
+          <button class="start">START WORKOUT B<small>Last time: Workout A · Tue</small></button>
+          <div class="card row" style="padding:4px 4px 0 12px">
+            <div style="flex:1"><div class="k">This week</div><b>2 / 3</b><div class="strip" style="margin:6px 0 10px"><i class="l"></i><i></i><i class="l"></i><i></i><i></i><i></i><i></i></div>
+              <div class="k" style="text-transform:none;letter-spacing:0"><span class="titleTxt">Gym Regular</span> · 62% to next level</div></div>
+            <canvas id="cB" class="buddy"></canvas>
+          </div>
+          <div class="card list"><div class="k">Favorites</div><div class="it">Workout A <span>5 exercises</span></div><div class="it">Workout B <span>5 exercises</span></div><div class="it">Monday Circuit <span>8 exercises</span></div></div>
+          <div class="card list"><div class="k">Recent</div><div class="it">Workout A <span>Tue</span></div><div class="it">Saturday Run <span>Sat · 3.1 mi</span></div></div>
+        </div>
+        <div class="tabs"><span class="on">Home</span><span>Workouts</span><span>History</span><span>Brawl</span></div>
+      </div></div>
+    </div>
+
+    <div class="pwrap">
+      <h3>C · Gym floor</h3>
+      <p>A strip above the tabs where your fighter wanders around and trains on its own, like a little pet. The most alive option, but it's always moving.</p>
+      <div class="phone"><div class="screen">
+        <div class="sbar"><span>9:41</span><span>5G ▮▮▮</span></div>
+        <div class="appbar"><span>BARBELL <b>BRAWL</b></span><small><span class="lvlTxt">LV 12</span> ⚙</small></div>
+        <div class="body">
+          <button class="start">START WORKOUT B<small>Last time: Workout A · Tue</small></button>
+          <div class="card row"><div><div class="k">This week</div><b>2 / 3</b></div><div style="flex:1;max-width:150px"><div class="strip"><i class="l"></i><i></i><i class="l"></i><i></i><i></i><i></i><i></i></div></div></div>
+          <div class="card list"><div class="k">Favorites</div><div class="it">Workout A <span>5 exercises</span></div><div class="it">Workout B <span>5 exercises</span></div><div class="it">Monday Circuit <span>8 exercises</span></div></div>
+        </div>
+        <canvas id="cC" class="floor"></canvas>
+        <div class="tabs"><span class="on">Home</span><span>Workouts</span><span>History</span><span>Brawl</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <h2>2 · Loading animations</h2>
+  <p class="sub">Your own fighter, looping one rep. The line under each is a loading joke (the tone doc allows jokes in loading lines, never in the way of logging).</p>
+  <div class="sizes">Size:
+    <button data-size="28">Inline (28 px)</button><button data-size="56" class="on">Small (56 px)</button><button data-size="96">Large (96 px)</button>
+  </div>
+  <div class="loaders" id="loaders"></div>
+
+  <div class="demos">
+    <div class="demo">
+      <h3>In a button</h3>
+      <p>Tap Finish. The loader only shows if saving takes over 300 ms, so fast saves never flash it.</p>
+      <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:10px">
+        <button class="savebtn" id="saveBtn">FINISH WORKOUT</button>
+        <label style="color:var(--muted);font-size:15px">Save takes <select id="saveMs"><option value="120">0.1 s (fast)</option><option value="1500" selected>1.5 s</option><option value="4000">4 s</option></select></label>
+      </div>
+    </div>
+    <div class="demo">
+      <h3>Progress: the sled push</h3>
+      <p>For long jobs with a known progress, like importing history. Your fighter pushes the bar full.</p>
+      <canvas id="cSled"></canvas>
+      <div id="sledTxt" style="color:var(--muted);font-size:15px;margin-top:4px"></div>
+    </div>
+    <div class="demo">
+      <h3>Pull to refresh: pull-ups</h3>
+      <p>Drag the list down. Pull far enough and your fighter gets a chin over the bar; let go to refresh.</p>
+      <div class="ptr" id="ptr">
+        <canvas id="cPull"></canvas>
+        <div class="plist" id="plist">
+          <div class="hint" id="ptrHint">↓ pull down</div>
+          <div class="list" id="plItems"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Questions for you</h2>
+  <div class="notes"><ul>
+    <li><b>Placement:</b> A (hero card), B (buddy on the week card), C (gym floor), or a mix (e.g. B by default, A as a setting)?</li>
+    <li><b>Idle moves by training:</b> should a runner's fighter jog and skip rope while a lifter's curls and presses? Or just random fun?</li>
+    <li><b>Events:</b> worth reacting to a finished workout, PRs, level-ups and Rusty? The home screen is where you'd see them after the summary.</li>
+    <li><b>Loaders:</b> one signature loader (e.g. the squat) for consistency, or a random one each time?</li>
+    <li><b>Aura in idle:</b> it's only on for level-ups here. Keep it that way, or always on at high levels?</li>
+  </ul></div>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// State and look
+// ---------------------------------------------------------------------------
+const S = { lvl: 12, hair: 'spiky', color: 0, style: 'lifter', idle: 'auto', speed: 1, fx: true, rusty: false };
+const COLORS = [
+  { hex: '#ff7a1a', glow: [255, 200, 60] }, { hex: '#2ec4b6', glow: [80, 220, 200] },
+  { hex: '#b48cff', glow: [180, 140, 255] }, { hex: '#7ee08a', glow: [126, 224, 138] },
+];
+const INK = '#f2efe8', BG = '#1a1d22', METAL = '#9aa3b5', ORANGE = '#ff7a1a';
+const TAU = Math.PI * 2;
+function swole(l) {   // same points as art-mockups: Lv 1/10/25/50 → 0/.3/.65/1
+  const pts = [[1, 0], [10, 0.3], [25, 0.65], [50, 1]];
+  for (let i = 1; i < pts.length; i++) if (l <= pts[i][0]) { const [a, sa] = pts[i - 1], [b, sb] = pts[i]; return sa + (sb - sa) * (l - a) / (b - a); }
+  return 1;
+}
+const heightK = l => 0.88 + 0.24 * (l - 1) / 49;   // height grows with level
+const title = l => l >= 50 ? 'Absolute Unit' : l >= 25 ? 'Iron Devotee' : l >= 10 ? 'Gym Regular' : 'Fresh Recruit';
+const look = () => ({ hair: S.hair, accent: COLORS[S.color].hex, glow: COLORS[S.color].glow, fx: S.fx, ink: S.rusty ? '#a79d92' : INK });
+
+// ---------------------------------------------------------------------------
+// Math helpers
+// ---------------------------------------------------------------------------
+const lerp = (a, b, k) => a + (b - a) * k;
+const L2 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k)];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const mul = (a, k) => [a[0] * k, a[1] * k];
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const osc = ph => (1 - Math.cos(TAU * ph)) / 2;            // 0 → 1 → 0 over one cycle
+const ease = k => (1 - Math.cos(Math.PI * clamp(k, 0, 1))) / 2;
+const sw = s => 9 + s * 13;                                  // shoulder half-width
+function axes(hip, neck) {
+  const dx = neck[0] - hip[0], dy = neck[1] - hip[1], d = Math.hypot(dx, dy) || 1;
+  const u = [dx / d, dy / d];          // up the spine
+  return { u, p: [-u[1], u[0]] };      // p: "right" across the chest
+}
+// 2-bone IK: joint picks the bend closest to the pole point
+function ik(a, b, l1, l2, pole) {
+  let dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1e-3, end = b;
+  const max = l1 + l2 - 0.01, min = Math.abs(l1 - l2) + 0.5;
+  if (d > max) { end = [a[0] + dx / d * max, a[1] + dy / d * max]; d = max; }
+  if (d < min) { end = [a[0] + dx / d * min, a[1] + dy / d * min]; d = min; }
+  const ang = Math.atan2(end[1] - a[1], end[0] - a[0]);
+  const A = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const e1 = [a[0] + Math.cos(ang + A) * l1, a[1] + Math.sin(ang + A) * l1];
+  const e2 = [a[0] + Math.cos(ang - A) * l1, a[1] + Math.sin(ang - A) * l1];
+  const d1 = (e1[0] - pole[0]) ** 2 + (e1[1] - pole[1]) ** 2, d2 = (e2[0] - pole[0]) ** 2 + (e2[1] - pole[1]) ** 2;
+  return [d1 < d2 ? e1 : e2, end];
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton: an animation gives hip, neck, hand and foot targets; IK fills in elbows and knees.
+// Feet stand on y = 0, up is negative y, side views face right.
+// ---------------------------------------------------------------------------
+function build(s, o) {
+  const front = !o.side, sh = sw(s), wa = 5 + s * 3;
+  const { u, p } = axes(o.hip, o.neck);
+  const at = (base, x, y) => [base[0] + p[0] * x - u[0] * y, base[1] + p[1] * x - u[1] * y];
+  const head = add(add(o.neck, mul(u, 11)), o.headOff || [0, 0]);
+  const shs = front ? [at(o.neck, -sh, -2), at(o.neck, sh, -2)] : [at(o.neck, -sh * 0.3, -2), at(o.neck, sh * 0.45, -2)];
+  const hps = front ? [at(o.hip, -(4 + s * 2), 0), at(o.hip, 4 + s * 2, 0)] : [at(o.hip, -2, 0), at(o.hip, 3, 0)];
+  const arms = [0, 1].map(i => {
+    const d = i ? 1 : -1, pole = o.armPole ? o.armPole[i] : front ? add(shs[i], [d * 30, 12]) : add(shs[i], [-18, 24]);
+    const [el, hand] = ik(shs[i], o.hands[i], 15, 15, pole); return [shs[i], el, hand];
+  });
+  const legs = [0, 1].map(i => {
+    const d = i ? 1 : -1, pole = o.legPole ? o.legPole[i] : front ? add(hps[i], [d * 26, 22]) : add(hps[i], [40, 20]);
+    const [kn, ft] = ik(hps[i], o.feet[i], 23, 23, pole); return [hps[i], kn, ft];
+  });
+  return { front, s, hip: o.hip, neck: o.neck, head, headR: 8.5 - s * 3, shW: front ? sh : sh * 0.55, waW: front ? wa : wa * 0.8, arms, legs };
+}
+function lerpPose(A, B, k) {
+  const P = (a, b) => L2(a, b, k), J = (x, y) => x.map((limb, i) => limb.map((pt, j) => P(pt, y[i][j])));
+  return { front: k < 0.5 ? A.front : B.front, s: B.s, headR: lerp(A.headR, B.headR, k), shW: lerp(A.shW, B.shW, k), waW: lerp(A.waW, B.waW, k),
+           hip: P(A.hip, B.hip), neck: P(A.neck, B.neck), head: P(A.head, B.head), arms: J(A.arms, B.arms), legs: J(A.legs, B.legs) };
+}
+
+// ---------------------------------------------------------------------------
+// Animations: fn(s, phase 0..1, time) → targets (+ optional props, aura, ox = x offset to center it)
+// ---------------------------------------------------------------------------
+const both = f => [f(-1), f(1)];
+const ANIMS = {
+  idle: { label: 'Breathe', period: 3, fn(s, ph) {
+    const b = Math.sin(TAU * ph), h = sw(s);
+    return { hip: [0, -45], neck: [0, -78 + b * 0.6], hands: both(d => [d * (h + 5), -47 + b]), feet: both(d => [d * 10, 0]) };
+  } },
+  dance: { label: 'Dance', period: 1.6, fn(s, ph) {
+    const h = sw(s), q = Math.sin(TAU * ph), k = (q + 1) / 2, hipY = -45 + Math.abs(Math.sin(TAU * ph * 2)) * 3, x = q * 5;
+    const nx = x * 1.5;
+    const up = d => [nx + d * (h + 16), hipY - 68], onHip = d => [d * (h - 2), hipY - 6];
+    return { hip: [x, hipY], neck: [nx, hipY - 33], headOff: [q * 2, 0],
+             hands: [L2(onHip(-1), up(-1), 1 - k), L2(onHip(1), up(1), k)],
+             feet: [[-11, -Math.max(0, -q) * 6], [11, -Math.max(0, q) * 6]] };
+  } },
+  jacks: { label: 'Jumping jacks', period: 0.9, fn(s, ph) {
+    const h = sw(s), k = osc(ph), y = -Math.abs(Math.sin(TAU * ph)) * 6;
+    return { hip: [0, -45 + y], neck: [0, -78 + y], hands: both(d => L2([d * (h + 4), -47 + y], [d * 7, -116 + y], k)), feet: both(d => [d * lerp(7, 24, k), y]) };
+  } },
+  curl: { label: 'Curls', period: 1.8, fn(s, ph) {
+    const h = sw(s), ks = [osc(ph), osc(ph + 0.5)];
+    return { hip: [0, -45], neck: [0, -78], feet: both(d => [d * 11, 0]),
+             hands: [0, 1].map(i => { const d = i ? 1 : -1; return [d * (h + 3), lerp(-47, -74, ease(ks[i]))]; }),
+             armPole: both(d => [d * (h + 9), -56]),
+             props: P => [{ t: 'db', at: P.arms[0][2] }, { t: 'db', at: P.arms[1][2] }] };
+  } },
+  press: { label: 'Overhead press', period: 2.2, fn(s, ph) {
+    const h = sw(s), k = ease(osc(ph)), y = lerp(-80, -118, k);
+    return { hip: [0, -45], neck: [0, -78], feet: both(d => [d * 12, 0]), hands: both(d => [d * (h + 9), y]), armPole: both(d => [d * (h + 26), -60]),
+             props: P => { const a = P.arms[0][2], b = P.arms[1][2]; return [{ t: 'bar', x0: a[0] - 16, x1: b[0] + 16, y: (a[1] + b[1]) / 2 }]; } };
+  } },
+  squat: { label: 'Squats', period: 2.4, fn(s, ph) {
+    const h = sw(s), k = ease(osc(ph)), hipY = lerp(-45, -25, k);
+    return { hip: [0, hipY], neck: [0, hipY - 32], feet: both(d => [d * 15, 0]), legPole: both(d => [d * 44, hipY + 14]),
+             hands: both(d => [d * (h + 11), hipY - 33]), armPole: both(d => [d * (h + 14), hipY - 14]),
+             props: P => [{ t: 'bar', x0: -(h + 28), x1: h + 28, y: P.neck[1] - 1, behind: true }] };
+  } },
+  rope: { label: 'Jump rope', period: 0.7, fn(s, ph) {
+    const h = sw(s), th = TAU * ph, y = -(Math.cos(th) + 1) / 2 * 6;
+    const ry = -58 + Math.cos(th) * 62, behind = Math.sin(th) > 0;
+    return { hip: [0, -45 + y], neck: [0, -78 + y], feet: both(d => [d * 5, y]),
+             hands: both(d => [d * (h + 9) + d * Math.cos(th) * 2, -50 + y + Math.sin(th) * 2]),
+             props: P => [{ t: 'rope', a: P.arms[0][2], b: P.arms[1][2], ry, behind }] };
+  } },
+  stretch: { label: 'Stretch', period: 4, fn(s, ph) {
+    const q = Math.sin(TAU * ph), neck = [q * 13, -77 + Math.abs(q) * 2];
+    return { hip: [0, -44], neck, feet: both(d => [d * 16, 0]), hands: both(d => [neck[0] + q * 14 + d * 3, neck[1] - 33]),
+             armPole: both(d => [neck[0] + d * 28, neck[1] - 8]) };
+  } },
+  wave: { label: 'Wave', period: 0.8, fn(s, ph) {
+    const h = sw(s), b = Math.sin(TAU * ph);
+    return { hip: [0, -45], neck: [0, -78], feet: both(d => [d * 10, 0]), hands: [[-(h + 5), -47], [h + 12 + b * 7, -106]],
+             armPole: [[-(h + 30), -64], [h + 30, -84]] };
+  } },
+  flex: { label: 'Flex', period: 1.6, fn(s, ph) {
+    const h = sw(s), b = Math.sin(TAU * ph) * 1.5;
+    return { hip: [0, -45], neck: [0, -78], feet: both(d => [d * 13, 0]), hands: both(d => [d * (h + 8 + s * 4), -97 + b]),
+             armPole: both(d => [d * (h + 34), -80]) };
+  } },
+  run: { label: 'Run', period: 0.6, side: true, fn(s, ph) {
+    const th = TAU * ph, a = Math.sin(th), c = Math.cos(th), y = -Math.abs(c) * 2;
+    return { side: true, hip: [0, -44 + y], neck: [9, -77 + y], hands: [[14 + a * 16, -66 + y], [16 - a * 16, -66 + y]],
+             feet: [[-2 - a * 20, -Math.max(0, c) * 9], [a * 20, -Math.max(0, -c) * 9]] };
+  } },
+  deadlift: { label: 'Deadlift', period: 2.6, side: true, fn(s, ph) {
+    const k = ease(osc(ph + 0.5));   // starts at the top
+    return { side: true, hip: L2([-17, -24], [-2, -45], k), neck: L2([6, -47], [1, -78], k), hands: [[6, -8], [7, -8]], feet: [[-2, 0], [3, 0]],
+             props: P => [{ t: 'plate', at: L2(P.arms[0][2], P.arms[1][2], 0.5), r: 13 }] };
+  } },
+  pushup: { label: 'Push-ups', period: 1.6, side: true, ox: 14, fn(s, ph) {
+    const yS = lerp(-26, -12, ease(osc(ph))), F = [-58, 0], nx = F[0] + Math.sqrt(77 * 77 - yS * yS), neck = [nx, yS], hip = L2(F, neck, 44 / 77);
+    return { side: true, hip, neck, hands: [[nx + 1, 0], [nx + 2, 0]], feet: [[-59, 0], [-57, 0]],
+             armPole: [[nx - 14, yS - 10], [nx - 12, yS - 10]], legPole: [add(hip, [0, 30]), add(hip, [0, 30])] };
+  } },
+  powerup: { label: 'Power up', period: 1, hidden: true, fn(s, ph, t) {
+    const h = sw(s), j = Math.sin(t * 60) * 0.7;
+    return { hip: [j, -40], neck: [j, -73], feet: both(d => [d * 20, 0]), hands: both(d => [d * (h + 10), -48]), armPole: both(d => [d * (h + 30), -60]), aura: 1.6 };
+  } },
+  nap: { label: 'Nap (Rusty)', period: 4, fn(s, ph) {
+    const b = Math.sin(TAU * ph);
+    return { hip: [0, -12], neck: [2, -44 + b * 0.8], headOff: [4, 4], hands: both(d => [d * 7, -14]), armPole: both(d => [d * 24, -24]),
+             feet: [[5, -3], [-5, -3]], legPole: both(d => [d * 30, -10]), props: P => [{ t: 'zzz', at: add(P.head, [10, -12]) }] };
+  } },
+  walk: { label: 'Walk', period: 1, side: true, hidden: true, fn(s, ph) {
+    const th = TAU * ph, a = Math.sin(th), c = Math.cos(th), y = -Math.abs(c) * 1.2;
+    return { side: true, hip: [0, -45 + y], neck: [3, -78 + y], hands: [[4 + a * 9, -50], [5 - a * 9, -50]],
+             feet: [[-a * 12, -Math.max(0, c) * 4], [a * 12, -Math.max(0, -c) * 4]] };
+  } },
+  sled: { label: 'Sled push', period: 0.8, side: true, hidden: true, fn(s, ph) {
+    const th = TAU * ph, a = Math.sin(th), c = Math.cos(th);
+    return { side: true, hip: [-10, -40], neck: [12, -66], hands: [[30, -54], [31, -54]],
+             feet: [[-24 - a * 10, -Math.max(0, c) * 5], [-22 + a * 10, -Math.max(0, -c) * 5]],
+             props: P => [{ t: 'sled', x: P.arms[1][2][0] + 1 }] };
+  } },
+};
+function pullSpec(s, k) {   // pull-up: k = 0 hanging, 1 chin over the bar (bar at y = -112)
+  const h = sw(s), n = -84 - k * 28;
+  return { hip: [0, n + 33], neck: [0, n], hands: both(d => [d * (h + 5), -112]), armPole: both(d => [d * (h + 30), n + 12]),
+           feet: [[-4, n + 76], [4, n + 76]], legPole: both(d => [d * 10, n + 50]), props: () => [{ t: 'pullbar', x0: -(h + 28), x1: h + 28, y: -112, behind: true }] };
+}
+const POOLS = {
+  lifter: [['curl', 3], ['press', 3], ['squat', 3], ['deadlift', 2], ['flex', 1], ['dance', 1], ['stretch', 1], ['idle', 2]],
+  runner: [['rope', 3], ['run', 3], ['jacks', 2], ['stretch', 2], ['dance', 1], ['idle', 2]],
+  hybrid: [['curl', 2], ['squat', 2], ['rope', 2], ['run', 2], ['pushup', 1], ['jacks', 1], ['stretch', 1], ['dance', 1], ['flex', 1], ['idle', 2]],
+};
+
+// ---------------------------------------------------------------------------
+// Drawing (adapted from art-mockups drawStick, with a torso that can tilt)
+// ---------------------------------------------------------------------------
+function line(c, a, b) { c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
+function bulge(c, a, b, r) {
+  if (r < 0.6) return;
+  const m = L2(a, b, 0.5), ang = Math.atan2(b[1] - a[1], b[0] - a[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+  c.beginPath(); c.ellipse(m[0], m[1], len * 0.8, r, ang, 0, TAU); c.fill();
+}
+function aura(c, s, t, rgb, k) {
+  const n = 9, w = (20 + s * 26) * (0.8 + k * 0.3);
+  c.save();
+  for (let i = 0; i < n; i++) {
+    const x = -w + (2 * w) * i / (n - 1), h = (92 + 18 * Math.sin(t * 7 + i * 1.7) + s * 10) * (0.8 + k * 0.25);
+    const g = c.createLinearGradient(0, 0, 0, -h);
+    g.addColorStop(0, `rgba(${rgb.join(',')},${0.2 * k})`); g.addColorStop(1, `rgba(${rgb.join(',')},0)`);
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(x - 9, 2); c.quadraticCurveTo(x + 6 * Math.sin(t * 5 + i), -h * 0.6, x + 4 * Math.sin(t * 9 + i), -h); c.quadraticCurveTo(x + 6, -h * 0.5, x + 9, 2); c.fill();
+  }
+  c.restore();
+}
+function drawFighter(c, P, o, t) {
+  const s = P.s, lw = 3 + s * 4.5, r = P.headR, ink = o.ink;
+  const { u, p } = axes(P.hip, P.neck), rot = Math.atan2(u[1], u[0]) + Math.PI / 2;
+  const H = (x, y) => [P.head[0] + p[0] * x - u[0] * y, P.head[1] + p[1] * x - u[1] * y];
+  const N = (x, y) => [P.neck[0] + p[0] * x - u[0] * y, P.neck[1] + p[1] * x - u[1] * y];
+  c.save();
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = lw;
+  if (o.fx) { c.shadowColor = `rgba(${o.glow.join(',')},0.5)`; c.shadowBlur = 8; }
+  const back = P.front ? 0 : -1;
+  if (o.hair === 'ponytail') {
+    const a = H(back * 5, -r + 1), q = H(-12 + back * 4, -r - 3), e = H(-13 + back * 4 + Math.sin(t * 4) * 3, 9);
+    c.lineWidth = 3.4; c.beginPath(); c.moveTo(a[0], a[1]); c.quadraticCurveTo(q[0], q[1], e[0], e[1]); c.stroke(); c.lineWidth = lw;
+  } else if (o.hair === 'bun') { const b = H(back * 5, -r - 3); c.beginPath(); c.arc(b[0], b[1], 4.4, 0, TAU); c.fill(); }
+  const leg = L => { line(c, L[0], L[1]); line(c, L[1], L[2]); bulge(c, L[0], L[1], s * 5.5); bulge(c, L[1], L[2], s * 2.6); };
+  const arm = A => { line(c, A[0], A[1]); line(c, A[1], A[2]); bulge(c, A[0], A[1], 1 + s * 7); bulge(c, A[1], A[2], s * 3.2); c.beginPath(); c.arc(A[2][0], A[2][1], lw * 0.55 + s * 1.5, 0, TAU); c.fill(); };
+  leg(P.legs[0]); if (!P.front) arm(P.arms[0]);
+  if (s < 0.2) line(c, P.hip, P.neck);
+  else {
+    const a = N(-P.shW, 1), b = N(P.shW, 1), cc = add(P.hip, mul(p, P.waW)), d = add(P.hip, mul(p, -P.waW));
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.lineTo(cc[0], cc[1]); c.lineTo(d[0], d[1]); c.closePath(); c.fill(); c.stroke();
+  }
+  c.lineWidth = lw * (1 + s * 0.8); line(c, P.neck, H(0, r)); c.lineWidth = lw;
+  c.beginPath(); c.arc(P.head[0], P.head[1], r, 0, TAU); c.fill();
+  leg(P.legs[1]); if (P.front) arm(P.arms[0]); arm(P.arms[1]);
+  c.shadowBlur = 0;
+  // player color: headband (+ tails in side view)
+  c.strokeStyle = o.accent; c.lineWidth = 2.6;
+  c.beginPath(); c.arc(P.head[0], P.head[1], r, Math.PI * 1.08 + rot, Math.PI * 1.92 + rot); c.stroke();
+  if (!P.front) { c.lineWidth = 2; line(c, H(-r + 1, -4), H(-r - 8, -1 + Math.sin(t * 9) * 2)); line(c, H(-r + 1, -4), H(-r - 7, 3 + Math.sin(t * 9 + 1) * 2)); }
+  // muscle definition in the background color
+  if (s > 0.55 && P.front) {
+    c.strokeStyle = BG; c.lineWidth = 1.3;
+    line(c, N(0, 6), N(0, 30));
+    for (const d of [-1, 1]) { const m = N(d * 6, 9); c.beginPath(); c.arc(m[0], m[1], 6, 0.2 + rot, Math.PI - 0.2 + rot); c.stroke(); }
+    if (s > 0.85) for (let k = 0; k < 3; k++) line(c, N(-4, 19 + k * 6), N(4, 19 + k * 6));
+  }
+  c.strokeStyle = ink; c.lineWidth = 2.4;
+  if (o.fx && o.hair === 'spiky') for (let k = -2; k <= 2; k++) {
+    const a = -Math.PI / 2 + k * 0.42 - (P.front ? 0 : 0.35) + rot, l2 = r + 6 + (k % 2 ? 1 : 3);
+    line(c, [P.head[0] + Math.cos(a) * r * 0.7, P.head[1] + Math.sin(a) * r * 0.7], [P.head[0] + Math.cos(a) * l2, P.head[1] + Math.sin(a) * l2]);
+  }
+  if (o.hair === 'buzz') { c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 2; c.beginPath(); c.arc(P.head[0], P.head[1], r - 1.5, Math.PI * 1.15 + rot, Math.PI * 1.85 + rot); c.stroke(); }
+  c.strokeStyle = BG; c.lineWidth = 1.4;   // eyes
+  if (P.front) { line(c, H(-4, -1), H(-1, 0)); line(c, H(4, -1), H(1, 0)); } else line(c, H(2, -1), H(5, 0));
+  if (s >= 0.95) {   // level 50 comedy: sweat drop + sparkle
+    c.fillStyle = '#7fc8ff'; const [hx, hy] = H(9, -6);
+    c.beginPath(); c.moveTo(hx, hy); c.quadraticCurveTo(hx + 4, hy + 6, hx, hy + 7); c.quadraticCurveTo(hx - 4, hy + 6, hx, hy); c.fill();
+    const sp = add(P.arms[1][1], [8, -12]), k = 3 + Math.sin(t * 6) * 1.5;
+    c.strokeStyle = '#ffe27a'; c.lineWidth = 1.5; line(c, [sp[0] - k, sp[1]], [sp[0] + k, sp[1]]); line(c, [sp[0], sp[1] - k], [sp[0], sp[1] + k]);
+  }
+  c.restore();
+}
+function drawProps(c, list, s, t, o, behind, alpha = 1) {
+  c.save(); c.globalAlpha = alpha; c.lineCap = 'round';
+  for (const pr of list) {
+    if (!!pr.behind !== behind) continue;
+    if (pr.t === 'bar' || pr.t === 'pullbar') {
+      c.strokeStyle = METAL; c.lineWidth = pr.t === 'bar' ? 2.6 : 3.2; line(c, [pr.x0, pr.y], [pr.x1, pr.y]);
+      if (pr.t === 'bar') {
+        const n = 1 + Math.round(s * 2);
+        for (const [xe, inward] of [[pr.x0, 1], [pr.x1, -1]]) for (let j = 0; j < n; j++) {
+          const x = xe + inward * (3 + j * 5), hh = 13 + j * 5;
+          c.fillStyle = j === n - 1 ? o.accent : METAL; c.fillRect(x - 2, pr.y - hh / 2, 4, hh);
+        }
+      }
+    } else if (pr.t === 'db') {
+      const [x, y] = pr.at; c.strokeStyle = METAL; c.fillStyle = METAL; c.lineWidth = 2;
+      line(c, [x - 7, y], [x + 7, y]); c.fillRect(x - 9, y - 4, 3.5, 8); c.fillRect(x + 5.5, y - 4, 3.5, 8);
+    } else if (pr.t === 'rope') {
+      const hy = (pr.a[1] + pr.b[1]) / 2, cy = 2 * pr.ry - hy;
+      c.globalAlpha = alpha * (pr.behind ? 0.5 : 1); c.strokeStyle = o.accent; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(pr.a[0], pr.a[1]); c.quadraticCurveTo(0, cy, pr.b[0], pr.b[1]); c.stroke(); c.globalAlpha = alpha;
+    } else if (pr.t === 'plate') {
+      const [x, y] = pr.at; c.fillStyle = o.accent; c.beginPath(); c.arc(x, y, pr.r, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, pr.r * 0.65, 0, TAU); c.stroke();
+      c.fillStyle = METAL; c.beginPath(); c.arc(x, y, 2.6, 0, TAU); c.fill();
+    } else if (pr.t === 'zzz') {
+      c.fillStyle = METAL; c.textAlign = 'center';
+      for (let i = 0; i < 3; i++) {
+        const k = (t * 0.5 + i / 3) % 1; c.globalAlpha = alpha * Math.sin(k * Math.PI);
+        c.font = `bold ${8 + k * 8}px system-ui`; c.fillText('z', pr.at[0] + k * 12, pr.at[1] - k * 22);
+      }
+    } else if (pr.t === 'sled') {
+      const x = pr.x; c.strokeStyle = METAL; c.lineWidth = 2.6;
+      line(c, [x, -54], [x, -6]); line(c, [x - 2, 0], [x + 36, 0]); line(c, [x + 36, 0], [x + 40, -4]);
+      c.fillStyle = o.accent; c.fillRect(x + 8, -22, 20, 20); c.fillStyle = METAL; c.fillRect(x + 10, -30, 16, 8);
+    }
+  }
+  c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Actor: one fighter on one screen (picks idle moves, blends between them, plays events)
+// ---------------------------------------------------------------------------
+function pickWeighted(list, not) {
+  const l = list.filter(([n]) => n !== not), tot = l.reduce((a, [, w]) => a + w, 0);
+  let r = Math.random() * tot; for (const [n, w] of l) if ((r -= w) <= 0) return n; return l[0][0];
+}
+class Actor {
+  constructor(kind) { Object.assign(this, { kind, anim: 'idle', ph: 0, from: null, bk: 1, last: null, next: 0, lock: 0, label: null, labelT: 0, x: 0, dir: 1, walkTo: null, range: 60 }); }
+  set(name) { if (name === this.anim) return; this.from = this.last; this.bk = 0; this.anim = name; this.ph = 0; }
+  event(name, now, dur, label) { this.walkTo = null; this.dir = 1; this.set(name); this.lock = now + dur; this.next = this.lock; this.label = label; this.labelT = now; }
+  forced() { return S.rusty ? 'nap' : S.idle !== 'auto' ? S.idle : null; }
+  pickIdle(now) {
+    const f = this.forced(), n = f || pickWeighted(POOLS[S.style], this.anim);
+    this.set(n);
+    this.next = now + clamp(3 * ANIMS[n].period / S.speed, 3.5, 8);
+  }
+  update(dt, now) {
+    this.ph += dt * S.speed / ANIMS[this.anim].period;
+    this.bk = Math.min(1, this.bk + dt / 0.3);
+    if (now < this.lock) return;
+    this.label = null;
+    const f = this.forced();
+    if (this.kind === 'floor') {
+      if (this.walkTo !== null) {
+        this.x += this.dir * dt * 30 * S.speed;
+        if ((this.walkTo - this.x) * this.dir <= 0) { this.walkTo = null; this.dir = 1; this.pickIdle(now); }
+      } else if (f === 'nap' && this.anim !== 'nap') this.pickIdle(now);
+      else if (now >= this.next && f !== 'nap') {
+        let tx; do { tx = (Math.random() * 2 - 1) * this.range; } while (Math.abs(tx - this.x) < 30);
+        this.walkTo = tx; this.dir = Math.sign(tx - this.x); this.set('walk');
+      }
+      return;
+    }
+    if ((f && this.anim !== f) || now >= this.next) this.pickIdle(now);
+  }
+  pose(now, s) {
+    const r = ANIMS[this.anim].fn(s, this.ph % 1, now);
+    let P = build(s, r);
+    if (this.from && this.bk < 1) P = lerpPose(this.from, P, ease(this.bk));
+    this.last = P;
+    return { P, r, a: ANIMS[this.anim] };
+  }
+}
+// draw an actor with feet at (cx, gy), sc = pixels per skeleton unit
+function renderActor(c, actor, cx, gy, sc, now) {
+  const s = swole(S.lvl), o = look(), { P, r, a } = actor.pose(now, s);
+  const props = r.props ? r.props(P) : [], pa = actor.bk < 1 ? ease(actor.bk) : 1;
+  c.save(); c.translate(cx + actor.x * sc, gy);
+  c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.ellipse(0, 1, 24 * sc, 3.5 * sc, 0, 0, TAU); c.fill();
+  c.scale(sc * actor.dir, sc); c.translate(a.ox || 0, 0);
+  if (r.aura && o.fx) aura(c, s, now, o.glow, r.aura);
+  drawProps(c, props, s, now, o, true, pa); drawFighter(c, P, o, now); drawProps(c, props, s, now, o, false, pa);
+  c.restore();
+  if (actor.label) {   // event banner above the head
+    const k = clamp((now - actor.labelT) / 0.25, 0, 1), y = gy - 128 * sc - (1 - k) * 8;
+    c.save(); c.globalAlpha = k; c.textAlign = 'center'; c.font = `${Math.round(clamp(20 * sc, 12, 24))}px Anton, Impact, sans-serif`;
+    c.lineWidth = 4; c.strokeStyle = '#111317'; c.strokeText(actor.label, cx + actor.x * sc, y);
+    c.fillStyle = actor.labelColor || ORANGE; c.fillText(actor.label, cx + actor.x * sc, y); c.restore();
+  }
+}
+// one-shot pose (loaders): no state, phase from the clock
+function drawStatic(c, name, cx, gy, sc, now, phOverride) {
+  const s = swole(S.lvl), o = look(), a = ANIMS[name];
+  const r = a.fn(s, phOverride ?? (now * S.speed / a.period) % 1, now), P = build(s, r), props = r.props ? r.props(P) : [];
+  c.save(); c.translate(cx, gy); c.scale(sc, sc); c.translate(a.ox || 0, 0);
+  drawProps(c, props, s, now, o, true); drawFighter(c, P, o, now); drawProps(c, props, s, now, o, false);
+  c.restore();
+}
+function fit(canvas, w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  const c = canvas.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return c;
+}
+
+// ---------------------------------------------------------------------------
+// Home screens
+// ---------------------------------------------------------------------------
+const $ = s => document.querySelector(s);
+const cA = fit($('#cA'), 272, 170), cB = fit($('#cB'), 92, 118), cC = fit($('#cC'), 296, 104);
+const A = new Actor('hero'), B = new Actor('buddy'), C = new Actor('floor');
+const HOME = [A, B, C];
+function drawFloor(c, w, h, gy) {
+  c.strokeStyle = '#2d3138'; c.lineWidth = 1; line(c, [0, gy + 0.5], [w, gy + 0.5]);
+}
+function drawGym(c, w, h, gy) {   // the gym-floor strip: mat + a little plate rack
+  c.fillStyle = '#15171b'; c.fillRect(0, gy, w, h - gy);
+  c.strokeStyle = '#2d3138'; line(c, [0, gy + 0.5], [w, gy + 0.5]);
+  c.fillStyle = '#2d3138'; c.fillRect(12, gy - 30, 3, 30); c.fillRect(32, gy - 30, 3, 30);
+  for (let i = 0; i < 3; i++) { c.fillStyle = i ? '#3a3f47' : '#8a4a1c'; c.beginPath(); c.arc(24, gy - 8 - i * 7.5, 9 - i * 1.6, 0, TAU); c.fill(); }
+  c.fillStyle = '#3a3f47'; c.fillRect(w - 44, gy - 12, 34, 12); c.fillRect(w - 40, gy - 16, 26, 4);
+}
+function tapReact(actor) {
+  const now = performance.now() / 1000;
+  if (now < actor.lock) return;
+  actor.event(pickWeighted([['wave', 1], ['flex', 1], ['jacks', 1], ['dance', 1]], actor.anim), now, 1.8, null);
+}
+$('#cA').onclick = () => tapReact(A); $('#cB').onclick = () => tapReact(B); $('#cC').onclick = () => tapReact(C);
+const EVENTS = {
+  done: { anim: 'dance', dur: 3, label: '+612 XP', color: '#ffe27a' },
+  pr: { anim: 'flex', dur: 2.6, label: 'NEW PR!', color: '#ffe27a' },
+  lvl: { anim: 'powerup', dur: 2.6, label: 'LEVEL UP!', color: ORANGE },
+};
+document.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => {
+  const e = EVENTS[b.dataset.ev], now = performance.now() / 1000;
+  if (b.dataset.ev === 'lvl' && S.lvl < 50) { S.lvl++; syncLook(); }
+  for (const a of HOME) { a.event(e.anim, now, e.dur, e.label); a.labelColor = e.color; }
+});
+$('#rusty').onclick = () => { S.rusty = !S.rusty; $('#rusty').classList.toggle('on', S.rusty); };
+
+// ---------------------------------------------------------------------------
+// Loaders
+// ---------------------------------------------------------------------------
+const LOADERS = ['squat', 'rope', 'deadlift', 'pushup', 'run', 'press', 'jacks', 'curl'];
+const LINES = ['Chalking up…', 'Loading plates…', 'Finding a spotter…', "Re-racking someone else's weights…", 'Negotiating with the Snooze Imp…',
+               'Warming up (for real this time)…', 'Syncing your gains…', 'Counting reps twice…', 'Adjusting the seat to height 4…', 'Asking if you\'re using this…'];
+let loaderSize = 56;
+const tiles = LOADERS.map((name, i) => {
+  const el = document.createElement('div'); el.className = 'tile';
+  el.innerHTML = `<canvas></canvas><div class="nm">${ANIMS[name].label}</div><div class="ln"></div>`;
+  $('#loaders').appendChild(el);
+  return { name, el, canvas: el.querySelector('canvas'), ln: el.querySelector('.ln'), line: i };
+});
+function sizeLoaders() {
+  for (const t of tiles) { const wide = t.name === 'pushup' ? 1.5 : 1; t.w = Math.round(loaderSize * wide * 1.15); t.c = fit(t.canvas, t.w, loaderSize); }
+}
+document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-size]').forEach(x => x.classList.toggle('on', x === b)); loaderSize = +b.dataset.size; sizeLoaders();
+});
+sizeLoaders();
+function drawLoaderInto(c, w, h, name, now) {
+  c.clearRect(0, 0, w, h);
+  const sc = h / 132 * heightK(S.lvl) / heightK(50) * 0.98;   // fit the tallest (level 50, arms overhead)
+  drawStatic(c, name, w / 2, h - 3, sc, now);
+}
+
+// save button
+const saveBtn = $('#saveBtn');
+let saving = false;
+saveBtn.onclick = () => {
+  if (saving) return; saving = true;
+  const ms = +$('#saveMs').value; let shown = false, lc = null;
+  const show = setTimeout(() => {
+    shown = true; saveBtn.innerHTML = '<canvas></canvas>SAVING…'; lc = fit(saveBtn.querySelector('canvas'), 28, 30); saveBtn._lc = lc;
+  }, 300);
+  setTimeout(() => {
+    clearTimeout(show); saveBtn._lc = null; saveBtn.textContent = shown ? 'SAVED ✓' : 'SAVED ✓ (no loader)';
+    setTimeout(() => { saveBtn.textContent = 'FINISH WORKOUT'; saving = false; }, 1500);
+  }, ms);
+};
+
+// sled progress
+const cSledEl = $('#cSled'); let sledW = 0, sledC = null;
+function sizeSled() { sledW = Math.min(420, cSledEl.parentElement.clientWidth - 28); sledC = fit(cSledEl, sledW, 78); }
+sizeSled(); addEventListener('resize', sizeSled);
+const sled = { t0: 0, dur: 7 };
+
+// pull to refresh
+const ptr = $('#ptr'), plist = $('#plist'), cPullEl = $('#cPull');
+let ptrW = 0, pullC = null;
+function sizePull() { ptrW = ptr.clientWidth; pullC = fit(cPullEl, ptrW, 120); }
+sizePull(); addEventListener('resize', sizePull);
+const FEED = [['Workout A', 'Tue · 612 XP'], ['Saturday Run', 'Sat · 3.1 mi'], ['Workout B', 'Fri · 588 XP'], ['Monday Circuit', 'Mon · 402 XP'], ['Workout A', 'Wed · 596 XP'], ['Workout B', 'Mon · 570 XP']];
+let feedN = 0;
+function renderFeed() { $('#plItems').innerHTML = FEED.slice(0, 6).map(([a, b], i) => `<div class="it">${a} <span>${b}</span></div>`).join(''); }
+renderFeed();
+const pull = { y: 0, target: 0, drag: false, y0: 0, refreshing: false, t0: 0 };
+plist.addEventListener('pointerdown', e => { if (pull.refreshing) return; pull.drag = true; pull.y0 = e.clientY; plist.setPointerCapture(e.pointerId); plist.style.cursor = 'grabbing'; });
+plist.addEventListener('pointermove', e => { if (!pull.drag) return; pull.y = pull.target = clamp((e.clientY - pull.y0) * 0.6, 0, 115); });
+function endPull() {
+  if (!pull.drag) return; pull.drag = false; plist.style.cursor = 'grab';
+  if (pull.y >= 88) {
+    pull.refreshing = true; pull.target = 100; pull.t0 = performance.now() / 1000;
+    setTimeout(() => { pull.refreshing = false; pull.target = 0; feedN++; FEED.unshift(['Workout B', `Just now · ${560 + feedN * 7} XP`]); renderFeed(); }, 2000);
+  } else pull.target = 0;
+}
+plist.addEventListener('pointerup', endPull); plist.addEventListener('pointercancel', endPull);
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+for (const [k, a] of Object.entries(ANIMS)) if (!a.hidden) $('#idle').insertAdjacentHTML('beforeend', `<option value="${k}">${a.label}</option>`);
+function syncLook() {
+  $('#lvl').value = S.lvl; $('#lvlOut').textContent = `${S.lvl} · ${title(S.lvl)}`;
+  document.querySelectorAll('.lvlTxt').forEach(e => e.textContent = 'LV ' + S.lvl);
+  document.querySelectorAll('.titleTxt').forEach(e => e.textContent = title(S.lvl));
+}
+$('#lvl').oninput = e => { S.lvl = +e.target.value; syncLook(); };
+$('#hair').onchange = e => S.hair = e.target.value;
+$('#color').onchange = e => { S.color = +e.target.value; document.documentElement.style.setProperty('--p1', COLORS[S.color].hex); };
+$('#style').onchange = e => { S.style = e.target.value; const now = performance.now() / 1000; for (const a of HOME) a.next = Math.min(a.next, now + 0.2); };
+$('#idle').onchange = e => { S.idle = e.target.value; };
+$('#speed').oninput = e => S.speed = +e.target.value;
+$('#fx').onchange = e => S.fx = e.target.checked;
+syncLook();
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+let lastT = performance.now() / 1000;
+function frame() {
+  const now = performance.now() / 1000, dt = Math.min(0.05, now - lastT); lastT = now;
+  const hk = heightK(S.lvl);
+  for (const a of HOME) a.update(dt, now);
+
+  // A: hero card
+  cA.clearRect(0, 0, 272, 170); drawFloor(cA, 272, 170, 150);
+  renderActor(cA, A, 136, 150, 1.02 * hk, now);
+  // B: buddy
+  cB.clearRect(0, 0, 92, 118); drawFloor(cB, 92, 118, 110);
+  renderActor(cB, B, 46, 110, 0.7 * hk, now);
+  // C: gym floor
+  cC.clearRect(0, 0, 296, 104); drawGym(cC, 296, 104, 94);
+  const scC = 0.62 * hk; C.range = (296 / 2 - 60) / scC;
+  renderActor(cC, C, 148, 94, scC, now);
+
+  // loaders
+  for (const t of tiles) {
+    drawLoaderInto(t.c, t.w, loaderSize, t.name, now);
+    const li = Math.floor(now / 2.2 + t.line) % LINES.length; if (t.li !== li) { t.li = li; t.ln.textContent = LINES[li]; }
+  }
+  if (saveBtn._lc) { saveBtn._lc.clearRect(0, 0, 28, 30); const sc = 30 / 132; drawStatic(saveBtn._lc, 'squat', 14, 29, sc, now); }
+
+  // sled progress
+  if (sledC) {
+    const w = sledW, h = 78, gy = 60, el = (now - sled.t0) / sled.dur;
+    if (el > 1.45) sled.t0 = now;
+    const pr = clamp(el, 0, 1), x0 = 12, x1 = w - 60, fx = x0 + pr * (x1 - x0);
+    sledC.clearRect(0, 0, w, h);
+    sledC.fillStyle = '#2d3138'; sledC.fillRect(x0, gy + 4, w - x0 - 12, 8);
+    sledC.fillStyle = COLORS[S.color].hex; sledC.fillRect(x0, gy + 4, Math.max(0, fx - x0 + 26), 8);
+    const sc = 0.5;
+    if (el < 1) drawStatic(sledC, 'sled', fx, gy + 2, sc, now);
+    else drawStatic(sledC, 'flex', fx + 14, gy + 2, sc, now);
+    const done = Math.round(pr * 1240);
+    $('#sledTxt').textContent = el < 1 ? `Importing StrongLifts history… ${done.toLocaleString()} / 1,240 sets` : 'Imported 1,240 sets. Welcome back, veteran.';
+  }
+
+  // pull to refresh
+  if (pullC) {
+    if (!pull.drag) pull.y += (pull.target - pull.y) * Math.min(1, dt * 12);
+    plist.style.transform = `translateY(${pull.y}px)`;
+    $('#ptrHint').textContent = pull.refreshing ? '' : pull.y >= 88 ? '↑ let go to refresh' : '↓ pull down';
+    const w = ptrW; pullC.clearRect(0, 0, w, 120);
+    const k = pull.refreshing ? ease(osc((now - pull.t0) * 1.1)) : clamp((pull.y - 30) / 58, 0, 1);
+    const s = swole(S.lvl), o = look(), r = pullSpec(s, k), P = build(s, r), props = r.props(P);
+    const sc = 0.62 * hk, barPx = 16;
+    pullC.save(); pullC.translate(w / 2, barPx + 112 * sc); pullC.scale(sc, sc);
+    drawProps(pullC, props, s, now, o, true); drawFighter(pullC, P, o, now);
+    pullC.restore();
+    if (pull.refreshing) { pullC.fillStyle = '#9a9ca0'; pullC.font = '14px "Barlow Condensed", sans-serif'; pullC.textAlign = 'left'; pullC.fillText('Refreshing…', 12, 20); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
