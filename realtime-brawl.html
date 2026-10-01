@@ -248,6 +248,15 @@
     </div>
 
     <div class="card">
+      <details>
+        <summary>Difficulty check (bots)</summary>
+        <p class="hint">The CPU buddy plays P1 through every fight, many times, as benchmark fighters from the balance sim (stats a real StrongLifts lifter or runner has at that level). <b>Sharp</b> answers every telegraph; <b>human</b> misses a quarter of them. Solo, fists, no Rusty. Your wallet and gold are untouched. Target (2026-10-01): Zone 1 is beatable at level 1; Zone 2's boss needs about level 5.</p>
+        <div class="row"><label>Fights each</label><input type="number" id="botN" value="10" min="1" max="100" style="width:70px"><button class="primary" id="botRun">Run bots</button></div>
+        <div id="botOut" class="hint"></div>
+      </details>
+    </div>
+
+    <div class="card">
       <details open>
         <summary>Game feel (E5)</summary>
         <div class="row"><button id="juiceOn">All on</button><button id="juiceOff">All off</button><button id="juiceReset">Reset</button></div>
@@ -343,6 +352,7 @@ const DEFAULT_TUNING = {
   coopHostWeight: 0.7,                // difficulty (HP and damage) = blend of both players' stat totals, this much toward the host (P1, whose rung it is)
   coopSync: 0.5,                      // partial level sync: a helper's stats above the host's are pulled this far toward the host's
   ghostStatMult: 0.85,                // the CPU buddy (ghost) fights at this share of its stats: weaker than a real buddy
+  slowMult: 0.6,                      // Doom Scroller beam: move speed × this while slowed (attacks are 1 / this slower)
   rustyMult: 0.9,                     // Rusty (2+ weeks off): P1's stats × this until one workout clears it
   heightPerLevel: 0.012,              // visual only: fighters draw this much taller per level (level 50 ≈ 1.6×); hurtboxes don't grow
 };
@@ -426,6 +436,42 @@ const MONSTERS = {
       lob:   { windup: 750, recover: 700, dmg: 20, flight: 0.9, radius: 48, height: 'mid' },
     },
   },
+  // Zone 2, the Whispering Woods (2026-10-01)
+  doom: {
+    name: 'Doom Scroller', kit: 'doom', rank: 'minion', flies: true, hover: 70, hp: 45, width: 40, height: 60, body: [0, 62], speed: 110, color: '#5cc8ff', weight: 0.3,
+    hint: '"Just checking something." A phone-faced wisp that floats at punch height. Its screen-glow BEAM comes in HIGH (duck or stand-block) and SLOWS you for a few seconds if it hits.',
+    attacks: {
+      beam: { windup: 750, active: 220, recover: 900, range: 250, dmg: 5, height: 'high', slow: 2.5 },
+    },
+  },
+  goblin: {
+    name: 'Tomorrow Goblin', kit: 'goblin', rank: 'minion', hp: 55, width: 36, height: 56, speed: 200, color: '#6ab04c', weight: 0.4,
+    hint: '"I\'ll start Monday." Quick calendar slaps (MID). Hurt it and it runs for the edge: catch it before it gets there and waits, or it comes back with friends.',
+    attacks: {
+      slap: { windup: 400, active: 100, recover: 450, range: 42, dmg: 8, height: 'mid' },
+      call: { at: 0.65, wait: 2.2, friends: ['goblin', 'doom'] },   // flees below this HP share; calls friends after waiting at the edge
+    },
+  },
+  kitsune: {
+    name: 'Kitsune Sprinter', kit: 'kitsune', rank: 'boss', enrage: true, hp: 420, width: 90, height: 120, speed: 170, color: '#e87830', weight: 2,
+    hint: '"Try to keep up." Fast, and she never stands still. Afterimage DASH along the ground (LOW: jump it or crouch-block), a quick HIGH claw up close (duck it), foxfire from range (MID: block or jump). Below half HP she splits into illusion clones that pop in one hit.',
+    attacks: {
+      // Tuned with the bot check (2026-10-01): level 1 never wins; a human-ish level 5 wins the run most of the time.
+      claw:    { windup: 380, active: 120, recover: 450, range: 95, dmg: 12, height: 'high' },
+      dash:    { windup: 520, recover: 600, dmg: 15, speed: 1000, overshoot: 240, band: 35, height: 'low' },
+      foxfire: { windup: 500, recover: 600, dmg: 10, speed: 420, height: 'mid' },
+      clones:  { windup: 600, recover: 500, n: 2, every: 9, life: 8 },
+    },
+  },
+  kclone: {
+    name: 'Kitsune Illusion', kit: 'kitsune', rank: 'minion', sprite: 'kitsune', illusion: true, hp: 1, width: 90, height: 120, speed: 170, color: '#e87830', weight: 0.6,
+    hint: 'An illusion: one hit pops it, but its attacks still hurt.',
+    attacks: {
+      claw:    { windup: 420, active: 120, recover: 500, range: 95, dmg: 8, height: 'high' },
+      dash:    { windup: 600, recover: 700, dmg: 10, speed: 1000, overshoot: 240, band: 35, height: 'low' },
+      foxfire: { windup: 550, recover: 700, dmg: 7, speed: 420, height: 'mid' },
+    },
+  },
   golem: {
     name: 'Forge Golem', kit: 'heavy', rank: 'boss', enrage: true, hp: 650, width: 120, height: 200, speed: 45, color: '#8e939c', weight: 3,
     hint: 'Was the Plate Golem. Slow and tanky, built from iron plates, and HEAVY: it takes a lot of STR to launch. Its slam sends a LOW shockwave along the ground (jump it or crouch-block). Its arm sweep is HIGH (duck it or stand-block). It rolls plates (LOW) at distant targets and lobs them at anyone up on a bench.',
@@ -458,6 +504,13 @@ const ZONES = [
     { key: 'z1oni', name: 'Oni Bro', format: 'Boss Arena', gold: 70, boss: true, waves: [['oni']],
       scout: { stat: 'VIT', want: 26, text: 'Oni Bro hits hard. Build VIT by hitting your weekly goal, and STR to launch him.' } },
   ] },
+  { name: 'Zone 2 · Whispering Woods', ladder: true, after: ['z1oni', 'z1run'], levels: [
+    { key: 'z2swarm', name: 'Doom Scroll', format: 'Swarm Waves', gold: 50,
+      waves: [['doom', 'goblin', 'goblin'], ['doom', 'doom', 'goblin', 'snack'], ['goblin', 'goblin', 'doom', 'couch']],
+      scout: { stat: 'SPD', want: 18, text: 'Goblins run for the edge to fetch friends and beams slow you down. SPD catches them first.' } },
+    { key: 'z2run', name: 'Whispering Woods Run', format: 'Side-scroll', gold: 160, boss: true, run: 'z2run',
+      scout: { stat: 'DEX', want: 16, text: 'Kitsune Sprinter dashes low and claws high. DEX widens your dodge window and jumps you higher; SPD makes her slower relative to you.' } },
+  ] },
   { name: 'Side-scroll prototype', levels: [
     { key: 'z1run', name: 'Comfort Zone Run', format: 'Side-scroll', gold: 120, boss: true, run: 'z1run',
       scout: { stat: 'VIT', want: 26, text: 'HP doesn\'t refill between fights: you reach Oni Bro with whatever you have left. VIT is your fuel tank.' } },
@@ -465,6 +518,8 @@ const ZONES = [
   { name: 'Test fights', levels: [
     { key: 'golem', name: 'Forge Golem', format: 'Boss Arena', gold: 60, boss: true, waves: [['golem']],
       scout: { stat: 'STR', want: 40, text: 'Heavy: it only launches once your STR outweighs it (about STR 40 for a special).' } },
+    { key: 'z2kitsune', name: 'Kitsune Sprinter (arena)', format: 'Boss Arena', gold: 80, boss: true, waves: [['kitsune']],
+      scout: { stat: 'DEX', want: 16, text: 'Zone 2\'s boss on her own, for tuning: no run before her.' } },
     { key: 'wraith', name: 'Marathon Wraith', format: 'Elite', gold: 40, waves: [['wraith']],
       scout: { stat: 'DEX', want: 22, text: 'It dashes at your height. DEX widens your dodge window and jumps you higher.' } },
   ] },
@@ -505,13 +560,45 @@ const RUNS = {
       { at: 4900, name: 'The village gym', boss: true, waves: [['oni']], intro: 'ONI BRO', taunt: '"The rack is mine."' },
     ],
   },
+  z2run: {
+    theme: 'woods', sign: 'WHISPERING WOODS ▶', length: 5860, healShake: 0.35,
+    stars: [{ kind: 'clear', label: 'Beat Kitsune Sprinter' }, { kind: 'time', par: 130, label: 'Under 2:10' }, { kind: 'plates', label: 'All 3 gold plates' }],
+    platforms: [
+      { x1: 700, x2: 800, h: 90, look: 'crate' },
+      { x1: 1250, x2: 1350, h: 110, look: 'ledge' },
+      { x1: 1420, x2: 1520, h: 210, look: 'ledge' },
+      { x1: 2350, x2: 2490, h: 100, look: 'bench' },
+      { x1: 2900, x2: 3000, h: 100, look: 'ledge' },
+      { x1: 3070, x2: 3170, h: 190, look: 'ledge' },
+      { x1: 3240, x2: 3340, h: 270, look: 'ledge' },   // top of the shrine stairs
+      { x1: 4990, x2: 5150, h: 100, look: 'bench' },
+      { x1: 5610, x2: 5770, h: 100, look: 'bench' },
+    ],
+    pickups: [
+      { kind: 'plate', x: 1470, h: 260 },    // ledge hop
+      { kind: 'shake', x: 2250, h: 30 },
+      { kind: 'plate', x: 2420, h: 150 },    // on the bench in the middle of the second fight
+      { kind: 'plate', x: 3290, h: 300 },    // top of the stairs: three hops up
+      { kind: 'shake', x: 4800, h: 30 },
+    ],
+    shrine: 4900,                            // decor: Kitsune Sprinter's shrine, the boss arena
+    encounters: [
+      { at: 900, name: 'Doom scroll', waves: [['doom', 'goblin', 'goblin'], ['doom', 'doom', 'goblin']] },
+      { at: 2000, name: 'Monday never comes', waves: [['goblin', 'goblin', 'snack', 'snack'], ['goblin', 'doom', 'couch']] },
+      { at: 3500, name: 'The shrine steps', waves: [['doom', 'goblin', 'goblin'], ['couch', 'doom']] },
+      { at: 4900, name: 'The fox shrine', boss: true, waves: [['kitsune']], intro: 'KITSUNE SPRINTER', taunt: '"Try to keep up."' },
+    ],
+  },
 };
 const LEVELS = {};
 ZONES.forEach(z => z.levels.forEach((l, i) => {
   l.zone = z; l.idx = i; LEVELS[l.key] = l;
   if (l.run) { l.run = RUNS[l.run]; l.waves = l.run.encounters.flatMap(e => e.waves); }   // all of a run's waves, for the hints
 }));
-const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || lv.idx === 0 || (wallet.clears[lv.zone.levels[lv.idx - 1].key] || 0) > 0;
+// Ladder locks: each level opens after the one before it; a zone's first level opens once any of its `after` levels is beaten.
+const cleared = k => (wallet.clears[k] || 0) > 0;
+const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || (lv.idx === 0 ? !lv.zone.after || lv.zone.after.some(cleared) : cleared(lv.zone.levels[lv.idx - 1].key));
+const lockText = lv => lv.idx === 0 ? `beat ${LEVELS[lv.zone.after[0]].name} first` : `beat ${lv.zone.levels[lv.idx - 1].name} first`;
 
 // Benches: one-way platforms you can jump onto from below.
 const PLATFORMS = [
@@ -527,7 +614,16 @@ const PRESETS = {
   Runner:      { STR: 10, SPD: 26, DEX: 20, END: 14, VIT: 10 },
   Beginner:    { STR: 8, SPD: 8, DEX: 8, END: 8, VIT: 8 },
   Veteran:     { STR: 24, SPD: 24, DEX: 24, END: 24, VIT: 24 },
+  // Benchmarks from the balance sim (2026-10-01): every stat starts at 8, +6 points per level, split by training.
+  'L1 fresh':     { STR: 8, SPD: 8, DEX: 8, END: 8, VIT: 8 },
+  'L3 lifter':    { STR: 17, SPD: 8, DEX: 10, END: 9, VIT: 9 },     // StrongLifts, week 2
+  'L5 lifter':    { STR: 26, SPD: 9, DEX: 11, END: 10, VIT: 10 },   // week 4
+  'L5 runner':    { STR: 8, SPD: 23, DEX: 12, END: 12, VIT: 10 },   // week 3
+  'L8 lifter':    { STR: 40, SPD: 9, DEX: 13, END: 11, VIT: 13 },   // week 10
+  'L8 runner':    { STR: 9, SPD: 34, DEX: 15, END: 15, VIT: 14 },   // week 7
 };
+const BENCH = ['L1 fresh', 'L3 lifter', 'L5 lifter', 'L5 runner', 'L8 lifter', 'L8 runner'];
+const benchLevel = k => +k.slice(1, k.indexOf(' '));
 const COLORS = ['#ff7a1a', '#2ec4b6'];
 
 // ---------------------------------------------------------------------------
@@ -655,7 +751,7 @@ function doShake(factor) {
 }
 function doHitstop(ms) { if (J.on.hitstop) hitstop = Math.max(hitstop, ms / 1000); }
 const flashTime = () => (J.on.flash && !J.on.reduce ? J.flashMs / 1000 : 0);
-function buzz(pattern) { if (J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
+function buzz(pattern) { if (!simMode && J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
 function chalkPuff(x, y, n, color) {
   if (!J.on.particles) return;
   for (let k = 0; k < n; k++) {
@@ -680,7 +776,8 @@ function ensureAudio() {
     if (ac.state === 'suspended') ac.resume();
   } catch (e) { ac = null; }
 }
-const canPlay = () => J.on.sound && ac && ac.state === 'running';
+let simMode = false;   // bot difficulty check: fights run headless, with no sound, gold or wallet changes
+const canPlay = () => !simMode && J.on.sound && ac && ac.state === 'running';
 const pv = () => 1 + rand(-J.pitchVar, J.pitchVar);
 function tone(freq, dur, type, vol, slideTo, delay = 0) {
   const t0 = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
@@ -718,8 +815,9 @@ const sfx = {
 // Derived player numbers
 const maxHp = s => Math.round(T.hpBase + T.hpPerVit * s.VIT);
 const maxSt = s => Math.round(T.stBase + T.stPerEnd * s.END);
-const moveSpeed = p => T.moveBase + T.movePerSpd * p.stats.SPD;
-const attackDur = p => T.attackBaseMs / 1000 * T.spdRef / (T.spdRef + p.stats.SPD) * (p.w.speed || 1);
+const slowed = p => gt < (p.slowUntil || 0);
+const moveSpeed = p => (T.moveBase + T.movePerSpd * p.stats.SPD) * (slowed(p) ? T.slowMult : 1);
+const attackDur = p => T.attackBaseMs / 1000 * T.spdRef / (T.spdRef + p.stats.SPD) * (p.w.speed || 1) / (slowed(p) ? T.slowMult : 1);
 const moveDur = p => attackDur(p) * (p.move === 'low' ? T.lowAttackDurMult : p.move === 'finisher' ? T.finisherDurMult : 1);
 const iframeDur = p => Math.min(T.dodgeMs, T.iframeBaseMs + T.iframePerDex * p.stats.DEX) / 1000;
 const jumpVel = p => T.jumpBase + T.jumpPerDex * p.stats.DEX;
@@ -832,7 +930,7 @@ function spawnWave() {
 
 function startFight() {
   const lv = LEVELS[$('#level').value];
-  if (!levelOpen(lv)) { logLine(`🔒 <b>${lv.name}</b> is locked: beat <b>${lv.zone.levels[lv.idx - 1].name}</b> first (or turn off ladder locks).`); return; }
+  if (!levelOpen(lv)) { logLine(`🔒 <b>${lv.name}</b> is locked: ${lockText(lv)} (or turn off ladder locks).`); return; }
   level = lv;
   const mode = $('#p2mode').value;
   const wk = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? wallet.weapon : 'fists';   // hard lock: under-trained = fists
@@ -854,7 +952,7 @@ function startFight() {
   combo = 0; comboBest = 0; lastHitAt = -9;
   if (wk !== wallet.weapon) floater(`Not strong enough for the ${ITEMS[wallet.weapon].name} yet: fists this fight`, W / 2, 100, '#e8c547', 16);
   if (isRusty()) floater(`RUSTY: stats −${Math.round((1 - T.rustyMult) * 100)}% until you log a workout`, W / 2, 130, '#c98a5a', 16);
-  ensureAudio();
+  if (!simMode) ensureAudio();
   inputs.forEach(inp => Object.assign(inp, newInput()));
   phase = 'fight';
   $('#start').textContent = 'Restart fight (R)';
@@ -1036,6 +1134,7 @@ function killMonster(m, p) {
   release(m);
   if (m.heldBy) dropHeld(m.heldBy);
   p.kills++;
+  if (m.def.rank === 'boss') for (const o of monsters) if (o.def.illusion && o.hp > 0) { o.hp = 0; o.gone = true; chalkPuff(o.x, FLOOR - 60, J.particleCount, '#ffa860'); }
   const last = waveIdx >= waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0) && (!run || run.enc === level.run.encounters.length - 1);
   if (last) {
     doHitstop(J.hitstopFinisherMs);
@@ -1138,6 +1237,7 @@ function lossHint() {
 function endFight(won) {
   if (phase !== 'fight') return;
   phase = 'over';
+  if (simMode) { result = { won, time: gt, hp: players[0].hp / players[0].maxHp, enc: run ? run.enc : 0, stars: level.run ? level.run.stars.map(st => won && (st.kind === 'clear' || (st.kind === 'time' && gt <= st.par) || (st.kind === 'plates' && run.plates >= totalPlates()))) : null }; return; }
   const coopLive = players.length > 1 && players[1].ctrl === 'human';
   const firstWin = won && !wallet.clears[level.key];
   const reward = won ? payout(level, coopLive) : { gold: 0, parts: ['Losses pay no gold'] };
@@ -1358,7 +1458,7 @@ function decayRevives(dt) {
 // Does monster t's wound-up attack a threaten player p (d = horizontal distance)?
 function threatens(t, a, p, d) {
   if (t.attack === 'dash') return t.dashY < 20;
-  if (t.attack === 'throw' || t.attack === 'crumbs') return sign(p.x - t.x) === t.facing;
+  if (t.attack === 'throw' || t.attack === 'crumbs' || t.attack === 'foxfire') return sign(p.x - t.x) === t.facing;
   if (t.attack === 'lob') return t.lobTarget === p;
   if (a.radius) return d < a.radius + 30;
   return d < (a.range || 0) + t.def.width / 2 + 30;
@@ -1390,9 +1490,9 @@ function cpuThink(p) {
     if (t.state !== 'windup') continue;
     const key = t.id + ':' + t.seq;
     let r = p.reacts.get(key);
-    if (!r) { r = { at: rand(0.45, 0.9), jump: Math.random() < 0.5 }; p.reacts.set(key, r); }
+    if (!r) { r = { at: rand(0.45, 0.9), jump: Math.random() < 0.5, miss: Math.random() < (p.miss || 0) }; p.reacts.set(key, r); }
     const prog = t.t / (a.windup / 1000 / speedMult(t));
-    if (prog < r.at || !p.onGround || !threatens(t, a, p, d)) continue;
+    if (r.miss || prog < r.at || !p.onGround || !threatens(t, a, p, d)) continue;   // miss: a bot standing in for a human doesn't react
     const h = a.height;
     if (h === 'high' && r.jump) inp.down = true;                                  // duck under it
     else if ((h === 'low' || h === 'grab') && r.jump) inp.press.jump = gt;         // jump it
@@ -1588,6 +1688,71 @@ const KITS = {
     },
     recover(m, dt) { m.y = lerp(m.y, m.def.dip, Math.min(1, dt * 2.5)); },   // dips low after ringing: punish it
   },
+  doom: {   // Doom Scroller
+    walk(m, dt, tgt, dist, ef) {
+      const a = m.def.attacks.beam;
+      m.y = lerp(m.y, m.def.hover + Math.sin(m.bob * 2) * 8, Math.min(1, dt * 2));
+      if (m.cd <= 0 && dist < a.range - 20 && dist > 50) startAttack(m, 'beam', tgt);
+      else if (dist > a.range * 0.75) m.x += m.facing * m.def.speed * ef * dt;
+      else if (dist < 90) m.x -= m.facing * m.def.speed * 0.7 * ef * dt;
+    },
+    fire(m, a) {
+      m.state = 'active';
+      for (const p of players) {
+        const rel = (p.x - m.x) * m.facing;
+        if (!alive(p) || rel < 0 || rel > a.range || p.y > 60) continue;
+        if (hurtPlayer(p, a.dmg * m.dmgMult, m.x, a.height, m) === 'hit' && alive(p)) {
+          p.slowUntil = gt + a.slow;
+          floater('SLOWED', p.x, FLOOR - p.y - 150, '#5cc8ff', 16);
+        }
+      }
+    },
+  },
+  goblin: {   // Tomorrow Goblin: flees when hurt, comes back with friends unless you catch it
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks;
+      if (!m.fled && m.hp < m.maxHp * A.call.at) { m.fled = m.fleeing = true; m.callT = 0; floater('SEE YOU MONDAY!', m.x, FLOOR - m.y - m.def.height - 16, '#8cc850', 14); }
+      if (m.fleeing) {
+        const dir = sign(m.x - tgt.x), edge = dir > 0 ? RIGHT - m.def.width / 2 : LEFT + m.def.width / 2;
+        m.facing = dir;
+        if (Math.abs(edge - m.x) > 4) m.x += dir * Math.min(Math.abs(edge - m.x), m.def.speed * 1.15 * ef * dt);
+        else if ((m.callT += dt) >= A.call.wait) {
+          m.fleeing = false;
+          floater('BROUGHT FRIENDS!', m.x, FLOOR - m.def.height - 30, '#e0555a', 18);
+          for (const k of A.call.friends) { const f = makeMonster(k, m.x - dir * 30, coopScaleNow); f.cd += 0.6; f.fled = true; monsters.push(f); }   // friends never run off for more friends
+        }
+        return;
+      }
+      if (m.cd <= 0 && dist < A.slap.range + m.def.width / 2 + 6) startAttack(m, 'slap', tgt);
+      else if (dist > A.slap.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
+    },
+    fire(m, a) { m.state = 'active'; strike(m, a, 'mid', (p, rel) => rel > -12 && rel < a.range + m.def.width / 2 && p.y < 40); },
+  },
+  kitsune: {   // Kitsune Sprinter (and her illusion clones): never still, dashes low, claws high, foxfire from range
+    walk(m, dt, tgt, dist, ef) {
+      const A = m.def.attacks;
+      if (m.def.illusion && (m.life -= dt) <= 0) { m.hp = 0; m.gone = true; chalkPuff(m.x, FLOOR - 60, J.particleCount, '#ffa860'); return; }
+      m.cloneCd = (m.cloneCd ?? 3) - dt;
+      if (m.cd <= 0 && A.clones && isEnraged(m) && m.cloneCd <= 0) startAttack(m, 'clones', tgt);
+      else if (m.cd <= 0 && dist < A.claw.range + m.def.width / 2) startAttack(m, 'claw', tgt);
+      else if (m.cd <= 0 && dist > 260 && Math.random() < 0.5) startAttack(m, 'foxfire', tgt);
+      else if (m.cd <= 0) startAttack(m, 'dash', tgt);
+      else if (dist > 220) m.x += m.facing * m.def.speed * ef * dt;
+      else if (dist < 130) m.x -= m.facing * m.def.speed * 0.8 * ef * dt;   // keeps her distance between attacks
+    },
+    fire(m, a, tgt) {
+      if (m.attack === 'claw') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel, m.def.width / 2) && p.y < 50); }
+      else if (m.attack === 'foxfire') { plates.push({ kind: 'crumb', fire: true, owner: m, dmg: a.dmg * m.dmgMult, x: m.x + m.facing * 40, y: 64, vx: m.facing * a.speed, spin: 0 }); m.state = 'recover'; }
+      else if (m.attack === 'clones') {
+        m.state = 'recover'; m.cloneCd = a.every;
+        floater('ILLUSIONS!', m.x, FLOOR - m.def.height - 40, '#ffa860', 22); ring(m.x, FLOOR - 60, 120, '#ffa860', 0.4);
+        for (let k = 0; k < a.n; k++) {
+          const c = makeMonster('kclone', k % 2 ? LEFT + 60 : RIGHT - 60, coopScaleNow);
+          c.life = a.life; c.cd = 0.8 + k * 0.5; monsters.push(c);
+        }
+      } else m.state = 'dash';
+    },
+  },
 };
 
 function updateMonster(m, dt) {
@@ -1652,7 +1817,7 @@ function updateMonster(m, dt) {
     m.trail.push({ x: m.x, y: m.y, t: gt });
     m.x += dir * a.speed * dt;
     for (const p of players) {
-      if (!m.hitSet.has(p) && Math.abs(p.x - m.x) < 40 && Math.abs(p.y - m.dashY) < a.band) { m.hitSet.add(p); hurtPlayer(p, a.dmg * m.dmgMult, m.x - dir * 50, 'mid', m); }
+      if (!m.hitSet.has(p) && Math.abs(p.x - m.x) < 40 && Math.abs(p.y - m.dashY) < a.band) { m.hitSet.add(p); hurtPlayer(p, a.dmg * m.dmgMult, m.x - dir * 50, a.height || 'mid', m); }
     }
     if (sign(m.dashTo - m.x) !== dir) { m.x = m.dashTo; m.state = 'recover'; m.t = 0; }
   } else if (m.state === 'recover') {
@@ -1845,6 +2010,7 @@ function drawPlatforms() {
 // village gym in world space. Everything is drawn from a hash of its index, so it's the same every run.
 const hash = i => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 function drawRunBack() {
+  if (level.run.theme === 'woods') return drawWoodsBack();
   const sky = ctx.createLinearGradient(0, 0, 0, FLOOR);
   sky.addColorStop(0, '#1b2033'); sky.addColorStop(1, '#4b3a44');
   ctx.fillStyle = sky; ctx.fillRect(0, 0, W, FLOOR);
@@ -1864,8 +2030,38 @@ function drawRunBack() {
     ctx.fillStyle = '#251f20'; ctx.fillRect(x + w * 0.42, by - 30, 16, 30);
   }
 }
+// The Whispering Woods: misty cedar forest with torii gates and stone lanterns; Kitsune Sprinter's shrine at the end.
+function drawWoodsBack() {
+  const sky = ctx.createLinearGradient(0, 0, 0, FLOOR);
+  sky.addColorStop(0, '#121a22'); sky.addColorStop(1, '#2c3b3a');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, FLOOR);
+  disc(W * 0.2 - camX * 0.03, 60, 20, '#d8e4d0');                                 // pale moon
+  const trees = (par, sp, base, h, col, seed) => {                                 // a row of cedar silhouettes
+    ctx.fillStyle = col;
+    for (let i = Math.floor(camX * par / sp) - 1; i <= Math.floor((camX * par + W) / sp) + 1; i++) {
+      const x = i * sp - camX * par + hash(i + seed) * sp * 0.5, th = h * (0.7 + hash(i + seed + 1) * 0.5);
+      ctx.beginPath(); ctx.moveTo(x - 34, base); ctx.lineTo(x, base - th); ctx.lineTo(x + 34, base); ctx.fill();
+      ctx.fillRect(x - 4, base - 10, 8, 10);
+    }
+  };
+  trees(0.12, 70, FLOOR - 60, 170, '#1e2a2c', 3);
+  ctx.fillStyle = 'rgba(160,190,180,.10)'; ctx.fillRect(0, FLOOR - 120, W, 70);    // mist
+  trees(0.3, 110, FLOOR - 20, 220, '#18221f', 11);
+  const par = 0.6, sp = 520;                                                       // torii gates and lanterns (0.6×)
+  for (let i = Math.floor(camX * par / sp) - 1; i <= Math.floor((camX * par + W) / sp) + 1; i++) {
+    const x = i * sp - camX * par + hash(i + 21) * 120, by = FLOOR - 10;
+    if (hash(i + 5) < 0.55) {
+      ctx.fillStyle = '#7a2a22'; ctx.fillRect(x, by - 150, 9, 150); ctx.fillRect(x + 110, by - 150, 9, 150);
+      ctx.fillRect(x - 18, by - 160, 155, 10); ctx.fillRect(x - 6, by - 132, 131, 7);
+    } else {
+      ctx.fillStyle = '#4a4e4a'; ctx.fillRect(x + 50, by - 50, 10, 50); ctx.fillRect(x + 40, by - 70, 30, 22);
+      ctx.fillStyle = 'rgba(232,197,71,.7)'; ctx.fillRect(x + 47, by - 64, 16, 10);
+    }
+  }
+}
 function drawRunWorld() {
   const R = level.run;
+  if (R.theme === 'woods') return drawWoodsWorld();
   ctx.fillStyle = '#2a2420'; ctx.fillRect(camX - 20, FLOOR, W + 40, H - FLOOR);   // dirt
   ctx.fillStyle = '#3d5a34'; ctx.fillRect(camX - 20, FLOOR, W + 40, 6);            // grass edge
   for (let x = Math.floor(camX / 60) * 60; x < camX + W + 60; x += 60) {           // fence posts along the path
@@ -1900,9 +2096,39 @@ function drawRunWorld() {
     ctx.fillStyle = '#2a2420'; ctx.fillRect(g, FLOOR, W, H - FLOOR);
     ctx.fillStyle = '#4a3f3a'; ctx.fillRect(g, FLOOR, W, 6);                       // gym mats
   }
+  drawStartSign(R.sign || 'COMFORT ZONE ▶');
+}
+function drawStartSign(text) {
   ctx.fillStyle = '#4a3a30'; ctx.fillRect(196, FLOOR - 90, 8, 90);                  // start sign
   ctx.fillStyle = '#6b4a2c'; ctx.fillRect(140, FLOOR - 100, 160, 34);
-  ctx.fillStyle = '#eceae4'; ctx.font = '800 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText('COMFORT ZONE ▶', 220, FLOOR - 78);
+  ctx.fillStyle = '#eceae4'; ctx.font = '800 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(text, 220, FLOOR - 78);
+}
+function drawWoodsWorld() {
+  const R = level.run;
+  ctx.fillStyle = '#1f241e'; ctx.fillRect(camX - 20, FLOOR, W + 40, H - FLOOR);      // forest floor
+  ctx.fillStyle = '#3a5a34'; ctx.fillRect(camX - 20, FLOOR, W + 40, 5);             // moss
+  for (let x = Math.floor(camX / 90) * 90; x < camX + W + 90; x += 90) {            // roots and ferns along the path
+    if (R.shrine && x > R.shrine - 20) continue;
+    ctx.fillStyle = '#2e4a2a'; const h = 10 + hash(x) * 14;
+    ctx.beginPath(); ctx.moveTo(x, FLOOR); ctx.lineTo(x + 8, FLOOR - h); ctx.lineTo(x + 16, FLOOR); ctx.fill();
+  }
+  if (R.shrine) {                                                                   // the fox shrine
+    const g = R.shrine, cx = g + W / 2;
+    ctx.fillStyle = '#2a2224'; ctx.fillRect(cx - 220, FLOOR - 200, 440, 200);
+    ctx.fillStyle = '#3a2a2a'; ctx.beginPath(); ctx.moveTo(cx - 270, FLOOR - 200); ctx.lineTo(cx, FLOOR - 280); ctx.lineTo(cx + 270, FLOOR - 200); ctx.fill();
+    ctx.fillStyle = '#a8322a';                                                      // big torii in front
+    ctx.fillRect(cx - 160, FLOOR - 240, 14, 240); ctx.fillRect(cx + 146, FLOOR - 240, 14, 240);
+    ctx.fillRect(cx - 190, FLOOR - 252, 380, 14); ctx.fillRect(cx - 170, FLOOR - 212, 340, 9);
+    ctx.fillStyle = '#1f1a1b'; ctx.fillRect(cx - 60, FLOOR - 236, 120, 22);
+    ctx.fillStyle = '#ffa860'; ctx.font = '900 15px system-ui'; ctx.textAlign = 'center'; ctx.fillText('FOX SHRINE', cx, FLOOR - 219);
+    for (const sx of [cx - 250, cx + 250]) {                                        // fox statues
+      ctx.fillStyle = '#5a5e5a'; ctx.fillRect(sx - 14, FLOOR - 30, 28, 30);
+      ctx.beginPath(); ctx.moveTo(sx - 12, FLOOR - 30); ctx.lineTo(sx - 8, FLOOR - 58); ctx.lineTo(sx, FLOOR - 40); ctx.lineTo(sx + 8, FLOOR - 58); ctx.lineTo(sx + 12, FLOOR - 30); ctx.fill();
+    }
+    ctx.fillStyle = '#2a2420'; ctx.fillRect(g, FLOOR, W, H - FLOOR);
+    ctx.fillStyle = '#5a4a3a'; ctx.fillRect(g, FLOOR, W, 5);                       // gravel courtyard
+  }
+  drawStartSign(R.sign);
 }
 function drawPickups() {
   for (const q of run.pickups) {
@@ -2152,8 +2378,10 @@ function drawTelegraph(m) {
     ctx.fillRect(Math.min(m.x, m.dashTo), FLOOR - m.dashY - 6, Math.abs(m.dashTo - m.x), 14);
   } else if (m.attack === 'throw') {
     ctx.fillRect(m.facing > 0 ? m.x : camX, FLOOR - 6, m.facing > 0 ? camX + W - m.x : m.x - camX, 6);
-  } else if (m.attack === 'crumbs') {
+  } else if (m.attack === 'crumbs' || m.attack === 'foxfire') {
     ctx.fillRect(m.facing > 0 ? m.x : m.x - 260, FLOOR - 66, 260, 4);
+  } else if (m.attack === 'beam') {
+    ctx.fillRect(m.facing > 0 ? m.x : m.x - a.range, FLOOR - BAND_UP.high - 6, a.range, 8);
   } else if (a.radius && m.attack === 'ring') {
     ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 3 + prog * 3;
     ctx.beginPath(); ctx.arc(m.x, FLOOR - m.y - 20, a.radius * (0.35 + 0.65 * prog), 0, Math.PI * 2); ctx.stroke();
@@ -2426,6 +2654,12 @@ const SPR = (() => {
     forge:  ['#3a0a04', '#a02c0c', '#ff7a1a', '#ffc04a', '#fff0a0'],
     ghost:  ['#1a2a3a', '#6a9ab8', '#aee0f4', '#dcf6ff', '#ffffff'],
     bib:    ['#4a2008', '#c85a10', '#ff7a1a', '#ffb060', '#fff0d0'],
+    fox:    ['#3a1404', '#a84a18', '#e87830', '#ffa860', '#ffd8b0'],
+    cream:  ['#5a4a38', '#c8b8a0', '#f4ecdc', '#ffffff', '#ffffff'],
+    screen: ['#0a2a40', '#2a88c8', '#5cc8ff', '#a0e4ff', '#e8f8ff'],
+    wisp:   ['#1a3040', '#6aa0c0', '#a8d8f0', '#d8f4ff', '#ffffff'],
+    gob:    ['#10200a', '#3a6a1c', '#5e9a2e', '#8cc850', '#c8f090'],
+    paper:  ['#4a4a44', '#b8b8ac', '#ecece0', '#ffffff', '#ffffff'],
   };
   const S = { R: 5, round: 1.6, t1: 0.25, t2: 0.8, hi: 0.97 };
   const LIGHT = (() => { const v = [-0.5, -0.7, 0.55], n = Math.hypot(...v); return v.map(a => a / n); })();
@@ -2441,6 +2675,7 @@ const SPR = (() => {
   const rot = (t, cx, cy, a) => { t.translate(cx, cy); t.rotate(a); t.translate(-cx, -cy); };
   const FONT = { C: ['111', '100', '100', '100', '111'], H: ['101', '101', '111', '101', '101'], I: ['111', '010', '010', '010', '111'],
                  P: ['110', '101', '110', '100', '100'], S: ['111', '100', '111', '001', '111'], Z: ['111', '001', '010', '100', '111'],
+                 M: ['101', '111', '111', '101', '101'], N: ['110', '101', '101', '101', '101'], O: ['111', '101', '101', '101', '111'],
                  2: ['111', '001', '111', '100', '111'], 6: ['111', '100', '111', '101', '111'] };
   // big anime eye: ink, colored iris, a white shine
   const eye = (q, x, y, iris, w = 3, h = 5) => { q(x, y, INK, w, h); q(x, y + h - 3, iris, w, 2); q(x, y + h - 1, INK, w, 1); q(x, y, '#fff', w > 3 ? 2 : 1, 2); q(x + w - 1, y + h - 2, '#fff'); };
@@ -2667,6 +2902,65 @@ const SPR = (() => {
       } };
     } },
 
+    // Zone 2. Doom Scroller and Kitsune Sprinter come from monster-directions.html's chibi roster.
+    doom: { W: 36, H: 44, ax: 18, scale: 1.45, build: (part, o) => {   // o: b, glow (beam winding up / firing)
+      const y = o.b, b = o.b;
+      part('wisp', t => { t.beginPath(); t.moveTo(9, 28 + y); t.lineTo(27, 28 + y); t.quadraticCurveTo(26, 38, 22 + b * 2, 43); t.lineTo(19, 38); t.lineTo(15, 43); t.lineTo(12, 38); t.quadraticCurveTo(9, 36, 9, 28 + y); t.fill(); }, { r: 3 });
+      part('wisp', t => { L(t, 3, [8, 20 + y], [2, 28 + y]); L(t, 3, [28, 20 + y], [34, 12 + y - b * 2]); });
+      part('hair', t => RR(t, 7, 2 + y, 22, 30, 4), { r: 2 });                                     // the phone
+      part(o.glow ? 'cream' : 'screen', t => R(t, 9, 6 + y, 18, 22), { r: 2 });
+      part('red', t => E(t, 27, 3 + y, 3.5, 3.5), { r: 2 });                                        // notification badge
+      return { after: q => {
+        q(26, 1 + y, '#fff', 1, 3); q(26, 5 + y, '#fff');                                           // !
+        q(9, 6 + ((b * 7 + 3) % 22) + y, RAMPS.screen[3], 18, 1);                                   // scanline
+        [[11, 10], [20, 10]].forEach(([x, yy]) => {                                                 // spiral eyes
+          q(x, yy + y, INK, 5, 5); q(x + 1, yy + 1 + y, '#fff', 3, 3); q(x + 2, yy + 2 + y, INK); q(x + 3, yy + 1 + y, INK); q(x + 1, yy + 3 + y, INK);
+        });
+        q(14, 19 + y, INK, 8, 1); q(15, 20 + y, INK, 6, 1); q(16, 20 + y, '#ff8090', 4, 1);         // dopey open mouth
+        q(12, 29 + y, RAMPS.hair[3], 12, 1);                                                         // home bar
+      } };
+    } },
+    goblin: { W: 38, H: 42, ax: 16, scale: 1.35, build: (part, o) => {   // Tomorrow Goblin: o: b, slap, run
+      const y = o.b, cx = o.slap ? 24 : 22, cy = o.slap ? 12 + y : 24 + y;
+      part('gob', t => { L(t, 4, [12, 33], [o.run ? 7 : 10, 41]); L(t, 4, [20, 33], [o.run ? 25 : 22, 41]); });   // legs
+      part('leather', t => P(t, [[8, 26 + y], [24, 26 + y], [25, 36], [7, 36]]), { r: 2 });           // tunic
+      part('gob', t => { P(t, [[8, 14 + y], [0, 7 + y], [9, 19 + y]]); P(t, [[24, 14 + y], [33, 7 + y], [23, 19 + y]]); }, { r: 2 });   // ears
+      part('gob', t => E(t, 16, 16 + y, 10, 9), { r: 5 });                                            // head
+      part('gob', t => E(t, 22, 19 + y, 3, 2.5), { r: 2 });                                           // nose
+      part('paper', t => R(t, cx, cy, 14, 12), { r: 1 });                                             // the calendar
+      part('red', t => R(t, cx, cy, 14, 3), { r: 1 });
+      part('gob', t => L(t, 3, [19, 28 + y], [cx + 2, cy + 7]));                                      // arm
+      return { after: q => {
+        eye(q, 11, 11 + y, '#e0c040', 3, 4); eye(q, 18, 11 + y, '#e0c040', 3, 4);
+        q.line(10, 10 + y, 14, 11 + y, INK); q.line(18, 11 + y, 22, 10 + y, INK);                    // shifty brows
+        q(13, 22 + y, INK, 6, 1); q(14, 21 + y, '#fff'); q(17, 21 + y, '#fff');                        // sneaky grin
+      }, label: q => q.text('MON', cx + 1, cy + 5, RAMPS.red[1]) };
+    } },
+    kitsune: { W: 64, H: 56, ax: 33, scale: 2.2, build: (part, o) => {   // Kitsune Sprinter: o: b, rage. Five fanned tails, sweatband, cocky grin
+      const u = o.b, b = o.b;
+      for (let k = 0; k < 5; k++) {
+        const a = -2.75 + k * 0.4 + (b ? 0.06 : -0.06), cx = 20 + Math.cos(a) * 9, cy = 40 + Math.sin(a) * 9;
+        part('fox', t => E(t, cx, cy, 10, 4.5, a), { r: 3 });
+        part('cream', t => E(t, 20 + Math.cos(a) * 17, 40 + Math.sin(a) * 17, 3.5, 3.5), { r: 2 });
+      }
+      part('fox', t => { L(t, 4, [26, 46], [22, 54]); L(t, 4, [40, 46], [44, 54]); });
+      part('fox', t => E(t, 33, 43, 11, 7.5), { r: 4 });                                            // body
+      part('cream', t => E(t, 41, 45, 5, 5), { r: 3 });                                             // chest fluff
+      part('fox', t => { L(t, 4, [36, 48], [35, 55]); L(t, 4, [42, 48], [43, 55]); });
+      part('fox', t => { P(t, [[32, 22 + u], [33, 6 + u], [41, 17 + u]]); P(t, [[45, 17 + u], [52, 5 + u], [54, 22 + u]]); }, { r: 2 });   // ears
+      part('fox', t => E(t, 43, 27 + u, 12.5, 11), { r: 5 });                                       // big head
+      part('cream', t => E(t, 49, 33 + u, 6.5, 4), { r: 2 });                                       // muzzle
+      part('red', t => R(t, 31, 17 + u, 24, 3), { r: 1 });                                          // sweatband
+      return { after: q => {
+        q.line(34, 10 + u, 36, 15 + u, RAMPS.cream[1]); q.line(50, 9 + u, 51, 15 + u, RAMPS.cream[1]);   // inner ears
+        const iris = o.rage ? '#ff3b3b' : '#40c0a0';
+        eye(q, 37, 23 + u, iris, 4, 6); eye(q, 46, 23 + u, iris, 4, 6);
+        q.line(36, 22 + u, 41, 22 + u, INK); q.line(46, 21 + u, 50, 22 + u, INK);                  // one cocky raised brow
+        q(54, 31 + u, INK, 2, 2);                                                                    // nose
+        q(46, 35 + u, INK, 5, 1); q(50, 34 + u, INK); q(47, 36 + u, '#fff');                        // smirk with a fang
+        q(56, 18 + u, RAMPS.red[1], 2, 1); q(57, 19 + u, RAMPS.red[1], 2, 1);                      // band tails
+      } };
+    } },
     // Marathon Wraith (was Treadmill Wraith): an undead runner who never stops, still wearing a race bib and its shoes.
     wraith: { W: 50, H: 52, pad: [6, 10], ax: 22, scale: 2.0, build: (part, o) => {   // o: b, arm ('rest' | 'up' | 'out'), dash, rage
       const u = o.b, lean = o.dash ? 3 : 0;
@@ -2702,7 +2996,7 @@ const SPR = (() => {
 function spritePose(m) {
   const w = m.state === 'windup', a = m.state === 'active', atk = m.attack, rage = isEnraged(m);
   const idle = Math.sin(m.bob * 4) > 0 ? 1 : 0;
-  switch (m.key) {
+  switch (m.def.sprite || m.key) {
     case 'snack': return { b: m.state === 'walk' ? (Math.sin(m.bob * 14) > 0 ? 1 : 0) : idle, open: (w || a) && atk === 'bite', toss: w && atk === 'crumbs' };
     case 'couch': return { b: idle, reach: m.state === 'hold' ? 24 : w ? Math.round(windupProg(m) * 3) * 8 : 0, wide: w || m.state === 'hold' };
     case 'snooze': return { b: Math.sin(m.bob * 18) > 0 ? 1 : 0, alarm: w || a };
@@ -2721,6 +3015,9 @@ function spritePose(m) {
       else if (w && (atk === 'throw' || atk === 'lob')) Object.assign(o, { ang: atk === 'lob' ? 0.2 : 0.4, lift: atk === 'lob' ? 20 : 12, plate: true });
       return o;
     }
+    case 'doom': return { b: Math.sin(m.bob * 5) > 0 ? 1 : 0, glow: (w || a) && atk === 'beam' };
+    case 'goblin': return { b: m.state === 'walk' ? (Math.sin(m.bob * 16) > 0 ? 1 : 0) : idle, slap: (w || a) && atk === 'slap', run: !!m.fleeing && Math.sin(m.bob * 16) > 0 };
+    case 'kitsune': return { b: m.state === 'dash' ? 0 : idle, rage: m.def.illusion ? false : rage };
     case 'wraith': return { b: Math.sin(m.bob * 4) > 0 ? 1 : 0, arm: w && atk === 'swipe' ? 'up' : a && atk === 'swipe' ? 'out' : 'rest', dash: m.state === 'dash' || (w && atk === 'dash'), rage };
     case 'oni': {
       const o = { b: idle, ang: 0, lift: 0, club: true, plate: false, flex: false, rage };
@@ -2734,11 +3031,25 @@ function spritePose(m) {
 }
 
 function drawSpriteMonster(m) {
-  const d = SPR.box(m.key), s = d.scale, prog = windupProg(m);
-  if (m.key === 'wraith') for (const tr of m.trail) { ctx.globalAlpha = 0.25 * (1 - (gt - tr.t) / 0.18); disc(tr.x, FLOOR - tr.y - 90, 24, m.def.color); ctx.globalAlpha = 1; }
+  const sk = m.def.sprite || m.key, d = SPR.box(sk), s = d.scale, prog = windupProg(m);
+  if (sk === 'kitsune' && m.trail.length) {                                          // afterimages along a dash
+    const ghost = SPR.get(sk, { b: 0, rage: false });
+    for (const tr of m.trail) {
+      ctx.save(); ctx.globalAlpha = 0.3 * (1 - (gt - tr.t) / 0.18);
+      ctx.translate(tr.x, FLOOR - tr.y); ctx.scale(m.facing, 1); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(ghost.cv, -d.ax * s, -d.oy * s, d.W * s, d.H * s); ctx.restore();
+    }
+  }
+  if (m.key === 'doom' && m.state === 'active' && m.attack === 'beam') {             // the screen-glow beam
+    const r = m.def.attacks.beam.range;
+    ctx.fillStyle = 'rgba(92,200,255,.55)'; ctx.fillRect(m.facing > 0 ? m.x : m.x - r, FLOOR - BAND_UP.high - 8, r, 12);
+    ctx.fillStyle = 'rgba(232,248,255,.8)'; ctx.fillRect(m.facing > 0 ? m.x : m.x - r, FLOOR - BAND_UP.high - 4, r, 4);
+  }
+  if (m.def.illusion) ctx.globalAlpha = 0.65 + 0.15 * Math.sin(gt * 10);
+  if (sk === 'wraith') for (const tr of m.trail) { ctx.globalAlpha = 0.25 * (1 - (gt - tr.t) / 0.18); disc(tr.x, FLOOR - tr.y - 90, 24, m.def.color); ctx.globalAlpha = 1; }
   const lift = m.key === 'snooze' ? 20 + Math.sin(m.bob * 5) * 3
     : m.key === 'wraith' ? 36 + (m.state === 'dash' || m.state === 'launched' ? 0 : Math.sin(m.bob * 4) * 6) : 0;
-  const sp = SPR.get(m.key, spritePose(m));
+  const sp = SPR.get(sk, spritePose(m));
   ctx.save();
   monsterFrame(m, lift);
   if (m.key === 'snooze' && m.state === 'windup') ctx.rotate(Math.sin(m.t * 60) * 0.15 * prog);   // the alarm rattles
@@ -2755,7 +3066,9 @@ function drawSpriteMonster(m) {
     if (gt < m.buffUntil) { ctx.strokeStyle = 'rgba(224,85,90,.7)'; ctx.lineWidth = 2; ctx.strokeRect(-25, -52, 50, 52); }
     if (m.state === 'windup' && m.attack === 'crumbs') disc(18 + prog * 4, -40 - prog * 6, 4, '#e8c547');
   }
+  if (sk === 'kitsune' && m.state === 'windup' && m.attack === 'foxfire') disc(60, -70, 6 + prog * 6, '#ff7a1a');
   ctx.restore();
+  ctx.globalAlpha = 1;
   if (m.state === 'active' && (m.attack === 'slam' || m.attack === 'smash')) {   // ground crack
     ctx.strokeStyle = 'rgba(232,197,71,.7)'; ctx.lineWidth = 4;
     const heavy = m.def.kit === 'heavy', r = (heavy ? 30 : 24) + m.t * (heavy ? 900 : 700);
@@ -2764,7 +3077,7 @@ function drawSpriteMonster(m) {
 }
 
 function drawMonster(m) {
-  if (SPR.has(m.key)) drawSpriteMonster(m);
+  if (SPR.has(m.def.sprite || m.key)) drawSpriteMonster(m);
   else if (m.key === 'wraith') drawWraith(m);
   else if (m.def.kit === 'heavy') drawHeavy(m);
   else if (m.key === 'troll') drawTroll(m);
@@ -2780,6 +3093,7 @@ function drawMonster(m) {
 
 function drawPlate(pl, color = '#b8bcc4') {
   ctx.save(); ctx.translate(pl.x, FLOOR - pl.y - (pl.kind === 'roll' ? 20 : 0)); ctx.rotate(pl.spin);
+  if (pl.fire) { ctx.restore(); ctx.globalAlpha = 0.5; disc(pl.x - sign(pl.vx) * 10, FLOOR - pl.y, 9, '#ffa860'); ctx.globalAlpha = 1; disc(pl.x, FLOOR - pl.y, 10, '#ff7a1a'); disc(pl.x, FLOOR - pl.y, 5, '#fff0a0'); return; }
   if (pl.kind === 'crumb') { ctx.fillStyle = '#e8c547'; ctx.fillRect(-5, -4, 10, 8); ctx.restore(); return; }
   disc(0, 0, 20, color);
   disc(0, 0, 5, '#50555d');
@@ -2878,6 +3192,8 @@ function drawOverlay() {
          'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, 146 + i * 24));
     if (sc && !playMode) { ctx.fillStyle = '#e8c547'; ctx.fillText(`Scouting report: ${sc.text}`, W / 2, 146 + lines.length * 24 + 12); }
+  } else if (!result || !result.reward) {                    // the bot difficulty check is running fights
+    ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui'; ctx.fillText('Running bots…', W / 2, 150);
   } else {
     ctx.fillStyle = result.won ? '#e8c547' : '#e0555a'; ctx.font = '800 40px system-ui';
     ctx.fillText(result.won ? 'VICTORY' : 'DEFEATED', W / 2, 120);
@@ -2922,6 +3238,10 @@ function draw() {
   plates.forEach(pl => drawPlate(pl));
   shots.forEach(s => drawPlate({ kind: 'roll', x: s.x, y: 0, spin: s.spin }, '#ff7a1a'));
   players.forEach(drawStick);
+  for (const p of players) if (slowed(p) && alive(p)) {
+    ctx.strokeStyle = `rgba(92,200,255,${0.4 + 0.3 * Math.sin(gt * 12)})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(p.x, FLOOR - p.y, 26, 6, 0, 0, Math.PI * 2); ctx.stroke();
+  }
   for (const q of puffs) {
     const u = q.t / q.life;
     ctx.globalAlpha = 0.75 * (1 - u);
@@ -2950,29 +3270,9 @@ function draw() {
 // ---------------------------------------------------------------------------
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = clamp((now - last) / 1000, 0, 0.05);
   last = now;
-  if (phase === 'fight' && !paused) {
-    if (hitstop > 0) {
-      hitstop -= dt;                                   // frozen on impact; drawing and effects keep running
-    } else {
-      const sdt = ko ? dt * J.koSlowScale : dt;        // final KO slow-mo
-      gt += sdt;
-      for (const p of players) if (p.ctrl === 'cpu') cpuThink(p);
-      players.forEach(p => updatePlayer(p, sdt));
-      decayRevives(sdt);
-      if (run && phase === 'fight' && !ko) updateRun(sdt);
-      if (phase === 'fight' && !ko) {
-        monsters.forEach(m => updateMonster(m, sdt));
-        separate(sdt);
-        collideBodies();
-        updatePlates(sdt);
-        updateShots(sdt);
-        updateWaves(sdt);
-      }
-      if (ko) { ko.t += dt; if (ko.t >= J.koSlowMs / 1000) { ko = null; endFight(true); } }
-    }
-  }
+  if (phase === 'fight' && !paused) tick(dt);
   if (!paused) {
     shakeT = Math.max(0, shakeT - dt);
     for (const q of puffs) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9; }
@@ -2984,6 +3284,28 @@ function frame(now) {
   draw();
   markSpecialReady();
   requestAnimationFrame(frame);
+}
+// One simulation step (the bots call this directly, with no drawing).
+function tick(dt) {
+  if (hitstop > 0) {
+    hitstop -= dt;                                   // frozen on impact; drawing and effects keep running
+  } else {
+    const sdt = ko ? dt * J.koSlowScale : dt;        // final KO slow-mo
+    gt += sdt;
+    for (const p of players) if (p.ctrl === 'cpu') cpuThink(p);
+    players.forEach(p => updatePlayer(p, sdt));
+    decayRevives(sdt);
+    if (run && phase === 'fight' && !ko) updateRun(sdt);
+    if (phase === 'fight' && !ko) {
+      monsters.forEach(m => updateMonster(m, sdt));
+      separate(sdt);
+      collideBodies();
+      updatePlates(sdt);
+      updateShots(sdt);
+      updateWaves(sdt);
+    }
+    if (ko) { ko.t += dt; if (ko.t >= J.koSlowMs / 1000) { ko = null; endFight(true); } }
+  }
 }
 // Fights pause instantly: P/Esc, the ⏸ button, or putting the phone down (tab hidden).
 function togglePause(force) {
@@ -3121,7 +3443,7 @@ function exitPlay() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 }
 function lvStatus(l) {
-  if (!levelOpen(l)) return `🔒 beat ${l.zone.levels[l.idx - 1].name} first`;
+  if (!levelOpen(l)) return `🔒 ${lockText(l)}`;
   const first = !wallet.clears[l.key], g = Math.round(l.gold * (first ? E.firstClearMult : freshOf(l.key)));
   return `${l.format}${l.run ? ` · ${starsText(l.key)}` : ''} · ${first ? `NEW · ${g}g` : `✓ ×${wallet.clears[l.key]} · ${Math.round(freshOf(l.key) * 100)}% fresh · ${g}g`}`;
 }
@@ -3234,7 +3556,7 @@ function updateHint() {
   const wItem = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? ITEMS[wallet.weapon] : ITEMS.fists;
   const fmt = v => `${Math.round(v)}${v >= T.launchAt ? ' LAUNCH' : ''}`;
   const keys = [...new Set(lv.waves.flat())];
-  $('#monsterHint').innerHTML = (levelOpen(lv) ? '' : `🔒 Locked: beat <b>${lv.zone.levels[lv.idx - 1].name}</b> first.<br>`) +
+  $('#monsterHint').innerHTML = (levelOpen(lv) ? '' : `🔒 Locked: ${lockText(lv)}.<br>`) +
     (lv.waves.length > 1 ? `<b>${lv.waves.length} waves:</b> ${lv.waves.map(w => w.map(k => MONSTERS[k].name).join(', ')).join(' → ')}.<br>` : '') +
     keys.map(k => {
       const m = MONSTERS[k], push = (move, sp) => pushOf(str, m.weight, move, sp) * (wItem.mods.push || 1);
@@ -3331,6 +3653,63 @@ function buildEcon() {
   Object.values(LEVELS).forEach(l => $('#g_' + l.key).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { l.gold = v; renderShop(); } });
   priced.forEach(([k, it]) => $('#p_' + k).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { it.price = v; renderShop(); } });
 }
+// ---------------------------------------------------------------------------
+// Difficulty check: the CPU buddy plays P1 through each fight as the balance sim's benchmark fighters.
+// Runs headless (simMode: no drawing, sound, gold or wallet changes), a fight at a time so the page stays responsive.
+// ---------------------------------------------------------------------------
+const BOT_SKILL = { sharp: 0, human: 0.25 };   // share of telegraphs the bot ignores
+function botFight(key, preset, miss) {
+  $('#level').value = key;
+  setup[0] = { ...setup[0], stats: { ...PRESETS[preset] }, level: benchLevel(preset) };
+  startFight();
+  players[0].ctrl = 'cpu'; players[0].miss = miss;
+  while (phase === 'fight' && gt < 300) tick(1 / 60);
+  if (phase === 'fight') { phase = 'over'; result = { won: false, time: gt, hp: players[0].hp / players[0].maxHp, enc: run ? run.enc : 0 }; }
+  return result;
+}
+async function runBots(only) {   // only: a list of level keys (all levels by default)
+  const n = clamp(+$('#botN').value || 10, 1, 100), keys = only || Object.keys(LEVELS);
+  const keep = { setup0: structuredClone(setup[0]), lv: $('#level').value, p2: $('#p2mode').value, rusty: $('#rusty').checked, locks: $('#locks').checked, weapon: wallet.weapon };
+  $('#p2mode').value = 'none'; $('#rusty').checked = false; $('#locks').checked = false; wallet.weapon = 'fists';
+  $('#botRun').disabled = true;
+  const rows = [];
+  for (const key of keys) {
+    const row = { key, cells: {} };
+    rows.push(row);
+    for (const preset of BENCH) {
+      const cell = {};
+      for (const [skill, miss] of Object.entries(BOT_SKILL)) {
+        let wins = 0, t = 0, hp = 0, stars = 0;
+        for (let k = 0; k < n; k++) {
+          simMode = true;
+          const r = botFight(key, preset, miss);
+          simMode = false;
+          if (r.won) { wins++; t += r.time; hp += r.hp; stars += r.stars ? r.stars.filter(Boolean).length : 0; }
+        }
+        cell[skill] = { win: wins / n, t: wins ? t / wins : 0, hp: wins ? hp / wins : 0, stars: wins ? stars / wins : 0 };
+      }
+      row.cells[preset] = cell;
+      renderBots(rows, n);
+      await new Promise(r => setTimeout(r));
+    }
+  }
+  setup[0] = keep.setup0; $('#level').value = keep.lv; $('#p2mode').value = keep.p2; $('#rusty').checked = keep.rusty; $('#locks').checked = keep.locks; wallet.weapon = keep.weapon;
+  phase = 'ready'; result = null; run = null; players = []; monsters = []; camX = 0; LEFT = 30; RIGHT = W - 30; platforms = PLATFORMS;
+  fighterSync[0](); $('#botRun').disabled = false;
+  window.botResults = rows;   // for reading from the console
+}
+// Win % for a sharp bot / a human-ish bot; green = wins most, red = loses most.
+function renderBots(rows, n) {
+  const pct = v => Math.round(v * 100);
+  const col = v => v >= 0.7 ? '#7ee08a' : v <= 0.3 ? '#e0555a' : '#e8c547';
+  $('#botOut').innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px"><tr><th style="text-align:left">Win % (sharp / human), ${n} each</th>${BENCH.map(b => `<th>${b.replace(' ', '<br>')}</th>`).join('')}</tr>` +
+    rows.map(r => `<tr><td>${LEVELS[r.key].name}</td>${BENCH.map(b => {
+      const c = r.cells[b]; if (!c) return '<td></td>';
+      const tip = Object.entries(c).map(([s, v]) => `${s}: ${pct(v.win)}% wins${v.win ? `, ${v.t.toFixed(0)}s, ${pct(v.hp)}% HP left${LEVELS[r.key].run ? `, ${v.stars.toFixed(1)} stars` : ''}` : ''}`).join(' · ');
+      return `<td title="${tip}" style="text-align:center"><b style="color:${col(c.sharp.win)}">${pct(c.sharp.win)}</b>/<b style="color:${col(c.human.win)}">${pct(c.human.win)}</b></td>`;
+    }).join('')}</tr>`).join('') + '</table><p class="hint">Hover a cell for average time and HP left on wins.</p>';
+}
+$('#botRun').onclick = () => runBots();
 $('#resetEcon').onclick = () => { E = { ...DEFAULT_ECON }; buildEcon(); renderShop(); };
 $('#resetWallet').onclick = () => { if (confirm('Wipe gold, items, clears and freshness?')) { wallet = newWallet(); saveWallet(); renderShop(); updateHint(); } };
 buildEcon();
