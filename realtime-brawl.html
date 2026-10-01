@@ -19,6 +19,12 @@
   Comfort Zone) comes first: Snack Attacker, Couch Potato, Snooze Imp, the Bridge Troll elite, and Oni Bro.
   The Forge Golem (was Plate Golem) and Marathon Wraith (was Treadmill Wraith) stay as test fights.
 
+  Side-scroll runs (RUNS, docs/09 "Level formats"): the Comfort Zone Run is one long level. The camera follows you
+  forward only; walking far enough locks it on an encounter (Final Fight style) until its waves are cleared, then
+  GO ▶. HP carries over (protein shakes heal), the troll guards the bridge, and the run ends in Oni Bro's gym.
+  Each run has three stars, all earned by finishing: beat the boss, beat par time, find every gold plate.
+  The best stars per level are kept in the wallet (wallet.stars).
+
   Phone play mode (G1): "Play fullscreen" (or opening with ?play=1, which the installed web app does)
   goes landscape and fullscreen with a floating left thumbstick (down = crouch), a big jump button
   bottom-right, a few action buttons around it, gesture candidates (hold attack = special, double-tap
@@ -452,6 +458,10 @@ const ZONES = [
     { key: 'z1oni', name: 'Oni Bro', format: 'Boss Arena', gold: 70, boss: true, waves: [['oni']],
       scout: { stat: 'VIT', want: 26, text: 'Oni Bro hits hard. Build VIT by hitting your weekly goal, and STR to launch him.' } },
   ] },
+  { name: 'Side-scroll prototype', levels: [
+    { key: 'z1run', name: 'Comfort Zone Run', format: 'Side-scroll', gold: 120, boss: true, run: 'z1run',
+      scout: { stat: 'VIT', want: 26, text: 'HP doesn\'t refill between fights: you reach Oni Bro with whatever you have left. VIT is your fuel tank.' } },
+  ] },
   { name: 'Test fights', levels: [
     { key: 'golem', name: 'Forge Golem', format: 'Boss Arena', gold: 60, boss: true, waves: [['golem']],
       scout: { stat: 'STR', want: 40, text: 'Heavy: it only launches once your STR outweighs it (about STR 40 for a special).' } },
@@ -459,8 +469,48 @@ const ZONES = [
       scout: { stat: 'DEX', want: 22, text: 'It dashes at your height. DEX widens your dodge window and jumps you higher.' } },
   ] },
 ];
+// Side-scroll runs (docs/09 "Level formats"): one long level the camera follows, forward only. Walking far enough locks
+// the camera on an encounter (Final Fight style) until its waves are cleared, then GO ▶. HP carries from fight to fight,
+// and the last encounter is the boss arena. x is world px; at = the camera's left edge while that encounter is locked.
+// Platforms are one-way (look: bench, crate, ledge). Pickups: gold plates (a star for all of them) and protein shakes (heal).
+// stars: each level's three stars, all earned by finishing. kind: clear | time (par in s) | plates (collect every gold plate).
+const RUNS = {
+  z1run: {
+    length: 5860, healShake: 0.35,
+    stars: [{ kind: 'clear', label: 'Beat Oni Bro' }, { kind: 'time', par: 120, label: 'Under 2:00' }, { kind: 'plates', label: 'All 3 gold plates' }],
+    platforms: [
+      { x1: 520, x2: 660, h: 100, look: 'bench' },
+      { x1: 860, x2: 960, h: 90, look: 'crate' },
+      { x1: 1500, x2: 1640, h: 100, look: 'bench' },
+      { x1: 2300, x2: 2420, h: 100, look: 'crate' },
+      { x1: 2470, x2: 2570, h: 200, look: 'ledge' },
+      { x1: 3800, x2: 3940, h: 100, look: 'bench' },
+      { x1: 3990, x2: 4090, h: 200, look: 'ledge' },
+      { x1: 4990, x2: 5150, h: 100, look: 'bench' },   // the boss arena keeps the arena's benches (Oni Bro lobs at bench-sitters)
+      { x1: 5610, x2: 5770, h: 100, look: 'bench' },
+    ],
+    pickups: [
+      { kind: 'plate', x: 910, h: 150 },     // on the crate: just hop up
+      { kind: 'plate', x: 2520, h: 250 },    // crate, then the high ledge
+      { kind: 'shake', x: 2640, h: 30 },     // before the bridge
+      { kind: 'plate', x: 4040, h: 250 },    // up on the ledge in the middle of a fight
+      { kind: 'shake', x: 4780, h: 30 },     // before the gym
+    ],
+    bridge: [2860, 3560],                    // decor: planks over the river where the troll lives
+    gym: 4900,                               // decor: the village gym, Oni Bro's arena
+    encounters: [
+      { at: 900, name: 'Snack ambush', waves: [['snack', 'snack', 'snack'], ['couch', 'snack', 'snack']] },
+      { at: 2700, name: 'The bridge', waves: [['troll']], intro: 'BRIDGE TROLL', taunt: '"10 push-ups to pass."' },
+      { at: 3700, name: 'Nap time', waves: [['snooze', 'snack', 'snack'], ['snooze', 'couch', 'snack']] },
+      { at: 4900, name: 'The village gym', boss: true, waves: [['oni']], intro: 'ONI BRO', taunt: '"The rack is mine."' },
+    ],
+  },
+};
 const LEVELS = {};
-ZONES.forEach(z => z.levels.forEach((l, i) => { l.zone = z; l.idx = i; LEVELS[l.key] = l; }));
+ZONES.forEach(z => z.levels.forEach((l, i) => {
+  l.zone = z; l.idx = i; LEVELS[l.key] = l;
+  if (l.run) { l.run = RUNS[l.run]; l.waves = l.run.encounters.flatMap(e => e.waves); }   // all of a run's waves, for the hints
+}));
 const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || lv.idx === 0 || (wallet.clears[lv.zone.levels[lv.idx - 1].key] || 0) > 0;
 
 // Benches: one-way platforms you can jump onto from below.
@@ -468,6 +518,7 @@ const PLATFORMS = [
   { x1: 90, x2: 250, h: 100 },
   { x1: 710, x2: 870, h: 100 },
 ];
+let platforms = PLATFORMS;   // the current level's (a run brings its own)
 
 const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
 const PRESETS = {
@@ -524,7 +575,7 @@ const WORKOUTS = {
   circuit: { name: 'Circuit', gains: { END: 2, DEX: 1 } },
 };
 
-const newWallet = () => ({ gold: 0, day: 1, owned: ['fists'], weapon: 'fists', looks: [], fresh: {}, clears: {}, pump: 0, pumpDay: 0 });
+const newWallet = () => ({ gold: 0, day: 1, owned: ['fists'], weapon: 'fists', looks: [], fresh: {}, clears: {}, stars: {}, pump: 0, pumpDay: 0 });
 function loadWallet() {
   try { const w = JSON.parse(localStorage.getItem('bb-brawl-wallet')); if (w && w.owned) return { ...newWallet(), ...w }; } catch (e) {}
   return newWallet();
@@ -568,7 +619,9 @@ const setup = [
 // ---------------------------------------------------------------------------
 // World
 // ---------------------------------------------------------------------------
-const W = 960, H = 400, FLOOR = 340, LEFT = 30, RIGHT = W - 30;
+const W = 960, H = 400, FLOOR = 340;
+let LEFT = 30, RIGHT = W - 30;   // where fighters can stand: the arena, or the camera's view in a run
+let camX = 0;                     // camera's left edge in world px (always 0 in a single-screen arena)
 const $ = s => document.querySelector(s);
 const canvas = $('#game'), ctx = canvas.getContext('2d');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -580,7 +633,8 @@ let phase = 'ready';   // ready | fight | over
 let paused = false;
 let gt = 0;            // game time, seconds
 let players = [], monsters = [], plates = [], shots = [], floaters = [], rings = [];   // shots: player projectiles (gauntlet plates)
-let level = null, waveIdx = 0, waveGap = null, coopScaleNow = { hp: 1, dmg: 1, blend: 1 };
+let level = null, waves = [], waveIdx = 0, waveGap = null, coopScaleNow = { hp: 1, dmg: 1, blend: 1 };   // waves: the arena's, or the locked encounter's in a run
+let run = null;        // side-scroll state: { enc, locked, pickups, plates, shakes }
 let combo = 0, comboBest = 0, lastHitAt = -9;
 let result = null;
 let monUid = 0;
@@ -760,14 +814,18 @@ const rustyStats = s => Object.fromEntries(STATS.map(k => [k, r1(s[k] * T.rustyM
 const isRusty = () => $('#rusty').checked;
 
 function spawnWave() {
-  const keys = level.waves[waveIdx], n = keys.length;
+  const keys = waves[waveIdx], n = keys.length;
   keys.forEach((k, j) => {
     const def = MONSTERS[k];
-    const x = waveIdx === 0
-      ? (n === 1 ? 640 : 560 + j * Math.min(90, 340 / (n - 1)))
+    const x = run && waveIdx === 0 && def.rank === 'minion' ? RIGHT - def.width / 2 - j * 30   // a run's first pack runs in from the right
+      : waveIdx === 0
+      ? camX + (n === 1 ? 640 : 560 + j * Math.min(90, 340 / (n - 1)))
       : (j % 2 ? LEFT + def.width / 2 + j * 24 : RIGHT - def.width / 2 - j * 24);   // later waves pour in from both edges
     const m = makeMonster(k, x, coopScaleNow);
     m.cd += j * 0.35;
+    if (run && def.rank !== 'minion') {           // elites and bosses drop in from above: thud, stagger, then fight
+      m.state = 'launched'; m.y = 330; m.vx = 0; m.vy = 0;
+    }
     monsters.push(m);
   });
 }
@@ -787,7 +845,11 @@ function startFight() {
     const b = coopBlend(host, helper);
     coopScaleNow = { hp: T.coopHpMult * b, dmg: b, blend: b };
   }
-  monsters = []; waveIdx = 0; waveGap = null; spawnWave();
+  monsters = []; waveIdx = 0; waveGap = null; camX = 0; LEFT = 30; RIGHT = W - 30;
+  run = lv.run ? { enc: 0, locked: false, pickups: lv.run.pickups.map(q => ({ ...q })), plates: 0, shakes: 0 } : null;
+  platforms = lv.run ? lv.run.platforms : PLATFORMS;
+  waves = run ? [] : lv.waves;
+  if (!run) spawnWave();
   plates = []; shots = []; floaters = []; puffs = []; rings = []; shakeT = 0; hitstop = 0; ko = null; gt = 0; result = null; paused = false;
   combo = 0; comboBest = 0; lastHitAt = -9;
   if (wk !== wallet.weapon) floater(`Not strong enough for the ${ITEMS[wallet.weapon].name} yet: fists this fight`, W / 2, 100, '#e8c547', 16);
@@ -974,7 +1036,7 @@ function killMonster(m, p) {
   release(m);
   if (m.heldBy) dropHeld(m.heldBy);
   p.kills++;
-  const last = waveIdx >= level.waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0);
+  const last = waveIdx >= waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0) && (!run || run.enc === level.run.encounters.length - 1);
   if (last) {
     doHitstop(J.hitstopFinisherMs);
     sfx.ko(); buzz([60, 40, 120]);
@@ -1081,18 +1143,22 @@ function endFight(won) {
   const reward = won ? payout(level, coopLive) : { gold: 0, parts: ['Losses pay no gold'] };
   if (won) sfx.coin();
   const left = monsters.filter(m => m.hp > 0);
-  result = { won, time: gt, reward, hint: won ? '' : lossHint() };
+  const stars = level.run ? runStars(won) : null;
+  result = { won, time: gt, reward, hint: won ? '' : lossHint(), stars };
   const who = players.map(p => `<b style="color:${p.color}">${p.name}</b> ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU ghost)' : ''} · ${ITEMS[p.weaponKey].name}: ` +
     `dealt ${p.dmgDealt}, took ${p.dmgTaken}, ${p.kills} KOs, targeted ${Math.round(100 * p.aggroTime / Math.max(gt, 0.01))}% of the fight, ` +
     `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.parries} parries, ${p.launches} launches, ${p.finishers} finishers, ${p.throws} throws, ${p.strikes} bowled over, ${p.escapes} grab escapes, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
-  const where = level.waves.length > 1 ? ` (wave ${waveIdx + 1}/${level.waves.length}, ${left.length} left)` : left[0] ? ` (monster at ${Math.round(100 * left[0].hp / left[0].maxHp)}%)` : '';
+  const enc = run && level.run.encounters[run.enc];
+  const where = run ? ` (${run.locked ? `at ${enc.name}, encounter ${run.enc + 1}/${level.run.encounters.length}` : `on the road before ${enc ? enc.name : 'the end'}`})`
+    : waves.length > 1 ? ` (wave ${waveIdx + 1}/${waves.length}, ${left.length} left)` : left[0] ? ` (monster at ${Math.round(100 * left[0].hp / left[0].maxHp)}%)` : '';
   const coop = players.length > 1 ? ` · co-op difficulty ×${coopScaleNow.blend.toFixed(2)} (HP ×${coopScaleNow.hp.toFixed(2)})` : '';
-  logLine(`<b>${won ? 'Victory' : 'Defeat'}</b> vs ${level.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : where}${coop}${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}` +
+  const starLine = stars ? ` · ${stars.map((st, k) => `${st ? '★' : '☆'} ${level.run.stars[k].label}`).join(', ')} · plates ${run.plates}/${totalPlates()}, shakes ${run.shakes}` : '';
+  logLine(`<b>${won ? 'Victory' : 'Defeat'}</b> vs ${level.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : where}${coop}${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}${starLine}` +
     ` · <b style="color:#e8c547">+${reward.gold} gold</b> (${reward.parts.join(' · ')})${reward.unlock ? ` · <b style="color:var(--p1)">${reward.unlock}</b>` : ''}` +
     `${result.hint ? `<br><span style="color:#e8c547">${result.hint}</span>` : ''}<br>${who}`);
   // App bridge (G2): hand the result back to the Expo app. No-op in a browser.
   if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, key: level.key, first: firstWin, gold: reward.gold, unlock: reward.unlock || '', hint: result.hint }));
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, key: level.key, first: firstWin, gold: reward.gold, unlock: reward.unlock || '', hint: result.hint, ...(stars ? { stars } : {}) }));
   }
   if (playMode) showMenu('after');
 }
@@ -1115,7 +1181,7 @@ function physics(p, dt) {
   if (p.kx) { p.x += p.kx * dt; p.kx *= Math.max(0, 1 - 4 * dt); if (Math.abs(p.kx) < 8) p.kx = 0; }   // thrown
   let floorH = 0;
   if (gt >= p.dropUntil) {
-    for (const pl of PLATFORMS) {
+    for (const pl of platforms) {
       if (p.x >= pl.x1 && p.x <= pl.x2 && prevY >= pl.h - 0.5 && p.y <= pl.h && p.vy <= 0) floorH = Math.max(floorH, pl.h);
     }
   }
@@ -1305,8 +1371,11 @@ function cpuThink(p) {
   inp.left = inp.right = inp.block = inp.down = false;
   if (p.grab || p.state === 'sleep') { inp.press.attack = gt; return; }   // mash free
   const m = nearestMonster(p);
-  if (!m) return;
   const goTo = x => { if (x > p.x + 6) inp.right = true; else if (x < p.x - 6) inp.left = true; };
+  if (!m) {                                               // a run between fights: tag along (or lead, if P1 is a bot)
+    if (run) { const lead = players.find(q => q !== p && alive(q) && q.ctrl === 'human'); goTo(lead ? lead.x - 70 : p.x + 100); }
+    return;
+  }
   const dist = Math.abs(m.x - p.x), reach = T.attackRange + m.def.width / 2;
 
   // 1. Get off the bench; the buddy fights from the ground.
@@ -1637,10 +1706,10 @@ function separate(dt) {
 // Swarm Waves: when a wave is cleared, the next one pours in after a short gap.
 function updateWaves(dt) {
   monsters = monsters.filter(m => !m.gone);
-  if (monsters.some(m => m.hp > 0) || waveIdx >= level.waves.length - 1) return;
+  if (monsters.some(m => m.hp > 0) || waveIdx >= waves.length - 1) return;
   if (waveGap === null) {
     waveGap = T.waveGapMs / 1000;
-    floater(`WAVE ${waveIdx + 2} / ${level.waves.length}`, W / 2, 150, '#ff7a1a', 34);
+    floater(`WAVE ${waveIdx + 2} / ${waves.length}`, camX + W / 2, 150, '#ff7a1a', 34);
   }
   waveGap -= dt;
   if (waveGap <= 0) { waveGap = null; waveIdx++; spawnWave(); }
@@ -1656,13 +1725,13 @@ function updatePlates(dt) {
           if (hurtPlayer(p, pl.dmg, pl.x - pl.vx * 0.1, 'low', pl.owner) === 'blocked') pl.dead = true;
         }
       }
-      if (pl.x < -40 || pl.x > W + 40) pl.dead = true;
+      if (pl.x < camX - 40 || pl.x > camX + W + 40) pl.dead = true;
     } else if (pl.kind === 'crumb') {
       pl.x += pl.vx * dt; pl.spin += dt * 14;
       for (const p of players) {
         if (alive(p) && Math.abs(p.x - pl.x) < 16 && pl.y > p.y - 4 && pl.y < p.y + 105) { pl.dead = true; hurtPlayer(p, pl.dmg, pl.x - pl.vx * 0.1, 'mid', pl.owner); break; }
       }
-      if (pl.x < -20 || pl.x > W + 20) pl.dead = true;
+      if (pl.x < camX - 20 || pl.x > camX + W + 20) pl.dead = true;
     } else {
       pl.t += dt;
       const u = Math.min(1, pl.t / pl.dur);
@@ -1687,9 +1756,60 @@ function updateShots(dt) {
     s.x += s.vx * dt; s.spin += s.vx * dt / 18;
     const m = monsters.find(o => o.hp > 0 && o.y < 40 && Math.abs(s.x - o.x) < o.def.width / 2);
     if (m) { s.dead = true; hitMonster(s.p, m, T.specialMult, 'plate', { x: s.x, y: FLOOR - 24 }); }
-    if (s.x < -40 || s.x > W + 40) s.dead = true;
+    if (s.x < camX - 40 || s.x > camX + W + 40) s.dead = true;
   }
   shots = shots.filter(s => !s.dead);
+}
+
+// ---------------------------------------------------------------------------
+// Side-scroll runs: camera, encounter locks, pickups and stars
+// ---------------------------------------------------------------------------
+const totalPlates = () => level.run.pickups.filter(q => q.kind === 'plate').length;
+// Stars earned this run (all need the finish), merged into the best ever for this level.
+function runStars(won) {
+  const got = level.run.stars.map(st => won && (st.kind === 'clear' || (st.kind === 'time' && gt <= st.par) || (st.kind === 'plates' && run.plates >= totalPlates())));
+  if (won) {
+    const best = wallet.stars[level.key] || [];
+    wallet.stars[level.key] = got.map((g, k) => g || !!best[k]);
+    saveWallet();
+  }
+  return got;
+}
+const starsText = key => { const s = wallet.stars[key], n = LEVELS[key].run.stars.length; return Array.from({ length: n }, (_, k) => s && s[k] ? '★' : '☆').join(''); };
+
+function updateRun(dt) {
+  const R = level.run, live = players.filter(alive);
+  const enc = R.encounters[run.enc];
+  if (!run.locked && live.length) {
+    // Follow the lead fighter forward (never back), without scrolling anyone in co-op off the left edge.
+    const lead = Math.max(...live.map(p => p.x)), tail = Math.min(...live.map(p => p.x));
+    camX = Math.max(camX, Math.min(lead - W * 0.42, tail - 40, R.length - W));
+    if (enc && camX >= enc.at) {
+      camX = enc.at; run.locked = true;
+      waves = enc.waves; waveIdx = 0; waveGap = null;
+      LEFT = camX + 30; RIGHT = camX + W - 30;
+      spawnWave();
+      if (enc.intro) { floater(enc.intro, camX + W / 2, 130, MONSTERS[enc.waves[0][0]].color, 40); floater(enc.taunt || '', camX + W / 2, 165, '#eceae4', 18); doShake(0.8); }
+    }
+  } else if (run.locked && !monsters.some(m => m.hp > 0) && waveIdx >= waves.length - 1 && !enc.boss) {
+    run.locked = false; run.enc++; waves = []; waveIdx = 0;
+    floater('GO ▶', camX + W - 140, 170, '#ff7a1a', 40); sfx.coin();
+  }
+  LEFT = camX + 30; RIGHT = camX + W - 30;
+  // Pickups: touch them with any part of the body.
+  for (const q of run.pickups) {
+    if (q.taken) continue;
+    const p = live.find(p => Math.abs(p.x - q.x) < 28 && q.h > p.y - 15 && q.h < p.y + 115);
+    if (!p) continue;
+    q.taken = true; sfx.coin(); chalkPuff(q.x, FLOOR - q.h, J.particleCount, '#e8c547');
+    if (q.kind === 'plate') { run.plates++; floater(`GOLD PLATE ${run.plates}/${totalPlates()}`, q.x, FLOOR - q.h - 30, '#e8c547', 20); }
+    else {
+      run.shakes++;
+      const heal = Math.round(p.maxHp * R.healShake);
+      for (const f of live) f.hp = Math.min(f.maxHp, f.hp + heal);   // a shake heals the whole crew
+      floater(`PROTEIN SHAKE +${heal} HP`, q.x, FLOOR - q.h - 60, '#7ee08a', 20);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1700,12 +1820,103 @@ function poly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (con
 function disc(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
 
 function drawPlatforms() {
-  for (const pl of PLATFORMS) {
-    const y = FLOOR - pl.h;
-    ctx.fillStyle = '#3a2f2a'; ctx.fillRect(pl.x1, y, pl.x2 - pl.x1, 12);          // padded bench top
-    ctx.fillStyle = '#5a4a40'; ctx.fillRect(pl.x1, y, pl.x2 - pl.x1, 4);
-    ctx.fillStyle = '#50555d';
-    ctx.fillRect(pl.x1 + 16, y + 12, 8, pl.h - 12); ctx.fillRect(pl.x2 - 24, y + 12, 8, pl.h - 12);
+  for (const pl of platforms) {
+    if (pl.x2 < camX || pl.x1 > camX + W) continue;
+    const y = FLOOR - pl.h, w = pl.x2 - pl.x1;
+    if (pl.look === 'crate') {                                                   // stacked wooden crates
+      ctx.fillStyle = '#6b4a2c'; ctx.fillRect(pl.x1, y, w, pl.h);
+      ctx.strokeStyle = '#3e2a18'; ctx.lineWidth = 3; ctx.strokeRect(pl.x1 + 1.5, y + 1.5, w - 3, pl.h - 3);
+      line(pl.x1, y, pl.x2, FLOOR); line(pl.x2, y, pl.x1, FLOOR);
+      ctx.fillStyle = '#8a6440'; ctx.fillRect(pl.x1, y, w, 5);
+    } else if (pl.look === 'ledge') {                                            // stone ledge on a post
+      ctx.fillStyle = '#4d4a47'; ctx.fillRect(pl.x1 + w / 2 - 7, y + 12, 14, pl.h - 12);
+      ctx.fillStyle = '#6e6964'; ctx.fillRect(pl.x1, y, w, 14);
+      ctx.fillStyle = '#8b857f'; ctx.fillRect(pl.x1, y, w, 4);
+    } else {
+      ctx.fillStyle = '#3a2f2a'; ctx.fillRect(pl.x1, y, w, 12);                // padded bench top
+      ctx.fillStyle = '#5a4a40'; ctx.fillRect(pl.x1, y, w, 4);
+      ctx.fillStyle = '#50555d';
+      ctx.fillRect(pl.x1 + 16, y + 12, 8, pl.h - 12); ctx.fillRect(pl.x2 - 24, y + 12, 8, pl.h - 12);
+    }
+  }
+}
+
+// The Comfort Zone at dusk, for runs: parallax hills and cottages (screen space), then the ground, river bridge and
+// village gym in world space. Everything is drawn from a hash of its index, so it's the same every run.
+const hash = i => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+function drawRunBack() {
+  const sky = ctx.createLinearGradient(0, 0, 0, FLOOR);
+  sky.addColorStop(0, '#1b2033'); sky.addColorStop(1, '#4b3a44');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, FLOOR);
+  disc(W * 0.78 - camX * 0.03, 70, 26, '#e9c98a');                              // low sun
+  ctx.fillStyle = '#2a2d3c';                                                       // far hills (0.15×)
+  ctx.beginPath(); ctx.moveTo(0, FLOOR);
+  for (let x = 0; x <= W + 40; x += 40) { const i = Math.floor((x + camX * 0.15) / 40); ctx.lineTo(x - (camX * 0.15) % 40, FLOOR - 130 - 50 * Math.sin(i * 0.5) - 25 * hash(i)); }
+  ctx.lineTo(W, FLOOR); ctx.fill();
+  const par = 0.45, sp = 230;                                                     // cottages (0.45×)
+  for (let i = Math.floor(camX * par / sp) - 1; i <= Math.floor((camX * par + W) / sp) + 1; i++) {
+    if (hash(i + 7) < 0.25) continue;
+    const x = i * sp - camX * par + hash(i) * 80, w = 90 + hash(i + 1) * 60, h = 60 + hash(i + 2) * 40, by = FLOOR - 18;
+    ctx.fillStyle = '#3a3233'; ctx.fillRect(x, by - h, w, h);
+    ctx.fillStyle = '#5e3330'; ctx.beginPath(); ctx.moveTo(x - 10, by - h); ctx.lineTo(x + w / 2, by - h - 38 - hash(i + 3) * 20); ctx.lineTo(x + w + 10, by - h); ctx.fill();
+    ctx.fillStyle = hash(i + 4) < 0.6 ? 'rgba(232,197,71,.75)' : '#2a2426';      // lit (or dark) windows
+    ctx.fillRect(x + w * 0.2, by - h * 0.65, 14, 14); ctx.fillRect(x + w * 0.65, by - h * 0.65, 14, 14);
+    ctx.fillStyle = '#251f20'; ctx.fillRect(x + w * 0.42, by - 30, 16, 30);
+  }
+}
+function drawRunWorld() {
+  const R = level.run;
+  ctx.fillStyle = '#2a2420'; ctx.fillRect(camX - 20, FLOOR, W + 40, H - FLOOR);   // dirt
+  ctx.fillStyle = '#3d5a34'; ctx.fillRect(camX - 20, FLOOR, W + 40, 6);            // grass edge
+  for (let x = Math.floor(camX / 60) * 60; x < camX + W + 60; x += 60) {           // fence posts along the path
+    if (R.bridge && x > R.bridge[0] - 40 && x < R.bridge[1] + 40) continue;
+    if (R.gym && x > R.gym - 20) continue;
+    ctx.fillStyle = '#4a3a30'; ctx.fillRect(x, FLOOR - 34, 6, 34);
+    if (x + 60 < camX + W + 60) ctx.fillRect(x, FLOOR - 26, 60, 4);
+  }
+  if (R.bridge) {                                                                   // river and plank bridge
+    const [b0, b1] = R.bridge;
+    ctx.fillStyle = '#1e3a4e'; ctx.fillRect(b0, FLOOR, b1 - b0, H - FLOOR);
+    ctx.strokeStyle = 'rgba(160,210,235,.35)'; ctx.lineWidth = 2;
+    for (let k = 0; k < 6; k++) { const wx = b0 + ((k * 137 + gt * 30) % (b1 - b0)); line(wx, FLOOR + 30 + k * 4, wx + 30, FLOOR + 30 + k * 4); }
+    ctx.fillStyle = '#6b4a2c'; ctx.fillRect(b0 - 20, FLOOR, b1 - b0 + 40, 12);
+    ctx.strokeStyle = '#3e2a18'; ctx.lineWidth = 2;
+    for (let x = b0 - 20; x < b1 + 20; x += 22) line(x, FLOOR, x, FLOOR + 12);
+    ctx.fillStyle = '#4a3a30';
+    for (let x = b0; x <= b1; x += 140) ctx.fillRect(x - 4, FLOOR - 46, 8, 46);
+    ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 2;
+    for (let x = b0; x < b1; x += 140) { ctx.beginPath(); ctx.moveTo(x, FLOOR - 42); ctx.quadraticCurveTo(x + 70, FLOOR - 28, Math.min(b1, x + 140), FLOOR - 42); ctx.stroke(); }
+  }
+  if (R.gym) {                                                                      // the village gym: Oni Bro's arena
+    const g = R.gym;
+    ctx.fillStyle = '#332b2c'; ctx.fillRect(g, FLOOR - 260, W, 260);
+    ctx.fillStyle = '#5e3330'; ctx.beginPath(); ctx.moveTo(g - 30, FLOOR - 260); ctx.lineTo(g + W / 2, FLOOR - 330); ctx.lineTo(g + W + 30, FLOOR - 260); ctx.fill();
+    ctx.fillStyle = '#1f1a1b'; ctx.fillRect(g + W / 2 - 150, FLOOR - 250, 300, 40);
+    ctx.fillStyle = '#d04830'; ctx.font = '900 26px system-ui'; ctx.textAlign = 'center'; ctx.fillText('VILLAGE GYM', g + W / 2, FLOOR - 221);
+    ctx.strokeStyle = '#41454b'; ctx.lineWidth = 6;                                // squat rack, set back on the wall
+    line(g + W / 2 - 70, FLOOR - 20, g + W / 2 - 70, FLOOR - 200); line(g + W / 2 + 70, FLOOR - 20, g + W / 2 + 70, FLOOR - 200);
+    ctx.lineWidth = 5; line(g + W / 2 - 100, FLOOR - 165, g + W / 2 + 100, FLOOR - 165);
+    disc(g + W / 2 - 92, FLOOR - 165, 22, '#26292d'); disc(g + W / 2 + 92, FLOOR - 165, 22, '#26292d');
+    ctx.fillStyle = '#2a2420'; ctx.fillRect(g, FLOOR, W, H - FLOOR);
+    ctx.fillStyle = '#4a3f3a'; ctx.fillRect(g, FLOOR, W, 6);                       // gym mats
+  }
+  ctx.fillStyle = '#4a3a30'; ctx.fillRect(196, FLOOR - 90, 8, 90);                  // start sign
+  ctx.fillStyle = '#6b4a2c'; ctx.fillRect(140, FLOOR - 100, 160, 34);
+  ctx.fillStyle = '#eceae4'; ctx.font = '800 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText('COMFORT ZONE ▶', 220, FLOOR - 78);
+}
+function drawPickups() {
+  for (const q of run.pickups) {
+    if (q.taken || q.x < camX - 30 || q.x > camX + W + 30) continue;
+    const y = FLOOR - q.h + Math.sin(gt * 3 + q.x) * 4;
+    if (q.kind === 'plate') {
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(gt * 5 + q.x); disc(q.x, y, 22, '#e8c547'); ctx.globalAlpha = 1;
+      disc(q.x, y, 14, '#e8c547'); disc(q.x, y, 4, '#6b5a1a');
+      ctx.fillStyle = '#fff6c8'; ctx.fillRect(q.x - 8, y - 9, 4, 4);
+    } else {
+      ctx.fillStyle = '#eceae4'; ctx.fillRect(q.x - 9, y - 12, 18, 24);
+      ctx.fillStyle = '#e88fb0'; ctx.fillRect(q.x - 9, y - 12, 18, 7);
+      ctx.strokeStyle = '#e0555a'; ctx.lineWidth = 3; line(q.x + 3, y - 12, q.x + 8, y - 24);
+    }
   }
 }
 
@@ -1940,7 +2151,7 @@ function drawTelegraph(m) {
   if (m.attack === 'dash') {
     ctx.fillRect(Math.min(m.x, m.dashTo), FLOOR - m.dashY - 6, Math.abs(m.dashTo - m.x), 14);
   } else if (m.attack === 'throw') {
-    ctx.fillRect(m.facing > 0 ? m.x : 0, FLOOR - 6, m.facing > 0 ? W - m.x : m.x, 6);
+    ctx.fillRect(m.facing > 0 ? m.x : camX, FLOOR - 6, m.facing > 0 ? camX + W - m.x : m.x - camX, 6);
   } else if (m.attack === 'crumbs') {
     ctx.fillRect(m.facing > 0 ? m.x : m.x - 260, FLOOR - 66, 260, 4);
   } else if (a.radius && m.attack === 'ring') {
@@ -2598,18 +2809,34 @@ function bar(x, y, w, h, frac, color, label) {
   ctx.fillStyle = color; ctx.fillRect(x, y, w * clamp(frac, 0, 1), h);
   if (label) { ctx.fillStyle = '#eceae4'; ctx.font = '600 12px system-ui'; ctx.textAlign = 'left'; ctx.fillText(label, x, y - 4); }
 }
-const soloLevel = () => level && level.waves.length === 1 && level.waves[0].length === 1;
+const soloLevel = () => level && waves.length === 1 && waves[0].length === 1;
+// A run between encounters: progress along the road (ticks = encounters), gold plates found, and the clock vs par.
+function drawRunHud() {
+  const R = level.run, next = R.encounters[run.enc], x0 = W / 2 - 220, len = R.length - W;
+  ctx.fillText(`${level.name.toUpperCase()}${next ? ` · NEXT: ${next.name.toUpperCase()}` : ''}`, W / 2, 20);
+  bar(x0, 28, 440, 8, camX / len, '#b8bcc4');
+  ctx.fillStyle = '#e0555a';
+  for (const e of R.encounters) ctx.fillRect(x0 + 440 * e.at / len - 2, 25, 4, 14);
+  const par = R.stars.find(s => s.kind === 'time');
+  ctx.fillStyle = '#e8c547'; ctx.font = '700 13px system-ui';
+  ctx.fillText(`${'◉'.repeat(run.plates)}${'○'.repeat(totalPlates() - run.plates)} plates${par ? `  ·  par ${Math.floor(par.par / 60)}:${String(par.par % 60).padStart(2, '0')}` : ''}`, W / 2, 54);
+  if (next && phase === 'fight' && Math.sin(gt * 6) > -0.3) {
+    ctx.fillStyle = '#ff7a1a'; ctx.font = '900 30px system-ui'; ctx.textAlign = 'right'; ctx.fillText('GO ▶', W - 24, 200); ctx.textAlign = 'center';
+  }
+}
 function drawHud() {
   if (level && phase !== 'ready') {
     ctx.textAlign = 'center'; ctx.fillStyle = '#eceae4'; ctx.font = '700 14px system-ui';
-    if (soloLevel() && monsters[0]) {
+    if (run && !run.locked) drawRunHud();
+    else if (soloLevel() && monsters[0]) {
       const m = monsters[0];
       ctx.fillText(m.def.name.toUpperCase() + (isEnraged(m) ? ' · ENRAGED' : ''), W / 2, 20);
       bar(W / 2 - 220, 28, 440, 12, m.hp / m.maxHp, isEnraged(m) ? '#e0555a' : '#b8bcc4');
     } else {
       const live = living();
-      ctx.fillText(`${level.name.toUpperCase()} · WAVE ${waveIdx + 1} / ${level.waves.length} · ${live.length} LEFT`, W / 2, 20);
-      bar(W / 2 - 220, 28, 440, 8, (waveIdx + (1 - live.length / Math.max(1, level.waves[waveIdx].length))) / level.waves.length, '#b8bcc4');
+      const title = run ? level.run.encounters[run.enc].name : level.name;
+      ctx.fillText(`${title.toUpperCase()} · WAVE ${waveIdx + 1} / ${waves.length} · ${live.length} LEFT`, W / 2, 20);
+      bar(W / 2 - 220, 28, 440, 8, (waveIdx + (1 - live.length / Math.max(1, waves[waveIdx].length))) / waves.length, '#b8bcc4');
     }
     if (combo >= 3 && gt - lastHitAt <= T.comboMs / 1000) {
       ctx.fillStyle = '#ff7a1a'; ctx.font = `900 ${Math.min(34, 18 + combo)}px system-ui`;
@@ -2663,6 +2890,15 @@ function drawOverlay() {
     ctx.fillText(r.parts.join('  ·  '), W / 2, 218);
     if (r.unlock) { ctx.fillStyle = '#ff7a1a'; ctx.font = '700 16px system-ui'; ctx.fillText(r.unlock, W / 2, 244); }
     if (result.hint) { ctx.fillStyle = '#e8c547'; ctx.font = '600 15px system-ui'; ctx.fillText(result.hint, W / 2, 244); }
+    if (result.stars) {                                       // this run's stars; dim = not this time
+      result.stars.forEach((got, k) => {
+        const x = W / 2 + (k - (result.stars.length - 1) / 2) * 170;
+        ctx.globalAlpha = got ? 1 : 0.35;
+        ctx.fillStyle = '#e8c547'; ctx.font = '900 34px system-ui'; ctx.fillText(got ? '★' : '☆', x, 290);
+        ctx.fillStyle = '#eceae4'; ctx.font = '600 13px system-ui'; ctx.fillText(level.run.stars[k].label, x, 312);
+      });
+      ctx.globalAlpha = 1;
+    }
   }
 }
 
@@ -2670,9 +2906,16 @@ function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if (shakeT > 0) { const a = shakeAmp * shakeT / shakeDur; ctx.translate(rand(-a, a), rand(-a, a) * 0.7); }
-  ctx.fillStyle = '#1b1e22'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
-  ctx.strokeStyle = '#2c3036'; ctx.lineWidth = 2; line(0, FLOOR, W, FLOOR);
+  if (run) {
+    drawRunBack();
+    ctx.translate(-Math.round(camX), 0);                     // world space from here on
+    drawRunWorld();
+  } else {
+    ctx.fillStyle = '#1b1e22'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    ctx.strokeStyle = '#2c3036'; ctx.lineWidth = 2; line(0, FLOOR, W, FLOOR);
+  }
   drawPlatforms();
+  if (run) drawPickups();
   monsters.forEach(drawTelegraph);
   drawLobMarkers();
   monsters.forEach(drawMonster);
@@ -2718,6 +2961,7 @@ function frame(now) {
       for (const p of players) if (p.ctrl === 'cpu') cpuThink(p);
       players.forEach(p => updatePlayer(p, sdt));
       decayRevives(sdt);
+      if (run && phase === 'fight' && !ko) updateRun(sdt);
       if (phase === 'fight' && !ko) {
         monsters.forEach(m => updateMonster(m, sdt));
         separate(sdt);
@@ -2879,7 +3123,7 @@ function exitPlay() {
 function lvStatus(l) {
   if (!levelOpen(l)) return `🔒 beat ${l.zone.levels[l.idx - 1].name} first`;
   const first = !wallet.clears[l.key], g = Math.round(l.gold * (first ? E.firstClearMult : freshOf(l.key)));
-  return `${l.format} · ${first ? `NEW · ${g}g` : `✓ ×${wallet.clears[l.key]} · ${Math.round(freshOf(l.key) * 100)}% fresh · ${g}g`}`;
+  return `${l.format}${l.run ? ` · ${starsText(l.key)}` : ''} · ${first ? `NEW · ${g}g` : `✓ ×${wallet.clears[l.key]} · ${Math.round(freshOf(l.key) * 100)}% fresh · ${g}g`}`;
 }
 function layoutPicker() {
   return `<div class="sub">Controls layout</div><div class="mrow">${Object.entries(LAYOUTS).map(([k, L]) =>

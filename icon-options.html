@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Icon Options</title>
+<!--
+  Throwaway prototype (docs/06-art-style.md, brand A · Chalk & Iron).
+  App icon alternatives drawn with the same fighter code as the app buddy and loaders (drawFighter from
+  fighter-around-app.html, which app/src/fighter/draw.ts ports): V-torso and muscle that bulk up with STR,
+  spiky hair, a headband in the player color, a soft glow, and the metal bar with orange outer plates.
+  Each option is a function in OPTIONS; it draws into a 1024 × 1024 canvas. Everything important stays inside
+  Android's adaptive-icon safe circle (the middle 61%), so one PNG can be both icon.png and the adaptive foreground.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #111317; --panel: #1a1d22; --panel2: #2d3138; --line: #33373d; --text: #f2efe8; --muted: #9a9ca0;
+          --p1: #ff7a1a; --disp: "Anton", Impact, "Arial Narrow", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.45 "Barlow Condensed", "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font: 34px/1.1 var(--disp); letter-spacing: .5px; margin: 6px 0 4px; }
+  h1 span { color: var(--p1); }
+  h2 { font: 24px/1.1 var(--disp); letter-spacing: .5px; margin: 34px 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 14px; max-width: 800px; }
+  .controls { position: sticky; top: 0; z-index: 5; background: rgba(17,19,23,.94); backdrop-filter: blur(6px);
+              border-bottom: 1px solid var(--line); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  .controls label { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 15px; }
+  input[type=range] { accent-color: var(--p1); }
+  select, button { font: inherit; font-size: 15px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  .out { color: var(--text); min-width: 96px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card.current { border-style: dashed; }
+  .card h3 { font: 20px var(--disp); letter-spacing: .5px; margin: 0; }
+  .card h3 small { font: 600 14px "Barlow Condensed", sans-serif; color: var(--p1); letter-spacing: 0; margin-left: 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.35; }
+  .big { width: 220px; height: 220px; align-self: center; }
+  .sizes { display: flex; align-items: flex-end; gap: 12px; justify-content: center; }
+  .sizes div { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); }
+  .card button { align-self: flex-start; }
+
+  .homes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .home { border-radius: 18px; padding: 18px 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 6px; }
+  .home.dark { background: linear-gradient(160deg, #1e2a3a, #0b0d12 70%); }
+  .home.light { background: linear-gradient(160deg, #e9eef5, #b9c6d6 80%); }
+  .home .app { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 12px system-ui, sans-serif; text-align: center; }
+  .home.dark .app { color: #e8eaee; }
+  .home.light .app { color: #1b1f26; }
+  .home canvas { width: 54px; height: 54px; }
+  .filler { width: 54px; height: 54px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<main>
+  <h1>App icon <span>options</span></h1>
+  <p class="sub">The current icon is a thin, hairless stick figure. The fighter has since grown a V-shaped torso, muscle that bulks up with STR, spiky hair, an orange headband and a soft glow. These options are drawn with the same fighter code as the buddy on the week card, so they match it exactly. Everything important stays inside Android's adaptive-icon safe circle, so one PNG can serve as both <code>icon.png</code> and the adaptive foreground.</p>
+
+  <div class="controls">
+    <label>Bulk <input id="lvl" type="range" min="1" max="50" value="25"> <span class="out" id="lvlOut"></span></label>
+    <label>Line boost <input id="lw" type="range" min="1" max="1.8" step="0.05" value="1.35"> <span class="out" id="lwOut"></span></label>
+    <label>Background <select id="bg"><option value="dark">Charcoal</option><option value="orange">Safety orange</option></select></label>
+    <label>Mask <select id="mask"><option value="circle">Circle (Pixel)</option><option value="squircle">Squircle (Samsung)</option><option value="square">Full square</option></select></label>
+    <label><input id="glow" type="checkbox" checked> Glow</label>
+    <label><input id="tails" type="checkbox" checked> Headband tails</label>
+    <label><input id="safe" type="checkbox"> Show safe zone</label>
+  </div>
+
+  <h2>Options</h2>
+  <p class="sub">Big preview uses the mask above. Small sizes are launcher size (48 dp is what most phones show). <b>Line boost</b> thickens the strokes for small sizes; 1 is exactly the in-app weight.</p>
+  <div class="grid" id="grid"></div>
+
+  <h2>On a home screen</h2>
+  <p class="sub">At real launcher size next to neutral placeholder apps, on a dark and a light wallpaper.</p>
+  <div class="homes">
+    <div class="home dark" id="homeDark"></div>
+    <div class="home light" id="homeLight"></div>
+  </div>
+</main>
+
+<script>
+// ---------------------------------------------------------------------------
+// Palette (docs/06 brand A · Chalk & Iron) and settings
+// ---------------------------------------------------------------------------
+const CHARCOAL = '#111317', INK = '#f2efe8', METAL = '#9aa3b5', ORANGE = '#ff7a1a', P2 = '#5c94f0';
+const GOLD = [255, 200, 60], BLUE_GLOW = [120, 170, 255];
+const TAU = Math.PI * 2;
+const S = { lvl: 25, lwK: 1.35, bg: 'dark', mask: 'circle', glow: true, safe: false, tails: true };
+
+function swole(l) {   // same points as art-mockups / fighter-around-app: Lv 1/10/25/50 → 0/.3/.65/1
+  const pts = [[1, 0], [10, 0.3], [25, 0.65], [50, 1]];
+  for (let i = 1; i < pts.length; i++) if (l <= pts[i][0]) { const [a, sa] = pts[i - 1], [b, sb] = pts[i]; return sa + (sb - sa) * (l - a) / (b - a); }
+  return 1;
+}
+const title = l => l >= 50 ? 'Absolute Unit' : l >= 25 ? 'Iron Devotee' : l >= 10 ? 'Gym Regular' : 'Fresh Recruit';
+// Colors flip on the orange background: the accent goes charcoal so the headband and plates still read.
+function theme() {
+  const dark = S.bg === 'dark';
+  return { bg: dark ? CHARCOAL : ORANGE, accent: dark ? ORANGE : CHARCOAL, ring: dark ? ORANGE : CHARCOAL, cut: dark ? CHARCOAL : ORANGE, metal: dark ? METAL : '#3a3f48' };
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton (copied from fighter-around-app.html)
+// ---------------------------------------------------------------------------
+const lerp = (a, b, k) => a + (b - a) * k;
+const L2 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k)];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const mul = (a, k) => [a[0] * k, a[1] * k];
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const sw = s => 9 + s * 13;   // shoulder half-width
+function axes(hip, neck) {
+  const dx = neck[0] - hip[0], dy = neck[1] - hip[1], d = Math.hypot(dx, dy) || 1;
+  const u = [dx / d, dy / d];
+  return { u, p: [-u[1], u[0]] };
+}
+function ik(a, b, l1, l2, pole) {
+  let dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1e-3, end = b;
+  const max = l1 + l2 - 0.01, min = Math.abs(l1 - l2) + 0.5;
+  if (d > max) { end = [a[0] + dx / d * max, a[1] + dy / d * max]; d = max; }
+  if (d < min) { end = [a[0] + dx / d * min, a[1] + dy / d * min]; d = min; }
+  const ang = Math.atan2(end[1] - a[1], end[0] - a[0]);
+  const A = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const e1 = [a[0] + Math.cos(ang + A) * l1, a[1] + Math.sin(ang + A) * l1];
+  const e2 = [a[0] + Math.cos(ang - A) * l1, a[1] + Math.sin(ang - A) * l1];
+  const d1 = (e1[0] - pole[0]) ** 2 + (e1[1] - pole[1]) ** 2, d2 = (e2[0] - pole[0]) ** 2 + (e2[1] - pole[1]) ** 2;
+  return [d1 < d2 ? e1 : e2, end];
+}
+function build(s, o) {
+  const front = !o.side, sh = sw(s), wa = 5 + s * 3;
+  const { u, p } = axes(o.hip, o.neck);
+  const at = (base, x, y) => [base[0] + p[0] * x - u[0] * y, base[1] + p[1] * x - u[1] * y];
+  const head = add(add(o.neck, mul(u, 11)), o.headOff || [0, 0]);
+  const shs = front ? [at(o.neck, -sh, -2), at(o.neck, sh, -2)] : [at(o.neck, -sh * 0.3, -2), at(o.neck, sh * 0.45, -2)];
+  const hps = front ? [at(o.hip, -(4 + s * 2), 0), at(o.hip, 4 + s * 2, 0)] : [at(o.hip, -2, 0), at(o.hip, 3, 0)];
+  const arms = [0, 1].map(i => {
+    const d = i ? 1 : -1, pole = o.armPole ? o.armPole[i] : front ? add(shs[i], [d * 30, 12]) : add(shs[i], [-18, 24]);
+    const [el, hand] = ik(shs[i], o.hands[i], 15, 15, pole); return [shs[i], el, hand];
+  });
+  const legs = [0, 1].map(i => {
+    const d = i ? 1 : -1, pole = o.legPole ? o.legPole[i] : front ? add(hps[i], [d * 26, 22]) : add(hps[i], [40, 20]);
+    const [kn, ft] = ik(hps[i], o.feet[i], 23, 23, pole); return [hps[i], kn, ft];
+  });
+  return { front, s, hip: o.hip, neck: o.neck, head, headR: 8.5 - s * 3, shW: front ? sh : sh * 0.55, waW: front ? wa : wa * 0.8, arms, legs };
+}
+
+// ---------------------------------------------------------------------------
+// Drawing (drawFighter from fighter-around-app.html, plus o.lwK for small sizes and o.blur because
+// canvas shadows ignore the transform)
+// ---------------------------------------------------------------------------
+function line(c, a, b) { c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
+function bulge(c, a, b, r) {
+  if (r < 0.6) return;
+  const m = L2(a, b, 0.5), ang = Math.atan2(b[1] - a[1], b[0] - a[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+  c.beginPath(); c.ellipse(m[0], m[1], len * 0.8, r, ang, 0, TAU); c.fill();
+}
+function aura(c, s, t, rgb, k) {
+  const n = 9, w = (20 + s * 26) * (0.8 + k * 0.3);
+  c.save();
+  for (let i = 0; i < n; i++) {
+    const x = -w + (2 * w) * i / (n - 1), h = (92 + 18 * Math.sin(t * 7 + i * 1.7) + s * 10) * (0.8 + k * 0.25);
+    const g = c.createLinearGradient(0, 0, 0, -h);
+    g.addColorStop(0, `rgba(${rgb.join(',')},${0.2 * k})`); g.addColorStop(1, `rgba(${rgb.join(',')},0)`);
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(x - 9, 2); c.quadraticCurveTo(x + 6 * Math.sin(t * 5 + i), -h * 0.6, x + 4 * Math.sin(t * 9 + i), -h); c.quadraticCurveTo(x + 6, -h * 0.5, x + 9, 2); c.fill();
+  }
+  c.restore();
+}
+function drawFighter(c, P, o) {
+  const s = P.s, K = o.lwK, lw = (3 + s * 4.5) * K, r = P.headR, ink = o.ink;
+  const { u, p } = axes(P.hip, P.neck), rot = Math.atan2(u[1], u[0]) + Math.PI / 2;
+  const H = (x, y) => [P.head[0] + p[0] * x - u[0] * y, P.head[1] + p[1] * x - u[1] * y];
+  const N = (x, y) => [P.neck[0] + p[0] * x - u[0] * y, P.neck[1] + p[1] * x - u[1] * y];
+  c.save();
+  c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = lw;
+  if (o.fx) { c.shadowColor = `rgba(${o.glow.join(',')},0.5)`; c.shadowBlur = 5 * o.blur; }
+  if (o.hair === 'ponytail') {
+    const a = H(0, -r + 1), q = H(-12, -r - 3), e = H(-13, 9);
+    c.lineWidth = 3.4 * K; c.beginPath(); c.moveTo(a[0], a[1]); c.quadraticCurveTo(q[0], q[1], e[0], e[1]); c.stroke(); c.lineWidth = lw;
+  }
+  const leg = L => { line(c, L[0], L[1]); line(c, L[1], L[2]); bulge(c, L[0], L[1], s * 5.5); bulge(c, L[1], L[2], s * 2.6); };
+  const arm = A => { line(c, A[0], A[1]); line(c, A[1], A[2]); bulge(c, A[0], A[1], 1 + s * 7); bulge(c, A[1], A[2], s * 3.2); c.beginPath(); c.arc(A[2][0], A[2][1], lw * 0.55 + s * 1.5, 0, TAU); c.fill(); };
+  leg(P.legs[0]);
+  if (s < 0.2) line(c, P.hip, P.neck);
+  else {
+    const a = N(-P.shW, 1), b = N(P.shW, 1), cc = add(P.hip, mul(p, P.waW)), d = add(P.hip, mul(p, -P.waW));
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.lineTo(cc[0], cc[1]); c.lineTo(d[0], d[1]); c.closePath(); c.fill(); c.stroke();
+  }
+  c.lineWidth = lw * (1 + s * 0.8); line(c, P.neck, H(0, r)); c.lineWidth = lw;
+  c.beginPath(); c.arc(P.head[0], P.head[1], r, 0, TAU); c.fill();
+  leg(P.legs[1]); arm(P.arms[0]); arm(P.arms[1]);
+  c.shadowBlur = 0;
+  // player color: headband
+  c.strokeStyle = o.accent; c.lineWidth = 2.6 * K;
+  c.beginPath(); c.arc(P.head[0], P.head[1], r, Math.PI * 1.08 + rot, Math.PI * 1.92 + rot); c.stroke();
+  // Icon only: the headband tails fly out to one side (in the app they only show in side view), so the accent reads.
+  if (o.tails) {
+    c.lineWidth = 2.2 * K;
+    const t1 = H(-r + 1, -3);
+    c.beginPath(); c.moveTo(t1[0], t1[1]); c.quadraticCurveTo(...H(-r - 6, -6), ...H(-r - 12, -2)); c.stroke();
+    c.beginPath(); c.moveTo(t1[0], t1[1]); c.quadraticCurveTo(...H(-r - 5, -1), ...H(-r - 10, 4)); c.stroke();
+  }
+  // muscle definition cut out in the background color
+  if (s > 0.55) {
+    c.strokeStyle = o.cut; c.lineWidth = 1.3 * Math.min(K, 1.2);
+    line(c, N(0, 6), N(0, 30));
+    for (const d of [-1, 1]) { const m = N(d * 6, 9); c.beginPath(); c.arc(m[0], m[1], 6, 0.2 + rot, Math.PI - 0.2 + rot); c.stroke(); }
+    if (s > 0.85) for (let k = 0; k < 3; k++) line(c, N(-4, 19 + k * 6), N(4, 19 + k * 6));
+  }
+  c.strokeStyle = ink; c.lineWidth = 2.4 * K;
+  if (o.hair === 'spiky') for (let k = -2; k <= 2; k++) {
+    const a = -Math.PI / 2 + k * 0.42 + rot, l2 = r + 6 + (k % 2 ? 1 : 3);
+    line(c, [P.head[0] + Math.cos(a) * r * 0.7, P.head[1] + Math.sin(a) * r * 0.7], [P.head[0] + Math.cos(a) * l2, P.head[1] + Math.sin(a) * l2]);
+  }
+  c.strokeStyle = o.cut; c.lineWidth = 1.4 * Math.min(K, 1.3);   // eyes
+  line(c, H(-4, -1), H(-1, 0)); line(c, H(4, -1), H(1, 0));
+  if (s >= 0.95 && o.sparkle) {   // level 50 comedy: sweat drop + sparkle
+    c.fillStyle = '#7fc8ff'; const [hx, hy] = H(9, -6);
+    c.beginPath(); c.moveTo(hx, hy); c.quadraticCurveTo(hx + 4, hy + 6, hx, hy + 7); c.quadraticCurveTo(hx - 4, hy + 6, hx, hy); c.fill();
+    const sp = add(P.arms[1][1], [8, -12]), k = 4;
+    c.strokeStyle = '#ffe27a'; c.lineWidth = 1.5 * K; line(c, [sp[0] - k, sp[1]], [sp[0] + k, sp[1]]); line(c, [sp[0], sp[1] - k], [sp[0], sp[1] + k]);
+  }
+  c.restore();
+}
+// The bar prop from drawProps: metal bar, plates stack up with bulk, the outermost one in the player color.
+function drawBar(c, x0, x1, y, s, o) {
+  const K = o.lwK;
+  c.save(); c.lineCap = 'round';
+  c.strokeStyle = o.metal; c.lineWidth = 2.6 * K; line(c, [x0, y], [x1, y]);
+  const n = 1 + Math.round(s * 2);
+  for (const [xe, inward] of [[x0, 1], [x1, -1]]) for (let j = 0; j < n; j++) {
+    const w = 4 * K, x = xe + inward * (3 * K + j * (w + 1)), hh = 13 + j * 5;
+    c.fillStyle = j === n - 1 ? o.accent : o.metal; c.fillRect(x - w / 2, y - hh / 2, w, hh);
+  }
+  c.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Poses
+// ---------------------------------------------------------------------------
+// Overhead lockout with a wide grip (a Y), so the arms frame the head instead of covering it.
+// Returns the pose and the bar ends.
+function lockout(s, dx = 0, spread = 13, grip = 14) {
+  const h = sw(s), y = -108;
+  const P = build(s, {
+    hip: [dx, -45], neck: [dx, -78], feet: [[dx - spread, 0], [dx + spread, 0]],
+    hands: [[dx - h - grip, y], [dx + h + grip, y]], armPole: [[dx - h - 40, -80], [dx + h + 40, -80]],
+  });
+  const a = P.arms[0][2], b = P.arms[1][2];
+  return { P, bar: [a[0] - 16, b[0] + 16, (a[1] + b[1]) / 2] };
+}
+// Double-biceps flex: upper arms out level with the shoulders, fists up by the head.
+function flex(s) {
+  const h = sw(s);
+  return build(s, {
+    hip: [0, -45], neck: [0, -78], feet: [[-14, 0], [14, 0]],
+    hands: [[-h - 12, -97], [h + 12, -97]], armPole: [[-h - 40, -84], [h + 40, -84]],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Icon options. Each draws in a 1024 space; fig(c, cx, groundY, scale, fn) sets up fighter space.
+// ---------------------------------------------------------------------------
+function look(extra = {}) {
+  const T = theme();
+  return { hair: 'spiky', ink: INK, accent: T.accent, cut: T.cut, metal: T.metal, glow: GOLD, fx: S.glow, lwK: S.lwK, blur: 1, sparkle: true, tails: S.tails, ...extra };
+}
+// Scale that keeps a figure (half width w, 112 tall, centered) inside the adaptive safe circle; its ground y.
+const fitK = (w, R = 305) => R / Math.hypot(w, 57);
+const groundY = k => 512 + 56 * k;
+function fig(c, cx, gy, k, fn) { c.save(); c.translate(cx, gy); c.scale(k, k); fn(k); c.restore(); }
+function pressFighter(c, s, o, k, dx = 0) {
+  const { P, bar } = lockout(s, dx);
+  o.blur = k;
+  drawFighter(c, P, o);
+  drawBar(c, bar[0], bar[1], bar[2], s, o);
+}
+
+const OPTIONS = [
+  { id: 'lockout', name: 'Lockout', tag: 'closest to today',
+    why: 'Today’s icon, redrawn as the real fighter: V-torso, spiky hair, orange headband, the metal bar with orange plates.',
+    draw(c, s) { const k = fitK(sw(s) + 32); fig(c, 512, groundY(k), k, k => pressFighter(c, s, look(), k)); } },
+
+  { id: 'ring', name: 'Ring break', tag: 'the icon doc 06 describes',
+    why: 'The fighter pressing through an orange ring, as the brand direction spells out. The bar ends punch through the ring.',
+    draw(c, s) {
+      const T = theme(), k0 = fitK(sw(s) + 32, 280), gy = groundY(k0), cy = 512;
+      const { P, bar } = lockout(s);
+      // The ring passes through the bar ends, so the bar always breaks through it.
+      const R = Math.hypot(bar[1] * k0, gy + bar[2] * k0 - cy);
+      c.save(); c.strokeStyle = T.ring; c.lineWidth = 34; c.beginPath(); c.arc(512, cy, R, 0, TAU); c.stroke(); c.restore();
+      fig(c, 512, gy, k0, k => {
+        const o = look(); o.blur = k;
+        // Cut the ring where the bar breaks through, plus a few shards.
+        const by = bar[2];
+        c.save(); c.fillStyle = T.bg;
+        for (const x of [bar[0], bar[1]]) {
+          c.save(); c.translate(x, by); c.rotate(x < 0 ? 0.2 : -0.2); c.fillRect(-6, -14, 12, 28); c.restore();
+          const d = x < 0 ? -1 : 1;
+          c.fillStyle = T.ring;
+          for (const [sx, sy, r, a] of [[d * 9, -16, 3.2, 0.6], [d * 13, 10, 2.6, -0.4], [d * 17, -4, 2, 1.1]]) {
+            c.save(); c.translate(x + sx, by + sy); c.rotate(a); c.fillRect(-r, -r * 0.6, r * 2, r * 1.2); c.restore();
+          }
+          c.fillStyle = T.bg;
+        }
+        c.restore();
+        drawFighter(c, P, o);
+        drawBar(c, bar[0], bar[1], bar[2], s, o);
+      });
+    } },
+
+  { id: 'closeup', name: 'Close-up', tag: 'best at 48 dp',
+    why: 'Cropped at the waist so the head, hair, headband and plates are twice as big. Reads best at launcher size.',
+    draw(c, s) { const k = 1.45 * fitK(sw(s) + 32); fig(c, 512, 512 + 82 * k, k, k => pressFighter(c, s, look(), k)); } },
+
+  { id: 'aura', name: 'Level up', tag: 'the game side',
+    why: 'Lockout with the gold level-up aura behind. Says “RPG” at a glance, at the cost of a busier background.',
+    draw(c, s) {
+      const g = c.createRadialGradient(512, 560, 40, 512, 560, 380);
+      g.addColorStop(0, 'rgba(255,200,60,0.28)'); g.addColorStop(1, 'rgba(255,200,60,0)');
+      c.fillStyle = g; c.fillRect(0, 0, 1024, 1024);
+      const L = document.createElement('canvas'); L.width = L.height = 1024;
+      const a = L.getContext('2d');
+      const k = fitK(sw(s) + 32);
+      fig(a, 512, groundY(k) + 8, k, () => { a.scale(1.25, 1.05); aura(a, s, 0.9, GOLD, 1.8); });
+      const m = a.createRadialGradient(512, 540, 60, 512, 540, 330);
+      m.addColorStop(0, '#000'); m.addColorStop(0.6, '#000'); m.addColorStop(1, 'rgba(0,0,0,0)');
+      a.globalCompositeOperation = 'destination-in'; a.fillStyle = m; a.fillRect(0, 0, 1024, 1024);
+      c.drawImage(L, 0, 0);
+      fig(c, 512, groundY(k), k, k => pressFighter(c, s, look(), k));
+    } },
+
+  { id: 'crew', name: 'Crew press', tag: 'co-op first',
+    why: 'Player 1 and Player 2 share one bar, since the pitch leads with the crew. Smallest fighters of the set.',
+    draw(c, s) {
+      const h = sw(s), gap = h + 16, k0 = fitK(gap + h + 30, 320);
+      fig(c, 512, groundY(k0), k0, k => {
+        const y = -108;
+        const mk = dx => build(s, { hip: [dx, -45], neck: [dx, -78], feet: [[dx - 11, 0], [dx + 11, 0]],
+          hands: [[dx - h - 12, y], [dx + h + 12, y]], armPole: [[dx - h - 40, -80], [dx + h + 40, -80]] });
+        const A = mk(-gap), B = mk(gap);
+        drawFighter(c, A, { ...look(), blur: k });
+        drawFighter(c, B, { ...look(), hair: 'ponytail', accent: S.bg === 'dark' ? P2 : '#1c3f8a', glow: BLUE_GLOW, blur: k });
+        drawBar(c, A.arms[0][2][0] - 14, B.arms[1][2][0] + 14, y, s, look());
+      });
+    } },
+
+  { id: 'flex', name: 'Absolute Unit', tag: 'the comedy',
+    why: 'Max bulk double-biceps flex with the sweat drop and sparkle. Funniest, but loses the barbell. Ignores the Bulk slider.',
+    draw(c, s) {
+      const T = theme();
+      c.save(); c.fillStyle = T.ring; c.globalAlpha = 0.9;
+      c.beginPath(); c.arc(512, 470, 150, 0, TAU); c.fill(); c.restore();
+      fig(c, 512, 790, 4.7, k => drawFighter(c, flex(1), { ...look(), cut: T.ring === ORANGE ? CHARCOAL : ORANGE, blur: k }));
+    } },
+];
+
+// ---------------------------------------------------------------------------
+// Rendering and previews
+// ---------------------------------------------------------------------------
+function renderIcon(opt, size = 1024, bgOn = true) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const c = cv.getContext('2d');
+  c.scale(size / 1024, size / 1024);
+  if (bgOn) { c.fillStyle = theme().bg; c.fillRect(0, 0, 1024, 1024); }
+  opt.draw(c, swole(S.lvl));
+  return cv;
+}
+function maskPath(c, n, kind) {
+  c.beginPath();
+  if (kind === 'circle') c.arc(n / 2, n / 2, n / 2, 0, TAU);
+  else if (kind === 'squircle') { // superellipse, n = 4
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * TAU, x = Math.sign(Math.cos(a)) * Math.abs(Math.cos(a)) ** 0.5, y = Math.sign(Math.sin(a)) * Math.abs(Math.sin(a)) ** 0.5;
+      const px = n / 2 + x * n / 2, py = n / 2 + y * n / 2;
+      i ? c.lineTo(px, py) : c.moveTo(px, py);
+    }
+  } else c.rect(0, 0, n, n);
+}
+// Adaptive icons: the launcher shows the middle 72 of 108 dp (the 1024 art is the full 108 dp layer).
+function paintPreview(canvas, src, cssSize, kind, safe = false) {
+  const dpr = window.devicePixelRatio || 1, n = Math.round(cssSize * dpr);
+  canvas.width = canvas.height = n; canvas.style.width = canvas.style.height = cssSize + 'px';
+  const c = canvas.getContext('2d');
+  c.clearRect(0, 0, n, n);
+  c.save(); maskPath(c, n, kind); c.clip();
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  const crop = kind === 'square' || !src.adaptive ? 0 : 1024 * (1 - 72 / 108) / 2;
+  const img = src.canvas;
+  const sc = img.width / 1024;
+  c.drawImage(img, crop * sc, crop * sc, img.width - 2 * crop * sc, img.height - 2 * crop * sc, 0, 0, n, n);
+  c.restore();
+  if (safe) {   // the 66 dp safe circle inside the 72 dp view
+    c.save(); c.setLineDash([6 * dpr, 5 * dpr]); c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 1.5 * dpr;
+    const shown = kind === 'square' || !src.adaptive ? 108 : 72;
+    c.beginPath(); c.arc(n / 2, n / 2, n / 2 * 66 / shown, 0, TAU); c.stroke(); c.restore();
+  }
+}
+
+const current = new Image();
+current.src = 'icon-512.png';
+
+function el(tag, props = {}, kids = []) { const e = Object.assign(document.createElement(tag), props); kids.forEach(k => e.append(k)); return e; }
+const SIZES = [96, 64, 48, 32];
+
+function render() {
+  document.getElementById('lvlOut').textContent = `Lv ${S.lvl} · ${title(S.lvl)}`;
+  document.getElementById('lwOut').textContent = `× ${S.lwK.toFixed(2)}`;
+  const grid = document.getElementById('grid'); grid.innerHTML = '';
+  const homeD = document.getElementById('homeDark'), homeL = document.getElementById('homeLight');
+  homeD.innerHTML = ''; homeL.innerHTML = '';
+  const srcs = [];
+  if (current.complete && current.naturalWidth) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1024;
+    cv.getContext('2d').drawImage(current, 0, 0, 1024, 1024);
+    srcs.push({ opt: { id: 'current', name: 'Current', tag: 'for comparison', why: 'What ships today (app/assets/images/icon.png).' }, canvas: cv, adaptive: true, current: true });
+  }
+  for (const opt of OPTIONS) srcs.push({ opt, canvas: renderIcon(opt), adaptive: true });
+
+  for (const src of srcs) {
+    const big = el('canvas', { className: 'big' });
+    paintPreview(big, src, 220, S.mask, S.safe);
+    const sizes = el('div', { className: 'sizes' }, SIZES.map(n => {
+      const cv = el('canvas'); paintPreview(cv, src, n, S.mask);
+      return el('div', {}, [cv, `${n}`]);
+    }));
+    const kids = [el('h3', { innerHTML: `${src.opt.name}<small>${src.opt.tag}</small>` }), big, sizes, el('p', { textContent: src.opt.why })];
+    if (!src.current) {
+      const b = el('button', { textContent: 'Download 1024 PNG' });
+      b.onclick = () => { const a = el('a', { download: `icon-${src.opt.id}-${S.bg}.png`, href: src.canvas.toDataURL('image/png') }); a.click(); };
+      kids.push(b);
+    }
+    grid.append(el('div', { className: 'card' + (src.current ? ' current' : '') }, kids));
+  }
+
+  const fillers = ['#3d7be0', '#e5484d', '#30a46c', '#f5d90a', '#8e4ec6', '#12a594'];
+  for (const home of [homeD, homeL]) {
+    let fi = 0;
+    for (const src of srcs) {
+      const cv = el('canvas'); paintPreview(cv, src, 54, S.mask);
+      home.append(el('div', { className: 'app' }, [cv, src.opt.name]));
+      if (fi < 2) home.append(el('div', { className: 'app' }, [el('div', { className: 'filler', style: `background:${fillers[fi++ + (home === homeL ? 2 : 0)]}` }), 'Other app']));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+$('lvl').oninput = e => { S.lvl = +e.target.value; render(); };
+$('lw').oninput = e => { S.lwK = +e.target.value; render(); };
+$('bg').onchange = e => { S.bg = e.target.value; render(); };
+$('mask').onchange = e => { S.mask = e.target.value; render(); };
+$('glow').onchange = e => { S.glow = e.target.checked; render(); };
+$('tails').onchange = e => { S.tails = e.target.checked; render(); };
+$('safe').onchange = e => { S.safe = e.target.checked; render(); };
+// URL settings, e.g. ?lvl=7&lw=1.4&bg=dark&glow=1&tails=1. Add &export=closeup&size=1024 to show only that icon,
+// full size at the top left, for a headless-browser screenshot (how the app's icon PNGs are made).
+const Q = new URLSearchParams(location.search);
+if (Q.has('lvl')) S.lvl = +Q.get('lvl');
+if (Q.has('lw')) S.lwK = +Q.get('lw');
+if (Q.has('bg')) S.bg = Q.get('bg');
+if (Q.has('glow')) S.glow = Q.get('glow') === '1';
+if (Q.has('tails')) S.tails = Q.get('tails') === '1';
+$('lvl').value = S.lvl; $('lw').value = S.lwK; $('bg').value = S.bg; $('glow').checked = S.glow; $('tails').checked = S.tails;
+const exportOpt = OPTIONS.find(o => o.id === Q.get('export'));
+if (exportOpt) {
+  const size = +(Q.get('size') || 1024);
+  const draw = () => { const cv = renderIcon(exportOpt, size); cv.style.display = 'block'; document.body.replaceChildren(cv); };
+  document.body.style.overflow = 'hidden';
+  draw();
+} else {
+  current.onload = render;
+  render();
+}
+if (!exportOpt && document.fonts) document.fonts.ready.then(render);
+</script>
+</body>
+</html>

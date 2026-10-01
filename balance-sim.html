@@ -140,6 +140,48 @@ const LIB = [
   X('sprints', 'Sprint Intervals', 'cardio', { SPD: 70, DEX: 20, FREE: 10 }, { met: 12 }),
   X('boxjump', 'Box Jump', 'bodyweight', { SPD: 45, DEX: 45, FREE: 10 }, { bw: 0.8 }),
   X('farmer', "Farmer's Carry", 'dumbbell', { STR: 50, END: 40, FREE: 10 }, { inc: 5 }),
+  // Added 2026-09-30 (library expansion); no pre-B14 split, so both options use the B14 values
+  X('cgbench', 'Close-Grip Bench Press', 'barbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('sumo', 'Sumo Deadlift', 'barbell', { STR: 75, DEX: 10, END: 5, FREE: 10 }, { inc: 10 }),
+  X('trapbar', 'Trap Bar Deadlift', 'barbell', { STR: 75, SPD: 10, END: 5, FREE: 10 }, { inc: 10 }),
+  X('pushpress', 'Push Press', 'barbell', { STR: 50, SPD: 30, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('goodmorning', 'Good Morning', 'barbell', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
+  X('shrug', 'Barbell Shrug', 'barbell', { STR: 85, END: 5, FREE: 10 }, { inc: 10 }),
+  X('skullcrusher', 'Skull Crusher', 'barbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('landmine180', 'Landmine 180', 'barbell', { DEX: 40, SPD: 30, STR: 20, FREE: 10 }, { inc: 5 }),
+  X('dbincline', 'Incline Dumbbell Bench Press', 'dumbbell', { STR: 75, DEX: 15, FREE: 10 }, { inc: 5 }),
+  X('bulgarian', 'Bulgarian Split Squat', 'dumbbell', { STR: 45, DEX: 45, FREE: 10 }, { inc: 5 }),
+  X('dbrdl', 'Dumbbell Romanian Deadlift', 'dumbbell', { STR: 70, DEX: 20, FREE: 10 }, { inc: 5 }),
+  X('dbfly', 'Dumbbell Fly', 'dumbbell', { STR: 80, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('hammer', 'Hammer Curl', 'dumbbell', { STR: 90, FREE: 10 }, { inc: 5 }),
+  X('reardelt', 'Rear Delt Fly', 'dumbbell', { STR: 65, END: 15, DEX: 10, FREE: 10 }, { inc: 5 }),
+  X('ohtriceps', 'Overhead Triceps Extension', 'dumbbell', { STR: 85, DEX: 5, FREE: 10 }, { inc: 5 }),
+  X('stepup', 'Step-up', 'dumbbell', { STR: 40, DEX: 40, END: 10, FREE: 10 }, { inc: 5 }),
+  X('dbshrug', 'Dumbbell Shrug', 'dumbbell', { STR: 85, END: 5, FREE: 10 }, { inc: 5 }),
+  X('getup', 'Turkish Get-up', 'kettlebell', { DEX: 60, STR: 30, FREE: 10 }, { inc: 5 }),
+  X('legext', 'Leg Extension', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('legcurl', 'Leg Curl', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('calfraise', 'Calf Raise', 'machine', { STR: 60, END: 30, FREE: 10 }, { inc: 10 }),
+  X('chestpress', 'Chest Press Machine', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('cablefly', 'Cable Fly / Pec Deck', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('machinepress', 'Machine Shoulder Press', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('hacksquat', 'Hack Squat', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 10 }),
+  X('facepull', 'Face Pull', 'machine', { STR: 60, DEX: 20, END: 10, FREE: 10 }, { inc: 5 }),
+  X('preacher', 'Preacher Curl', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('cablecrunch', 'Cable Crunch', 'machine', { STR: 80, END: 10, FREE: 10 }, { inc: 5 }),
+  X('crunch', 'Crunch / Sit-up', 'bodyweight', { END: 70, STR: 10, DEX: 10, FREE: 10 }, { bw: 0.3 }),
+  X('abwheel', 'Ab Wheel Rollout', 'bodyweight', { STR: 50, DEX: 30, END: 10, FREE: 10 }, { bw: 0.5 }),
+  X('glutebridge', 'Glute Bridge', 'bodyweight', { END: 50, STR: 40, FREE: 10 }, { bw: 0.5 }),
+  X('backext', 'Back Extension', 'bodyweight', { STR: 50, END: 40, FREE: 10 }, { bw: 0.5 }),
+  X('mountain', 'Mountain Climber', 'bodyweight', { END: 45, SPD: 35, DEX: 10, FREE: 10 }, { bw: 0.3 }),
+  X('sideplank', 'Side Plank', 'timed', { END: 70, DEX: 20, FREE: 10 }, { bw: 0.3 }),
+  X('hollow', 'Hollow Hold', 'timed', { END: 60, DEX: 30, FREE: 10 }, { bw: 0.3 }),
+  X('elliptical', 'Elliptical', 'cardio', { END: 70, SPD: 10, DEX: 10, FREE: 10 }, { met: 5 }),
+  X('stairs', 'Stair Climber', 'cardio', { END: 75, STR: 15, FREE: 10 }, { met: 9 }),
+  X('hike', 'Hiking', 'cardio', { END: 70, DEX: 20, FREE: 10 }, { met: 6 }),
+  X('airbike', 'Air Bike', 'cardio', { SPD: 50, END: 40, FREE: 10 }, { met: 10 }),
+  X('boxing', 'Boxing / Martial Arts', 'cardio', { DEX: 40, SPD: 30, END: 20, FREE: 10 }, { met: 9 }),
+  X('sports', 'Sports', 'cardio', { DEX: 40, SPD: 30, END: 20, FREE: 10 }, { met: 7 }),
 ];
 const EX = Object.fromEntries(LIB.map(e => [e.id, e]));
 const SPLITS_CURRENT = Object.fromEntries(LIB.map(e => [e.id, e.dist]));
@@ -172,6 +214,25 @@ const SPLITS_B14 = {
   swim: { END: 60, SPD: 20, DEX: 10, FREE: 10 }, rope: { DEX: 60, SPD: 30, FREE: 10 },
   yoga: { DEX: 80, END: 10, FREE: 10 }, jog: { END: 50, SPD: 35, DEX: 5, FREE: 10 },
   sprints: { SPD: 70, DEX: 20, FREE: 10 }, boxjump: { SPD: 45, DEX: 45, FREE: 10 }, farmer: { STR: 50, END: 40, FREE: 10 },
+  cgbench: { STR: 90, FREE: 10 }, sumo: { STR: 75, DEX: 10, END: 5, FREE: 10 },
+  trapbar: { STR: 75, SPD: 10, END: 5, FREE: 10 }, pushpress: { STR: 50, SPD: 30, DEX: 10, FREE: 10 },
+  goodmorning: { STR: 70, DEX: 20, FREE: 10 }, shrug: { STR: 85, END: 5, FREE: 10 }, skullcrusher: { STR: 90, FREE: 10 },
+  landmine180: { DEX: 40, SPD: 30, STR: 20, FREE: 10 }, dbincline: { STR: 75, DEX: 15, FREE: 10 },
+  bulgarian: { STR: 45, DEX: 45, FREE: 10 }, dbrdl: { STR: 70, DEX: 20, FREE: 10 },
+  dbfly: { STR: 80, DEX: 10, FREE: 10 }, hammer: { STR: 90, FREE: 10 },
+  reardelt: { STR: 65, END: 15, DEX: 10, FREE: 10 }, ohtriceps: { STR: 85, DEX: 5, FREE: 10 },
+  stepup: { STR: 40, DEX: 40, END: 10, FREE: 10 }, dbshrug: { STR: 85, END: 5, FREE: 10 },
+  getup: { DEX: 60, STR: 30, FREE: 10 }, legext: { STR: 80, END: 10, FREE: 10 }, legcurl: { STR: 80, END: 10, FREE: 10 },
+  calfraise: { STR: 60, END: 30, FREE: 10 }, chestpress: { STR: 80, END: 10, FREE: 10 },
+  cablefly: { STR: 80, END: 10, FREE: 10 }, machinepress: { STR: 80, END: 10, FREE: 10 },
+  hacksquat: { STR: 80, END: 10, FREE: 10 }, facepull: { STR: 60, DEX: 20, END: 10, FREE: 10 },
+  preacher: { STR: 80, END: 10, FREE: 10 }, cablecrunch: { STR: 80, END: 10, FREE: 10 },
+  crunch: { END: 70, STR: 10, DEX: 10, FREE: 10 }, abwheel: { STR: 50, DEX: 30, END: 10, FREE: 10 },
+  glutebridge: { END: 50, STR: 40, FREE: 10 }, backext: { STR: 50, END: 40, FREE: 10 },
+  mountain: { END: 45, SPD: 35, DEX: 10, FREE: 10 }, sideplank: { END: 70, DEX: 20, FREE: 10 },
+  hollow: { END: 60, DEX: 30, FREE: 10 }, elliptical: { END: 70, SPD: 10, DEX: 10, FREE: 10 },
+  stairs: { END: 75, STR: 15, FREE: 10 }, hike: { END: 70, DEX: 20, FREE: 10 }, airbike: { SPD: 50, END: 40, FREE: 10 },
+  boxing: { DEX: 40, SPD: 30, END: 20, FREE: 10 }, sports: { DEX: 40, SPD: 30, END: 20, FREE: 10 },
 };
 const applySplits = which => { for (const e of LIB) e.dist = (which === 'b14' ? SPLITS_B14 : SPLITS_CURRENT)[e.id] || SPLITS_CURRENT[e.id]; };
 const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
@@ -219,7 +280,7 @@ const DEFAULTS = {
   // boost XP = capXP × (1 − e^(−raw ÷ (capXP × importSoft)))
   importWeeks: 0, importCapLevels: 3, importSoft: 1,
   // levels and stat points
-  lvlBase: 100, lvlExp: 1.5, ptsPerLevel: 4, startStat: 8, free: 'even',
+  lvlBase: 100, lvlExp: 1.5, lvlOffset: 4, ptsPerLevel: 6, startStat: 8, free: 'even',
   // VIT from cadence goals: flat VIT points per week you hit your goal, more for a perfect month (every week of a 4-week block),
   // scaled by (weekly goal ÷ 3) ^ vitCadenceExp so a 6-day goal earns a bit more than a 3-day one
   vitWeek: 0.5, vitMonth: 2, vitCadenceExp: 0.5,
@@ -272,6 +333,7 @@ const CONTROLS = [
   ['Levels and stats'],
   ['lvlBase', 'XP to next level: base', 25, 400, 5],
   ['lvlExp', 'XP to next level: exponent', 1, 2.5, 0.05],
+  ['lvlOffset', 'XP to next level: offset (L + offset)', 0, 10, 1],
   ['ptsPerLevel', 'Stat points per level', 1, 10, 1],
   ['startStat', 'Starting value of each stat', 0, 20, 1],
   ['free', 'FREE points go to', { even: 'Spread evenly', main: 'Your top stat', weakest: 'Your weakest stat' }],
@@ -378,7 +440,7 @@ const ASSUMPTIONS = [
 // Engine
 // ===========================================================================
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const need = (L, c) => Math.round(c.lvlBase * Math.pow(L, c.lvlExp));
+const need = (L, c) => Math.round(c.lvlBase * Math.pow(L + (c.lvlOffset || 0), c.lvlExp));
 const epley = (load, reps) => load * (1 + reps / 30);
 const loadOf = (def, added, bw) => added + bw * (def.bw || 0);
 const isLoaded = k => ['barbell', 'dumbbell', 'kettlebell', 'machine', 'weighted'].includes(k);
