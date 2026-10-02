@@ -163,6 +163,35 @@
   #menu .mrow button { flex: 1; min-width: 90px; }
   #menu button.sel { border-color: var(--p1); }
   #menu .sub { margin: 6px 0 0; }
+  /* World map and tower (A12) */
+  body.play #menu.show.map, body.play #menu.show.tower { inset: 2% 2% 2% 2%; padding: 8px 10px; gap: 6px; }
+  #menu .maphead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #menu .maphead h3 { margin-right: auto; }
+  #menu .maphead button { padding: 6px 10px; }
+  #menu .chip { font-size: 12px; color: var(--muted); }
+  #menu .chip b { color: var(--text); }
+  #menu .mapwrap { position: relative; overflow-x: auto; overflow-y: hidden; flex: 0 0 auto; height: 240px; border-radius: 10px; touch-action: pan-x; border: 1px solid var(--line); }
+  #menu .mapin { position: relative; height: 240px; }
+  #menu .mapin svg { position: absolute; inset: 0; }
+  #menu .node { position: absolute; transform: translate(-50%, -50%); width: 46px; height: 46px; border-radius: 50%; padding: 0; font-size: 21px; line-height: 1;
+    display: flex; align-items: center; justify-content: center; background: #2a2e33; border: 2px solid #50555d; }
+  #menu .node.boss { width: 58px; height: 58px; font-size: 27px; }
+  #menu .node.done { border-color: #7ee08a; }
+  #menu .node.open { border-color: var(--p1); box-shadow: 0 0 0 4px rgba(255,122,26,.3); }
+  #menu .node.locked, #menu .node.soon { filter: grayscale(1); opacity: .5; }
+  #menu .node.sel { outline: 3px solid #e8c547; outline-offset: 2px; }
+  #menu .nlabel { position: absolute; transform: translateX(-50%); font-size: 11px; font-weight: 700; color: #eceae4; white-space: nowrap; text-shadow: 0 1px 3px #000, 0 0 2px #000; pointer-events: none; text-align: center; line-height: 1.25; }
+  #menu .nlabel i { font-style: normal; color: #e8c547; }
+  #menu .zlabel { position: absolute; top: 6px; font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: rgba(236,234,228,.75); pointer-events: none; white-space: nowrap; }
+  #menu .ncard { display: flex; gap: 10px; align-items: center; background: #1e2125; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  #menu .ncard .txt { flex: 1; font-size: 13px; min-width: 0; }
+  #menu .ncard .txt small { display: block; color: var(--muted); font-size: 11px; }
+  #menu .ncard .txt .scout { color: #e8c547; }
+  #menu .ncard button { flex: 0 0 auto; }
+  #menu .floors { display: flex; flex-direction: column; gap: 4px; }
+  #menu .floors button { text-align: left; }
+  #menu .floors button.boss { border-color: #b48cff; }
+  #menu .floors button.next { border-color: var(--p1); }
   @media (orientation: portrait) {
     body.play #rotate { display: flex; position: absolute; inset: 0; z-index: 10; background: #15171a; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 20px; }
   }
@@ -171,7 +200,7 @@
 <body>
 <header>
   <h1>BARBELL BRAWL · Realtime Brawl</h1>
-  <span>Prototype: stick fighters vs Zone 1's excuse swarm, the Bridge Troll and Oni Bro, solo or co-op. Red = incoming attack. Jump it, duck it, dodge it, or block it.</span>
+  <span>Prototype: stick fighters vs Zone 1's excuse swarm, the Bridge Troll and Oni Bro, solo or co-op. Read each monster's windup, then jump it, duck it, dodge it, or block it (Attack tells in Game feel: full, subtle or pose only).</span>
 </header>
 
 <main>
@@ -260,6 +289,7 @@
       <details open>
         <summary>Game feel (E5)</summary>
         <div class="row"><button id="juiceOn">All on</button><button id="juiceOff">All off</button><button id="juiceReset">Reset</button></div>
+        <div class="row"><label for="tells">Attack tells</label><select id="tells"></select></div>
         <div class="toggles" id="juiceToggles"></div>
         <div class="jv" id="juiceVals"></div>
         <p class="hint">Changes apply instantly, mid-fight. Flip <b>All off</b> / <b>All on</b> to compare. Haptics only work on a phone (Android Chrome). Sound starts on the first Start or R. Player knockback distance is <code>knockback</code> under Tuning.</p>
@@ -317,7 +347,9 @@ const DEFAULT_TUNING = {
   kickRangeBonus: 10,                 // air kick reaches a little farther
   bodyBlock: 1,                       // 1 = players can't walk through grounded monsters (overlap split by weight)
   bodyRadius: 14,                     // half-width of a player's body for collisions
-  dodgeThroughMinions: 1,             // 1 = a dodge roll passes through minions (never through elites or bosses)
+  dodgeThroughMinions: 1,             // 1 = a dodge roll passes through minions
+  dodgeThroughBig: 1,                 // 1 = it also passes through elites and bosses: roll to the other side (founder, 2026-10-01)
+  crouchReadChance: 0.85,             // elites and bosses pick their low or overhead attack this often when you're crouching
   kbPerStr: 1.2,                      // monster push per hit (px) = kbPerStr × STR ÷ monster weight
   kickKbMult: 1.5, specialKbMult: 2.5,
   launchAt: 40,                       // a push this big launches the monster (interrupts its attack)
@@ -419,18 +451,18 @@ const MONSTERS = {
   },
   troll: {
     name: 'Bridge Troll', kit: 'troll', rank: 'elite', enrage: true, hp: 520, width: 110, height: 175, speed: 70, color: '#6f8f5a', weight: 2,
-    hint: '"10 push-ups to pass." Club swings at HIGH (duck) and overhead smashes that go LOW (jump). Its GRAB can\'t be blocked: dodge or jump, or get thrown across the arena.',
+    hint: '"10 push-ups to pass." Club swings at HIGH (duck) and OVERHEAD smashes (dodge, or get out of reach). Its GRAB can\'t be blocked: dodge or jump, or get thrown across the arena.',
     attacks: {
       club:  { windup: 650, active: 150, recover: 700, range: 150, dmg: 18, height: 'high' },
-      smash: { windup: 850, active: 160, recover: 800, range: 140, dmg: 24, height: 'low' },
+      smash: { windup: 850, active: 160, recover: 800, range: 140, near: 110, dmg: 24, height: 'overhead' },
       grab:  { windup: 700, recover: 900, range: 90, dmg: 20, height: 'grab', throwPx: 260 },
     },
   },
   oni: {
     name: 'Oni Bro', kit: 'heavy', rank: 'boss', enrage: true, hp: 820, width: 120, height: 205, speed: 50, color: '#d04830', weight: 3.2, flexAfterHit: 0.9,
-    hint: '"The rack is mine." The Plate Golem\'s heavy kit with a kanabo: LOW slam shockwave (jump it), HIGH club sweep (duck it), rolling plates at range (LOW), lobbed plates at bench-sitters. HEAVY. He flexes after every hit that lands: free hits.',
+    hint: '"The rack is mine." The Plate Golem\'s heavy kit with a kanabo: OVERHEAD kanabo slam (dodge it or get out of reach: jumping or blocking won\'t help, but you can jump the LOW shockwave past it), HIGH club sweep (duck it), rolling plates at range (LOW), lobbed plates at bench-sitters. HEAVY. He flexes after every hit that lands: free hits.',
     attacks: {
-      slam:  { windup: 900, active: 160, recover: 900, range: 170, dmg: 30, height: 'low' },
+      slam:  { windup: 900, active: 160, recover: 900, range: 170, near: 120, dmg: 30, height: 'overhead' },
       sweep: { windup: 650, active: 150, recover: 750, range: 175, dmg: 20, height: 'high' },
       throw: { windup: 700, recover: 700, dmg: 18, speed: 280, height: 'low' },
       lob:   { windup: 750, recover: 700, dmg: 20, flight: 0.9, radius: 48, height: 'mid' },
@@ -474,9 +506,9 @@ const MONSTERS = {
   },
   golem: {
     name: 'Forge Golem', kit: 'heavy', rank: 'boss', enrage: true, hp: 650, width: 120, height: 200, speed: 45, color: '#8e939c', weight: 3,
-    hint: 'Was the Plate Golem. Slow and tanky, built from iron plates, and HEAVY: it takes a lot of STR to launch. Its slam sends a LOW shockwave along the ground (jump it or crouch-block). Its arm sweep is HIGH (duck it or stand-block). It rolls plates (LOW) at distant targets and lobs them at anyone up on a bench.',
+    hint: 'Was the Plate Golem. Slow and tanky, built from iron plates, and HEAVY: it takes a lot of STR to launch. Its OVERHEAD slam can\'t be jumped or blocked: dodge it or get out of reach (the LOW shockwave past it can be jumped). Its arm sweep is HIGH (duck it or stand-block). It rolls plates (LOW) at distant targets and lobs them at anyone up on a bench.',
     attacks: {
-      slam:  { windup: 900, active: 160, recover: 900, range: 170, dmg: 28, height: 'low' },
+      slam:  { windup: 900, active: 160, recover: 900, range: 170, near: 120, dmg: 28, height: 'overhead' },
       sweep: { windup: 650, active: 150, recover: 750, range: 170, dmg: 18, height: 'high' },
       throw: { windup: 700, recover: 700, dmg: 18, speed: 280, height: 'low' },
       lob:   { windup: 750, recover: 700, dmg: 20, flight: 0.9, radius: 48, height: 'mid' },
@@ -600,6 +632,73 @@ const cleared = k => (wallet.clears[k] || 0) > 0;
 const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || (lv.idx === 0 ? !lv.zone.after || lv.zone.after.some(cleared) : cleared(lv.zone.levels[lv.idx - 1].key));
 const lockText = lv => lv.idx === 0 ? `beat ${LEVELS[lv.zone.after[0]].name} first` : `beat ${lv.zone.levels[lv.idx - 1].name} first`;
 
+// ---------------------------------------------------------------------------
+// The world map (A12): Zones 1–5 as a Mario-style map, then Castle Tomorrow as the endless tower. Nodes point at
+// levels; needs = any of these cleared opens the node (gating is a boss win only). x/y are map px (the map is 240 tall).
+// soon = a boss that isn't built yet. The tower opening after Zone 2 is a prototype shortcut (in the game: after Zone 5).
+// ---------------------------------------------------------------------------
+const MAP_W = 2320;
+const MAP_ZONES = [
+  { name: '1 · The Comfort Zone', x0: 0, x1: 470, sky: '#3b4a33', ground: '#2c3826' },
+  { name: '2 · Whispering Woods', x0: 470, x1: 960, sky: '#1d3226', ground: '#16261c' },
+  { name: '3 · Iron Mountains', x0: 960, x1: 1380, sky: '#3a3a44', ground: '#2a2a32' },
+  { name: '4 · Rainy Marsh', x0: 1380, x1: 1720, sky: '#213a3e', ground: '#182c2e' },
+  { name: '5 · Plateau Peaks', x0: 1720, x1: 2060, sky: '#4a5262', ground: '#363c48' },
+  { name: '6 · Castle Tomorrow', x0: 2060, x1: MAP_W, sky: '#2a2036', ground: '#1e1828' },
+];
+const MAP_NODES = [
+  { id: 'z1swarm', x: 80, y: 160 },
+  { id: 'z1troll', x: 200, y: 92, needs: ['z1swarm'] },
+  { id: 'z1run', x: 380, y: 118, needs: ['z1troll'], boss: true },
+  { id: 'z1oni', x: 300, y: 172, needs: ['z1troll'], side: true },
+  { id: 'z2swarm', x: 580, y: 160, needs: ['z1run', 'z1oni'] },
+  { id: 'z2run', x: 790, y: 92, needs: ['z2swarm'], boss: true },
+  { id: 'z2kitsune', x: 880, y: 172, needs: ['z2swarm'], side: true },
+  { id: 'golem', x: 1090, y: 150, needs: ['z2run', 'z2kitsune'], preview: true },
+  { id: 'soon-minotaur', x: 1270, y: 88, soon: 'Minotaur Champion', icon: '🐂' },
+  { id: 'soon-hydra', x: 1550, y: 140, soon: 'Excuse Hydra', icon: '🐉' },
+  { id: 'wraith', x: 1800, y: 168, needs: ['golem'], preview: true },
+  { id: 'soon-wyrm', x: 1960, y: 92, soon: 'Plateau Wyrm', icon: '🐲' },
+  { id: 'tower', x: 2190, y: 118, needs: ['z2run', 'z2kitsune'], tower: true, boss: true },
+];
+// Castle Tomorrow: endless floors from a formula. Monsters get tougher every floor; every 5th floor is a boss floor
+// (an old boss at boosted stats). All numbers are placeholders ❓ (A12: the tower's floor formula is still open).
+const TOWER = {
+  hpPerFloor: 0.06, dmgPerFloor: 0.04,         // floor f: monster HP × (1 + hpPerFloor × (f − 1)), damage likewise
+  bossEvery: 5, bosses: ['troll', 'oni', 'golem', 'kitsune', 'wraith'],   // in rising difficulty
+  minions: [['snack', 1], ['couch', 1], ['snooze', 3], ['doom', 4], ['goblin', 6]],   // [monster, first floor it shows up]
+  waves: 2, wavesPer: 12,                      // swarm floors: 2 waves, +1 every 12 floors
+  size: 3, sizePer: 7, sizeMax: 5,             // monsters per wave: 3, +1 every 7 floors, at most 5
+  eliteFrom: 12, eliteEvery: 4,                // an elite replaces a minion in the last wave on every 4th floor from 12 (a mini-wall)
+  chaffFrom: 22,                               // from floor 22 an old boss joins the last wave
+  gold: 20, goldPerFloor: 4,
+};
+const TOWER_ZONE = { name: 'Castle Tomorrow · the tower', ladder: true, levels: [] };
+const towerKey = f => 'tower' + f;
+const towerBest = () => { let b = 0; for (const k in wallet.clears) if (k.startsWith('tower') && wallet.clears[k] > 0) b = Math.max(b, +k.slice(5)); return b; };
+function towerFloor(f) {
+  const key = towerKey(f);
+  if (LEVELS[key]) return LEVELS[key];
+  const boss = f % TOWER.bossEvery === 0, pick = (i, list) => list[Math.floor(hash(f * 31 + i * 7) * list.length)];
+  let waves, name;
+  if (boss) {
+    const b = TOWER.bosses[(f / TOWER.bossEvery - 1) % TOWER.bosses.length];
+    waves = [[b]]; name = `Floor ${f} · ${MONSTERS[b].name}`;
+  } else {
+    const T2 = TOWER, pool = T2.minions.filter(([, at]) => f >= at).map(([k]) => k), nWaves = T2.waves + Math.floor(f / T2.wavesPer);
+    waves = Array.from({ length: nWaves }, (_, w) => Array.from({ length: Math.min(T2.sizeMax, T2.size + Math.floor(f / T2.sizePer)) }, (_, j) => pick(w * 10 + j, pool)));
+    if (f >= T2.eliteFrom && f % T2.eliteEvery === 0) waves[nWaves - 1][0] = pick(99, ['troll', 'wraith']);   // an elite now and then
+    if (f >= T2.chaffFrom) waves[nWaves - 1].push(pick(98, ['oni', 'kitsune']));                              // old bosses come back as chaff
+    name = `Floor ${f}`;
+  }
+  const lv = { key, name, format: boss ? 'Boss floor' : 'Swarm Waves', gold: TOWER.gold + TOWER.goldPerFloor * f, waves, tower: f,
+               scale: { hp: 1 + TOWER.hpPerFloor * (f - 1), dmg: 1 + TOWER.dmgPerFloor * (f - 1) }, zone: TOWER_ZONE, idx: f - 1 };
+  TOWER_ZONE.levels[f - 1] = lv; LEVELS[key] = lv;
+  $('#towerOpts').insertAdjacentHTML('beforeend', `<option value="${key}">${name} (tower)</option>`);
+  return lv;
+}
+const ensureTower = n => { for (let f = 1; f <= n; f++) towerFloor(f); };
+
 // Benches: one-way platforms you can jump onto from below.
 const PLATFORMS = [
   { x1: 90, x2: 250, h: 100 },
@@ -611,7 +710,7 @@ const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
 const PRESETS = {
   Balanced:    { STR: 16, SPD: 16, DEX: 16, END: 16, VIT: 16 },
   Powerlifter: { STR: 34, SPD: 8, DEX: 10, END: 10, VIT: 18 },
-  Runner:      { STR: 10, SPD: 26, DEX: 20, END: 14, VIT: 10 },
+  'Fast runner': { STR: 10, SPD: 26, DEX: 20, END: 14, VIT: 10 },
   Beginner:    { STR: 8, SPD: 8, DEX: 8, END: 8, VIT: 8 },
   Veteran:     { STR: 24, SPD: 24, DEX: 24, END: 24, VIT: 24 },
   // Benchmarks from the balance sim (2026-10-01): every stat starts at 8, +6 points per level, split by training.
@@ -621,8 +720,36 @@ const PRESETS = {
   'L5 runner':    { STR: 8, SPD: 23, DEX: 12, END: 12, VIT: 10 },   // week 3
   'L8 lifter':    { STR: 40, SPD: 9, DEX: 13, END: 11, VIT: 13 },   // week 10
   'L8 runner':    { STR: 9, SPD: 34, DEX: 15, END: 15, VIT: 14 },   // week 7
+  'L12 lifter':   { STR: 54, SPD: 9, DEX: 15, END: 12, VIT: 16 },   // about week 18 (the Lifter build at level 12)
+  'L12 runner':   { STR: 9, SPD: 44, DEX: 18, END: 18, VIT: 17 },   // about week 13
+  'L16 lifter':   { STR: 71, SPD: 10, DEX: 18, END: 14, VIT: 19 },  // about week 30
 };
-const BENCH = ['L1 fresh', 'L3 lifter', 'L5 lifter', 'L5 runner', 'L8 lifter', 'L8 runner'];
+const BENCH = ['L1 fresh', 'L3 lifter', 'L5 lifter', 'L5 runner', 'L8 lifter', 'L8 runner', 'L12 lifter', 'L12 runner', 'L16 lifter'];
+// Level from stats, the way the real game grows a fighter (docs/03): every stat starts at 8, +6 points per level.
+const START_STAT = 8, PTS_PER_LEVEL = 6, MAX_LEVEL = 30;
+const levelOf = s => 1 + Math.max(0, Math.floor((statSum(s) - START_STAT * STATS.length) / PTS_PER_LEVEL));
+const ptsToNext = s => PTS_PER_LEVEL - (statSum(s) - START_STAT * STATS.length) % PTS_PER_LEVEL;
+// Builds: where a level's points go, from the balance sim's trainers (2026-10-01, levels 1 → 8).
+const BUILDS = {
+  Lifter: { STR: 0.70, SPD: 0.02, DEX: 0.11, END: 0.07, VIT: 0.10, desc: 'StrongLifts: squats, deadlifts, presses' },
+  Runner: { STR: 0.02, SPD: 0.55, DEX: 0.15, END: 0.15, VIT: 0.13, desc: 'Runs and rides' },
+  Hybrid: { STR: 0.29, SPD: 0.24, DEX: 0.09, END: 0.29, VIT: 0.09, desc: 'Lifting plus circuits and cardio' },
+  Even:   { STR: 0.20, SPD: 0.20, DEX: 0.20, END: 0.20, VIT: 0.20, desc: 'The same in every stat' },
+};
+// A fighter of a build at a level: 8 in everything plus that level's points split by the build (rounding kept exact).
+function statsFor(shares, level) {
+  const pts = PTS_PER_LEVEL * (level - 1), out = {};
+  let given = 0;
+  for (const k of STATS) { out[k] = START_STAT + Math.floor(shares[k] * pts); given += out[k] - START_STAT; }
+  const order = [...STATS].sort((a, b) => (shares[b] * pts % 1) - (shares[a] * pts % 1));
+  for (let i = 0; given < pts; i++, given++) out[order[i % order.length]]++;
+  return out;
+}
+// Move a fighter to another level and keep the shape of what they trained (a fresh level 1 grows as Even).
+function relevel(cur, level) {
+  const gains = Object.fromEntries(STATS.map(k => [k, Math.max(0, cur[k] - START_STAT)])), sum = statSum(gains);
+  return statsFor(sum ? Object.fromEntries(STATS.map(k => [k, gains[k] / sum])) : BUILDS.Even, clamp(level, 1, MAX_LEVEL));
+}
 const benchLevel = k => +k.slice(1, k.indexOf(' '));
 const COLORS = ['#ff7a1a', '#2ec4b6'];
 
@@ -708,9 +835,13 @@ function payout(lv, coopLive) {
   return { gold: g, parts, unlock };
 }
 const setup = [
-  { preset: 'Balanced', stats: { ...PRESETS.Balanced }, level: 8 },
-  { preset: 'Runner', stats: { ...PRESETS.Runner }, level: 5 },
+  { preset: 'Balanced', stats: { ...PRESETS.Balanced }, level: 7 },
+  { preset: 'Fast runner', stats: { ...PRESETS['Fast runner'] }, level: 7 },
 ];
+let realStats = false;   // the app passed in the player's real stats: no level controls in play mode
+// In a browser, P1's test fighter (build, stats) is remembered between visits; the app always passes real stats instead.
+try { const f = JSON.parse(localStorage.getItem('bb-brawl-fighter')); if (f && f.stats && STATS.every(k => f.stats[k] > 0)) Object.assign(setup[0], { preset: f.preset, stats: f.stats }); } catch (e) {}
+const saveFighter = () => { if (!realStats) try { localStorage.setItem('bb-brawl-fighter', JSON.stringify({ preset: setup[0].preset, stats: setup[0].stats })); } catch (e) {} };
 
 // ---------------------------------------------------------------------------
 // World
@@ -943,6 +1074,8 @@ function startFight() {
     const b = coopBlend(host, helper);
     coopScaleNow = { hp: T.coopHpMult * b, dmg: b, blend: b };
   }
+  if (lv.scale) coopScaleNow = { ...coopScaleNow, hp: coopScaleNow.hp * lv.scale.hp, dmg: coopScaleNow.dmg * lv.scale.dmg };   // tower floors
+  if (lv.tower) ensureTower(lv.tower + 1);   // so a win can offer the next floor
   monsters = []; waveIdx = 0; waveGap = null; camX = 0; LEFT = 30; RIGHT = W - 30;
   run = lv.run ? { enc: 0, locked: false, pickups: lv.run.pickups.map(q => ({ ...q })), plates: 0, shakes: 0 } : null;
   platforms = lv.run ? lv.run.platforms : PLATFORMS;
@@ -1158,9 +1291,10 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
   if (!alive(p) || phase !== 'fight' || ko) return false;
   if (gt < p.iUntil) { p.dodges++; floater('DODGE', p.x, FLOOR - p.y - 140, '#9fe3ff', 16); return false; }
   if (J.on.grace && gt < p.graceUntil) return false;
-  if (height === 'high' && p.crouch && p.onGround) { p.ducks++; floater('DUCK', p.x, FLOOR - p.y - 110, '#9fe3ff', 16); return false; }
+  // A crouch ducks HIGH attacks, but a low sweep is a swing, not a duck: HIGH attacks hit you mid-sweep.
+  if (height === 'high' && p.crouch && p.onGround && p.state !== 'attack') { p.ducks++; floater('DUCK', p.x, FLOOR - p.y - 110, '#9fe3ff', 16); return false; }
   let dmg = rawDmg * T.monsterDmgMult;
-  const unblockable = height === 'grab' || height === 'ring';
+  const unblockable = height === 'grab' || height === 'ring' || height === 'overhead';
   const facingSrc = sign(srcX - p.x) === p.facing;
   const heightOk = !unblockable && (height === 'mid' || (height === 'high' ? !p.crouch : p.crouch));
   const blocking = p.state === 'block' && p.st > 0 && facingSrc;
@@ -1494,6 +1628,11 @@ function cpuThink(p) {
     const prog = t.t / (a.windup / 1000 / speedMult(t));
     if (r.miss || prog < r.at || !p.onGround || !threatens(t, a, p, d)) continue;   // miss: a bot standing in for a human doesn't react
     const h = a.height;
+    if (h === 'overhead' && !(a.near && d > a.near + t.def.width / 2 + 10)) {   // under the arc: roll out, or back off
+      if (p.st >= T.dodgeCost) inp.press.dodge = gt; else goTo(p.x + sign(p.x - t.x) * 100);
+      return;
+    }
+    if (h === 'overhead') { inp.press.jump = gt; return; }                         // out past the arc: jump the shockwave
     if (h === 'high' && r.jump) inp.down = true;                                  // duck under it
     else if ((h === 'low' || h === 'grab') && r.jump) inp.press.jump = gt;         // jump it
     else if (p.st >= T.dodgeCost) inp.press.dodge = gt;
@@ -1567,6 +1706,12 @@ function strike(m, a, height, test) {
   for (const p of players) if (alive(p) && test(p, (p.x - m.x) * m.facing)) hurtPlayer(p, a.dmg * m.dmgMult, m.x, height, m);
 }
 const inFront = (m, a, rel, extra = 0) => rel > -20 && rel < a.range + extra;
+// An overhead slam: anyone under the weapon's arc is hit however high they jump (dodge or step out); past the arc,
+// a LOW shockwave runs along the ground (jump it or crouch-block).
+function slamStrike(m, a) {
+  strike(m, a, 'overhead', (p, rel) => rel > -20 && rel < a.near);
+  strike(m, a, 'low', (p, rel) => rel >= a.near && rel < a.range && p.y < 25);
+}
 function cheatDay(m) {
   const c = MONSTERS.snack.attacks.cheat;
   floater('CHEAT DAY!', m.x, FLOOR - m.y - m.def.height - 24, '#e0555a', 16);
@@ -1578,14 +1723,13 @@ const KITS = {
     walk(m, dt, tgt, dist, ef) {
       const A = m.def.attacks, elevated = tgt.support > 0 && tgt.onGround;
       if (m.cd <= 0 && elevated) startAttack(m, 'lob', tgt);
-      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, Math.random() < 0.5 ? 'slam' : 'sweep', tgt);
+      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, Math.random() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'slam' : 'sweep', tgt);
       else if (m.cd <= 0 && dist > 280) startAttack(m, 'throw', tgt);
       else if (dist > A.slam.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
     },
     fire(m, a, tgt) {
       if (m.attack === 'slam') {
-        m.state = 'active'; doShake(1.3); sfx.slam();
-        strike(m, a, 'low', (p, rel) => inFront(m, a, rel) && p.y < 25);         // ground shockwave: jump it or crouch-block
+        m.state = 'active'; doShake(1.3); sfx.slam(); slamStrike(m, a);
       } else if (m.attack === 'sweep') {
         m.state = 'active';
         strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50);        // head-height sweep: duck it
@@ -1620,12 +1764,12 @@ const KITS = {
     walk(m, dt, tgt, dist, ef) {
       const A = m.def.attacks;
       if (m.cd <= 0 && dist < A.grab.range + m.def.width / 2 - 20 && tgt.onGround && Math.random() < 0.4) startAttack(m, 'grab', tgt);
-      else if (m.cd <= 0 && dist < A.club.range + 10) startAttack(m, Math.random() < 0.5 ? 'club' : 'smash', tgt);
+      else if (m.cd <= 0 && dist < A.club.range + 10) startAttack(m, Math.random() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'smash' : 'club', tgt);
       else if (dist > A.grab.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
     },
     fire(m, a) {
       if (m.attack === 'club') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50); }
-      else if (m.attack === 'smash') { m.state = 'active'; doShake(1.1); sfx.slam(); strike(m, a, 'low', (p, rel) => inFront(m, a, rel) && p.y < 25); }
+      else if (m.attack === 'smash') { m.state = 'active'; doShake(1.1); sfx.slam(); slamStrike(m, a); }
       else {
         m.state = 'recover';
         const p = grabTarget(m, a);
@@ -1734,7 +1878,7 @@ const KITS = {
       if (m.def.illusion && (m.life -= dt) <= 0) { m.hp = 0; m.gone = true; chalkPuff(m.x, FLOOR - 60, J.particleCount, '#ffa860'); return; }
       m.cloneCd = (m.cloneCd ?? 3) - dt;
       if (m.cd <= 0 && A.clones && isEnraged(m) && m.cloneCd <= 0) startAttack(m, 'clones', tgt);
-      else if (m.cd <= 0 && dist < A.claw.range + m.def.width / 2) startAttack(m, 'claw', tgt);
+      else if (m.cd <= 0 && dist < A.claw.range + m.def.width / 2) startAttack(m, tgt.crouch && Math.random() < T.crouchReadChance ? 'dash' : 'claw', tgt);
       else if (m.cd <= 0 && dist > 260 && Math.random() < 0.5) startAttack(m, 'foxfire', tgt);
       else if (m.cd <= 0) startAttack(m, 'dash', tgt);
       else if (dist > 220) m.x += m.facing * m.def.speed * ef * dt;
@@ -1843,7 +1987,7 @@ function collideBodies() {
       if (m.hp <= 0 || m.gone || m.state === 'launched' || m.state === 'dash' || m.holding || m.state === 'held') continue;
       const [lo, hi] = bodyOf(m);
       if (p.y >= hi - 8 || lo >= p.y + 95) continue;                          // above it (a jump) or under a flyer
-      if (p.state === 'dodge' && T.dodgeThroughMinions && m.def.rank === 'minion') continue;
+      if (p.state === 'dodge' && (m.def.rank === 'minion' ? T.dodgeThroughMinions : T.dodgeThroughBig)) continue;
       const min = m.def.width * 0.4 + T.bodyRadius, dx = p.x - m.x;
       if (Math.abs(dx) >= min) continue;
       const dir = dx === 0 ? -m.facing : sign(dx), over = min - Math.abs(dx), share = 1 - 1 / (1 + Math.pow(m.def.weight, 3));   // heavy = barely budges
@@ -2365,13 +2509,24 @@ function drawGear(p, [hx, hy], k) {
   ctx.restore();
 }
 
-const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge' };
-const BAND_UP = { high: 104, low: 0, mid: 40, grab: 46 };
+const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge', overhead: 'OVERHEAD · dodge' };
+const BAND_UP = { high: 104, low: 0, mid: 40, grab: 46, overhead: 0 };
+// How loud attack tells are (founder, 2026-10-01: the full tells were far too obvious). The windup time is the same in all
+// three; only what's drawn on top of the monster's windup pose changes.
+const TELLS = {
+  full:   { name: 'Full', desc: 'Red reach bands, "!" and HIGH/LOW labels. For learning.' },
+  subtle: { name: 'Subtle', desc: 'Read the windup pose. A small glint just before it lands: white = block it, purple = can\'t block.' },
+  pose:   { name: 'Pose only', desc: 'Nothing but the monster\'s body language.' },
+};
+const GLINT_AT = 0.72;   // subtle: the glint shows for the last 28% of a windup
 function drawTelegraph(m) {
   if (m.state !== 'windup' || m.hp <= 0) return;
+  const style = TELLS[prefs.tells] ? prefs.tells : 'subtle';
+  if (style === 'pose') return;
+  if (style === 'subtle') return drawGlint(m);
   const a = m.def.attacks[m.attack], small = m.def.rank === 'minion';
   const prog = clamp(m.t / (a.windup / 1000 / speedMult(m)), 0, 1);
-  const unblock = a.height === 'grab' || a.height === 'ring';
+  const unblock = a.height === 'grab' || a.height === 'ring' || a.height === 'overhead';
   ctx.save();
   ctx.fillStyle = unblock ? `rgba(180,140,255,${0.14 + prog * 0.4})` : `rgba(224,85,90,${0.12 + prog * 0.35})`;
   if (m.attack === 'dash') {
@@ -2397,6 +2552,20 @@ function drawTelegraph(m) {
   ctx.fillText('!', m.x, topY - (small ? 14 : 30) - prog * 6);
   const tag = TAGS[a.height];
   if (tag && (!small || unblock)) { ctx.font = `800 ${small ? 11 : 13}px system-ui`; ctx.fillText(tag, m.x, topY - (small ? 36 : 64) - prog * 6); }
+  ctx.restore();
+}
+function drawGlint(m) {
+  const a = m.def.attacks[m.attack], prog = windupProg(m);
+  if (prog < GLINT_AT) return;
+  const u = (prog - GLINT_AT) / (1 - GLINT_AT), small = m.def.rank === 'minion';
+  const r = (small ? 7 : 12) * Math.sin(Math.min(1, u * 1.15) * Math.PI) + 1;
+  const unblock = a.height === 'grab' || a.height === 'ring' || a.height === 'overhead';
+  const x = m.x + m.facing * m.def.width * 0.3, y = FLOOR - m.y - m.def.height * 0.85;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(u * 1.2);
+  ctx.fillStyle = unblock ? '#b48cff' : '#ffffff'; ctx.globalAlpha = 0.9;
+  ctx.beginPath();                                                       // four-point sparkle
+  for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4, rr = i % 2 ? r * 0.28 : r; ctx.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr); }
+  ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 function drawLobMarkers() {
@@ -3162,7 +3331,7 @@ function drawHud() {
     const tag = !alive(p) ? '  DOWN' : (players.length > 1 && monsters.some(m => m.hp > 0 && m.target === p) ? '  ◀ TARGET' : '');
     const wpn = p.weaponKey !== 'fists' ? ' · ' + ITEMS[p.weaponKey].name : '';
     const rust = p.i === 0 && isRusty() ? ' · RUSTY' : '';
-    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
+    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} L${p.level} ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
     bar(16, y + 13, 180, 7, p.st / p.maxSt, p.stFlash > 0 && Math.sin(gt * 40) > 0 ? '#e0555a' : p.st >= T.specialCost ? '#e8c547' : '#8a7a3a');
     ctx.fillStyle = '#eceae4'; ctx.fillRect(16 + 180 * Math.min(1, T.specialCost / p.maxSt) - 1, y + 11, 2, 11);   // special cost
   });
@@ -3187,7 +3356,7 @@ function drawOverlay() {
       ? ['Left thumb: move, pull down to crouch. Big button: jump.', LAYOUTS[layoutKey].desc]
       : ['A/D move · S crouch · W jump · J attack · K block · L dodge · I special · U flex',
          'Tap J: jab, jab, KICK. Walk into a minion to grab it, J to knee, direction + J to throw it into the others.',
-         'Red = incoming attack. HIGH: duck or stand-block. LOW: jump or crouch-block. Purple: can\'t block, dodge!',
+         'Read the windup: weapon raised overhead = LOW slam (jump it), pulled back = HIGH swing (duck it). A glint = it\'s about to land; purple = can\'t block, dodge!',
          'Attack in the air = kick. Crouch + attack = low sweep. Big STR vs a light monster = LAUNCH.',
          'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, 146 + i * 24));
@@ -3309,7 +3478,7 @@ function tick(dt) {
 }
 // Fights pause instantly: P/Esc, the ⏸ button, or putting the phone down (tab hidden).
 function togglePause(force) {
-  if (phase !== 'fight') { if (playMode) showMenu('levels'); return; }
+  if (phase !== 'fight') { if (playMode) showMenu('map'); return; }
   paused = force ?? !paused;
   if (playMode) showMenu(paused ? 'pause' : null);
 }
@@ -3345,10 +3514,10 @@ const LAYOUTS = {
   C: { name: 'C · 6 buttons', desc: 'Every move gets its own button, no gestures (for comparison).', buttons: ['jump', 'attack', 'block', 'dodge', 'special', 'flex'], holdSpecial: false, dblFlex: false, swipeDodge: false },
 };
 let playMode = false, menuView = null;
-let prefs = { layout: 'A', stickJump: false };
+let prefs = { layout: 'A', stickJump: false, tells: 'subtle' };
 try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem('bb-brawl-touch')) }; } catch (e) {}
 let layoutKey = LAYOUTS[prefs.layout] ? prefs.layout : 'A';
-const savePrefs = () => { try { localStorage.setItem('bb-brawl-touch', JSON.stringify({ layout: layoutKey, stickJump: prefs.stickJump })); } catch (e) {} };
+const savePrefs = () => { try { localStorage.setItem('bb-brawl-touch', JSON.stringify({ layout: layoutKey, stickJump: prefs.stickJump, tells: prefs.tells })); } catch (e) {} };
 const standalone = () => matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
 
 function buildPad() {
@@ -3436,7 +3605,7 @@ function goFullscreen() {
 function enterPlay() {
   playMode = true; document.body.classList.add('play');
   buildPad(); goFullscreen();
-  if (phase !== 'fight') showMenu('levels');
+  if (phase !== 'fight') showMenu('map');
 }
 function exitPlay() {
   playMode = false; paused = false; document.body.classList.remove('play'); showMenu(null);
@@ -3450,7 +3619,99 @@ function lvStatus(l) {
 function layoutPicker() {
   return `<div class="sub">Controls layout</div><div class="mrow">${Object.entries(LAYOUTS).map(([k, L]) =>
     `<button data-m="layout" data-v="${k}" class="${k === layoutKey ? 'sel' : ''}">${L.name}<small>${L.desc}</small></button>`).join('')}</div>
-    <div class="mrow"><button data-m="stickjump" class="${prefs.stickJump ? 'sel' : ''}">Push stick up = jump: ${prefs.stickJump ? 'on' : 'off'}<small>Extra option on top of the jump button</small></button></div>`;
+    <div class="mrow"><button data-m="stickjump" class="${prefs.stickJump ? 'sel' : ''}">Push stick up = jump: ${prefs.stickJump ? 'on' : 'off'}<small>Extra option on top of the jump button</small></button></div>
+    <div class="sub">Attack tells</div><div class="mrow">${Object.entries(TELLS).map(([k, t]) =>
+    `<button data-m="tells" data-v="${k}" class="${k === prefs.tells ? 'sel' : ''}">${t.name}<small>${t.desc}</small></button>`).join('')}</div>`;
+}
+// Play menu: your fighter's level and build (a browser-only test control; the app passes in real stats).
+const fighterMenu = () =>
+  (realStats ? `<div class="sub">Your fighter</div><p class="hint">Level ${setup[0].level}, from your real training.</p>`
+      : `<div class="sub">Your fighter: Level ${setup[0].level} ${setup[0].preset}</div><div class="mrow">` +
+        `<button data-m="lvstep" data-v="-1">− Level<small>Level ${Math.max(1, setup[0].level - 1)}</small></button>` +
+        `<button data-m="lvstep" data-v="1">+ Level<small>Level ${Math.min(MAX_LEVEL, setup[0].level + 1)}</small></button>` +
+        Object.entries(BUILDS).map(([k, b]) => `<button data-m="build" data-v="${k}" class="${setup[0].preset === k ? 'sel' : ''}">${k}<small>${b.desc}</small></button>`).join('') +
+        `</div><p class="hint">${STATS.map(k => `${k} ${setup[0].stats[k]}`).join(' · ')} · HP ${maxHp(setup[0].stats)}</p>`);
+// ---- World map view
+let mapSel = null, mapLocks = true;
+try { const m = JSON.parse(localStorage.getItem('bb-brawl-map')); if (m) { mapSel = m.sel || null; mapLocks = m.locks !== false; } } catch (e) {}
+const saveMap = () => { try { localStorage.setItem('bb-brawl-map', JSON.stringify({ sel: mapSel, locks: mapLocks })); } catch (e) {} };
+const nodeLevel = n => n.tower ? null : LEVELS[n.id];
+const nodeDone = n => n.tower ? towerBest() > 0 : !n.soon && cleared(n.id);
+const nodeOpen = n => !n.soon && (!mapLocks || !n.needs || n.needs.some(cleared));
+const ICON = { 'Swarm Waves': '👾', Elite: '⚔️', 'Boss Arena': '👹', 'Side-scroll': '🏃' };
+function nodeIcon(n) {
+  if (n.soon) return n.icon || '❔';
+  if (n.tower) return '🏰';
+  const l = nodeLevel(n);
+  return n.boss ? '👹' : ICON[l.format] || '⚔️';
+}
+function nodeName(n) {
+  if (n.soon) return n.soon;
+  if (n.tower) return 'Castle Tomorrow';
+  return nodeLevel(n).name + (n.preview ? ' (preview)' : '');
+}
+// The first open node you haven't beaten: where the fighter stands by default.
+const nextNode = () => MAP_NODES.find(n => nodeOpen(n) && !nodeDone(n)) || MAP_NODES[0];
+function mapCard(n) {
+  if (n.soon) return `<div class="ncard"><div class="txt"><b>${n.soon}</b><small>Not built yet: a boss for a later zone (see docs/09).</small></div></div>`;
+  const open = nodeOpen(n), lock = !open ? `🔒 Beat ${n.needs.map(k => LEVELS[k].name).join(' or ')} first` : '';
+  if (n.tower) {
+    const best = towerBest(), next = towerFloor(best + 1);
+    return `<div class="ncard"><div class="txt"><b>Castle Tomorrow</b> · the endless tower<small>${best ? `Best: floor ${best}. ` : ''}Every floor is tougher (monster HP +${Math.round(TOWER.hpPerFloor * 100)}% a floor); every ${TOWER.bossEvery}th is a boss floor. Prototype: opens after Zone 2.</small>${lock ? `<small>${lock}</small>` : ''}</div>` +
+      (open ? `<button data-m="towerview">Floors</button><button class="primary" data-m="lv" data-v="${next.key}">Climb<small>${next.name}</small></button>` : '') + `</div>`;
+  }
+  const l = nodeLevel(n), st = l.run ? `<small><i style="color:#e8c547;font-style:normal">${starsText(l.key)}</i> ${l.run.stars.map(x => x.label).join(' · ')}</small>` : '';
+  return `<div class="ncard"><div class="txt"><b>${nodeName(n)}</b> · ${l.format}${n.side ? ' · side path' : ''}<small>${open ? lvStatus(l) : lock}</small>${st}${l.scout ? `<small class="scout">${l.scout.stat}: ${l.scout.text}</small>` : ''}</div>` +
+    (open ? `<button class="primary" data-m="lv" data-v="${l.key}">Fight!<small>${l.name}</small></button>` : '') + `</div>`;
+}
+function mapView() {
+  const sel = MAP_NODES.find(n => n.id === mapSel) || nextNode();
+  mapSel = sel.id;
+  const main = MAP_NODES.filter(n => !n.side);
+  const path = main.map(n => `${n.x},${n.y}`).join(' ');
+  const branches = MAP_NODES.filter(n => n.side).map(n => { const from = MAP_NODES.find(o => o.id === n.needs[0]); return `<line x1="${from.x}" y1="${from.y}" x2="${n.x}" y2="${n.y}"/>`; }).join('');
+  const zones = MAP_ZONES.map(z => `<rect x="${z.x0}" y="0" width="${z.x1 - z.x0}" height="240" fill="${z.sky}"/><rect x="${z.x0}" y="200" width="${z.x1 - z.x0}" height="40" fill="${z.ground}"/>`).join('');
+  const deco = [];                                                         // a few landmarks per zone, drawn from the hash
+  for (let x = 20; x < MAP_W - 260; x += 46) {
+    const z = MAP_ZONES.find(q => x >= q.x0 && x < q.x1), h = hash(x), y = 210 + h * 18;
+    if (MAP_NODES.some(n => Math.abs(n.x - x) < 40 && Math.abs(n.y - y) < 50)) continue;
+    if (z.x0 === 0) deco.push(`<rect x="${x}" y="${y - 16}" width="18" height="14" fill="#5a4038"/><path d="M${x - 3} ${y - 16} L${x + 9} ${y - 26} L${x + 21} ${y - 16}Z" fill="#7a3a30"/>`);
+    else if (z.x0 === 470) deco.push(`<path d="M${x} ${y} L${x + 9} ${y - 34 - h * 14} L${x + 18} ${y}Z" fill="#12261a"/>`);
+    else if (z.x0 === 960 || z.x0 === 1720) deco.push(`<path d="M${x - 6} ${y} L${x + 14} ${y - 40 - h * 30} L${x + 34} ${y}Z" fill="${z.x0 === 960 ? '#24242c' : '#5e6676'}"/>` + (z.x0 === 1720 ? `<path d="M${x + 8} ${y - 30 - h * 30} L${x + 14} ${y - 40 - h * 30} L${x + 20} ${y - 30 - h * 30}Z" fill="#e8eef4"/>` : ''));
+    else if (z.x0 === 1380) deco.push(`<ellipse cx="${x + 10}" cy="${y}" rx="16" ry="4" fill="#2e5a60"/><line x1="${x}" y1="${y}" x2="${x - 2}" y2="${y - 18}" stroke="#4a6a40" stroke-width="2"/>`);
+  }
+  const tower = `<rect x="2160" y="34" width="60" height="170" fill="#3a2c4a"/><path d="M2150 34 L2190 0 L2230 34Z" fill="#5a3a6a"/>` +
+    Array.from({ length: 6 }, (_, i) => `<rect x="${2172 + (i % 2) * 24}" y="${50 + i * 24}" width="10" height="12" fill="rgba(232,197,71,.6)"/>`).join('');
+  const nodes = MAP_NODES.map(n => {
+    const done = nodeDone(n), open = nodeOpen(n), cls = [n.boss ? 'boss' : '', n.soon ? 'soon' : !open ? 'locked' : done ? 'done' : 'open', n.id === sel.id ? 'sel' : ''].join(' ');
+    const l = nodeLevel(n), stars = l && l.run ? `<br><i>${starsText(l.key)}</i>` : n.tower && towerBest() ? `<br><i>floor ${towerBest()}</i>` : done ? '<br><i>✓</i>' : '';
+    const r = n.boss ? 29 : 23;
+    return `<button class="node ${cls}" data-m="node" data-v="${n.id}" style="left:${n.x}px;top:${n.y}px" aria-label="${nodeName(n)}">${!open && !n.soon ? '🔒' : nodeIcon(n)}</button>` +
+      `<div class="nlabel" style="left:${n.x}px;top:${n.y + r + 3}px">${nodeName(n)}${stars}</div>`;
+  }).join('');
+  const me = `<g transform="translate(${sel.x + (sel.boss ? 36 : 30)} ${sel.y + 6})" stroke="${COLORS[0]}" stroke-width="3" stroke-linecap="round" fill="none">` +
+    `<circle cx="0" cy="-30" r="6" fill="${COLORS[0]}"/><line x1="0" y1="-24" x2="0" y2="-8"/><line x1="0" y1="-8" x2="-6" y2="4"/><line x1="0" y1="-8" x2="6" y2="4"/><line x1="0" y1="-19" x2="-7" y2="-12"/><line x1="0" y1="-19" x2="8" y2="-26"/></g>`;
+  return `<div class="maphead"><h3>World map</h3><span class="chip"><b>Level ${setup[0].level}</b> ${setup[0].preset} · ${wallet.gold} gold</span>` +
+    (realStats ? '' : `<button data-m="lvstep" data-v="-1" aria-label="Level down">− Lvl</button><button data-m="lvstep" data-v="1" aria-label="Level up">+ Lvl</button>`) +
+    `<button data-m="maplocks">${mapLocks ? '🔒 Locks on' : '🔓 Locks off'}</button><button data-m="levels">More ▸</button></div>` +
+    `<div class="mapwrap"><div class="mapin" style="width:${MAP_W}px"><svg width="${MAP_W}" height="240" viewBox="0 0 ${MAP_W} 240">${zones}${deco.join('')}${tower}` +
+    `<polyline points="${path}" fill="none" stroke="#e8dcc0" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round"/>` +
+    `<g stroke="#e8dcc0" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round">${branches}</g>${me}</svg>` +
+    MAP_ZONES.map(z => `<div class="zlabel" style="left:${z.x0 + 10}px">${z.name}</div>`).join('') + nodes + `</div></div>` + mapCard(sel);
+}
+// ---- Tower floors view: the next few floors up, the ones you've cleared below.
+function towerView() {
+  const best = towerBest(), top = best + 5;
+  ensureTower(top);
+  const rows = [];
+  for (let f = top; f >= 1; f--) {
+    const l = towerFloor(f), open = !mapLocks || f <= best + 1, done = cleared(l.key);
+    const who = [...new Set(l.waves.flat())].map(k => MONSTERS[k].name).join(', ');
+    rows.push(`<button data-m="lv" data-v="${l.key}" class="${l.format === 'Boss floor' ? 'boss' : ''} ${f === best + 1 ? 'next' : ''}" ${open ? '' : 'disabled'}>` +
+      `${done ? '✓ ' : open ? '' : '🔒 '}${l.name}<small>${l.format} · ${who} · monster HP ×${l.scale.hp.toFixed(1)}, damage ×${l.scale.dmg.toFixed(2)} · ${l.gold}g</small></button>`);
+  }
+  return `<div class="maphead"><h3>Castle Tomorrow</h3><span class="chip">Best floor <b>${best}</b> · Level ${setup[0].level} ${setup[0].preset}</span><button data-m="map">◂ Map</button></div>` +
+    `<div class="floors">${rows.join('')}</div>`;
 }
 function showMenu(v) {
   menuView = v;
@@ -3458,16 +3719,22 @@ function showMenu(v) {
   el.className = v ? 'show ' + v : '';
   if (!v) { el.innerHTML = ''; return; }
   const cur = LEVELS[$('#level').value];
+  if (v === 'map' || v === 'tower') {
+    el.innerHTML = v === 'map' ? mapView() : towerView();
+    const sel = MAP_NODES.find(n => n.id === mapSel), wrap = el.querySelector('.mapwrap');
+    if (wrap && sel) wrap.scrollLeft = sel.x - wrap.clientWidth / 2;
+    return;
+  }
   if (v === 'after') {
     const next = cur.zone.ladder && cur.zone.levels[cur.idx + 1];
     el.innerHTML = `<div class="mrow"><button class="primary" data-m="again">Fight again<small>${cur.name}</small></button>` +
       (result && result.won && next ? `<button data-m="lv" data-v="${next.key}">Next: ${next.name}<small>${lvStatus(next)}</small></button>` : '') +
-      `<button data-m="levels">All fights<small>Levels, buddy, layout</small></button></div>`;
+      `<button data-m="map">Map<small>${cur.tower ? 'Castle Tomorrow' : 'The world map'}</small></button><button data-m="levels">All fights<small>Levels, buddy, layout</small></button></div>`;
   } else if (v === 'pause') {
-    el.innerHTML = `<h3>Paused</h3><div class="mrow"><button class="primary" data-m="resume">Resume</button><button data-m="again">Restart</button><button data-m="levels">Quit to fights</button></div>${layoutPicker()}`;
+    el.innerHTML = `<h3>Paused</h3><div class="mrow"><button class="primary" data-m="resume">Resume</button><button data-m="again">Restart</button><button data-m="map">Quit to map</button></div>${layoutPicker()}`;
   } else {
     const p2 = $('#p2mode').value === 'none' ? 'none' : 'cpu';
-    el.innerHTML = `<h3>Choose a fight</h3>` + ZONES.map(z => `<div class="sub">${z.name}</div><div class="lv">${z.levels.map(l =>
+    el.innerHTML = `<div class="maphead"><h3>All fights</h3><button data-m="map">◂ Map</button></div>` + fighterMenu() + ZONES.map(z => `<div class="sub">${z.name}</div><div class="lv">${z.levels.map(l =>
       `<button data-m="lv" data-v="${l.key}" class="${l.key === cur.key ? 'sel' : ''}" ${levelOpen(l) ? '' : 'disabled'}>${l.name}<small>${lvStatus(l)}</small>${l.scout ? `<small style="color:#e8c547">${l.scout.stat}: ${l.scout.text}</small>` : ''}</button>`).join('')}</div>`).join('') +
       `<div class="sub">Player 2</div><div class="mrow"><button data-m="p2" data-v="none" class="${p2 === 'none' ? 'sel' : ''}">Solo</button><button data-m="p2" data-v="cpu" class="${p2 === 'cpu' ? 'sel' : ''}">CPU buddy<small>A ghost: weaker than a real buddy</small></button></div>` +
       layoutPicker() + `<p class="hint">${wallet.gold} gold. Stats, weapons, Rusty and the shop live on the page behind this screen (✕ to see it).</p>`;
@@ -3480,11 +3747,23 @@ $('#menu').addEventListener('click', e => {
   ensureAudio(); goFullscreen();
   if (m === 'again') startFight();
   else if (m === 'levels') { paused = false; phase = phase === 'fight' ? 'ready' : phase; showMenu('levels'); }
+  else if (m === 'map') {
+    paused = false; phase = phase === 'fight' ? 'ready' : phase;
+    const l = LEVELS[$('#level').value];                                   // stand on the node you just fought
+    if (l) { const n = MAP_NODES.find(q => l.tower ? q.tower : q.id === l.key); if (n) { mapSel = n.id; saveMap(); } }
+    showMenu(l && l.tower && menuView === 'after' ? 'tower' : 'map');
+  }
+  else if (m === 'node') { mapSel = v; saveMap(); showMenu('map'); }
+  else if (m === 'maplocks') { mapLocks = !mapLocks; saveMap(); showMenu('map'); }
+  else if (m === 'towerview') showMenu('tower');
   else if (m === 'resume') togglePause(false);
   else if (m === 'lv') { $('#level').value = v; updateHint(); startFight(); }
-  else if (m === 'p2') { $('#p2mode').value = v; updateHint(); showMenu('levels'); }
+  else if (m === 'p2') { $('#p2mode').value = v; updateHint(); showMenu(menuView); }
   else if (m === 'layout') { layoutKey = v; savePrefs(); buildPad(); showMenu(menuView); }
   else if (m === 'stickjump') { prefs.stickJump = !prefs.stickJump; savePrefs(); buildPad(); showMenu(menuView); }
+  else if (m === 'lvstep') setLevel(0, setup[0].level + +v);
+  else if (m === 'build') { setup[0].preset = v; setup[0].stats = statsFor(BUILDS[v], setup[0].level); fighterSync[0](); showMenu(menuView); }
+  else if (m === 'tells') { prefs.tells = v; savePrefs(); $('#tells').value = v; showMenu(menuView); }
 });
 $('#playBtn').onclick = enterPlay;
 $('#arena').addEventListener('contextmenu', e => e.preventDefault());   // a long press must never open a menu
@@ -3506,25 +3785,44 @@ const fighterSync = [];
 function buildFighterPanel(i) {
   const box = $('#f' + i);
   box.innerHTML = `<h3>P${i + 1}</h3>
-    <div class="row" style="margin-top:0"><select class="preset">${Object.keys(PRESETS).map(p => `<option>${p}</option>`).join('')}<option>Custom</option></select></div>
-    ${STATS.map(s => `<label class="stat"><span>${s}</span><input type="range" min="1" max="50" data-stat="${s}"><output></output></label>`).join('')}
-    <label class="stat"><span>LVL</span><input type="range" min="1" max="50" data-level="1"><output></output></label>
+    <div class="row" style="margin-top:0"><select class="preset"><optgroup label="Build (grows with level)">${Object.keys(BUILDS).map(b => `<option>${b}</option>`).join('')}</optgroup>
+      <optgroup label="Fixed presets">${Object.keys(PRESETS).map(p => `<option>${p}</option>`).join('')}</optgroup><option>Custom</option></select></div>
+    <div class="row lvrow"><b class="lv"></b><button data-lv="-1" aria-label="Level down">−</button><button data-lv="1" aria-label="Level up">+</button>
+      <input type="range" min="1" max="${MAX_LEVEL}" data-level="1" style="flex:1;min-width:60px"></div>
+    ${STATS.map(s => `<label class="stat"><span>${s}</span><input type="range" min="1" max="150" data-stat="${s}"><output></output></label>`).join('')}
     <div class="total"></div>`;
   const sel = box.querySelector('.preset');
   const sync = () => {
     sel.value = setup[i].preset;
     box.querySelectorAll('input[data-stat]').forEach(inp => { inp.value = setup[i].stats[inp.dataset.stat]; inp.nextElementSibling.value = inp.value; });
-    const lv = box.querySelector('input[data-level]'); lv.value = setup[i].level; lv.nextElementSibling.value = lv.value;
     const s = setup[i].stats;
-    box.querySelector('.total').textContent = `${statSum(s)} pts · HP ${maxHp(s)} · stamina ${maxSt(s)}`;
+    if (!(i === 0 && realStats)) setup[i].level = levelOf(s);
+    if (i === 0) saveFighter();
+    box.querySelector('.lv').textContent = `Level ${setup[i].level}`;
+    box.querySelector('input[data-level]').value = setup[i].level;
+    box.querySelector('.total').textContent = `${statSum(s)} pts, ${ptsToNext(s)} to level ${setup[i].level + 1} · HP ${maxHp(s)} · stamina ${maxSt(s)}`;
     updateHint();
     if (i === 0) renderShop();
   };
   fighterSync[i] = sync;
-  sel.onchange = () => { if (PRESETS[sel.value]) { setup[i].preset = sel.value; setup[i].stats = { ...PRESETS[sel.value] }; } sync(); };
+  sel.onchange = () => {
+    if (BUILDS[sel.value]) { setup[i].preset = sel.value; setup[i].stats = statsFor(BUILDS[sel.value], setup[i].level); }
+    else if (PRESETS[sel.value]) { setup[i].preset = sel.value; setup[i].stats = { ...PRESETS[sel.value] }; }
+    sync();
+  };
   box.querySelectorAll('input[data-stat]').forEach(inp => inp.oninput = () => { setup[i].stats[inp.dataset.stat] = +inp.value; setup[i].preset = 'Custom'; sync(); });
-  box.querySelector('input[data-level]').oninput = e => { setup[i].level = +e.target.value; sync(); };
+  box.querySelector('input[data-level]').oninput = e => { setLevel(i, +e.target.value); };
+  box.querySelectorAll('button[data-lv]').forEach(b => b.onclick = () => setLevel(i, setup[i].level + +b.dataset.lv));
   sync();
+}
+// Change a fighter's level: a build regrows from its shares; anything else keeps its shape (see relevel).
+function setLevel(i, level) {
+  level = clamp(level, 1, MAX_LEVEL);
+  const b = BUILDS[setup[i].preset];
+  setup[i].stats = b ? statsFor(b, level) : relevel(setup[i].stats, level);
+  if (!b && setup[i].preset !== 'Custom') setup[i].preset = 'Custom';
+  fighterSync[i]();
+  if (playMode && ['levels', 'map', 'tower'].includes(menuView)) showMenu(menuView);
 }
 function buildTuning() {
   $('#tune').innerHTML = Object.keys(DEFAULT_TUNING).map(k =>
@@ -3546,9 +3844,13 @@ $('#juiceOn').onclick = () => setAllJuice(true);
 $('#juiceOff').onclick = () => setAllJuice(false);
 $('#juiceReset').onclick = () => { J = structuredClone(DEFAULT_JUICE); buildJuice(); };
 buildJuice();
+$('#tells').innerHTML = Object.entries(TELLS).map(([k, t]) => `<option value="${k}">${t.name}: ${t.desc}</option>`).join('');
+$('#tells').value = prefs.tells;
+$('#tells').onchange = e => { prefs.tells = e.target.value; savePrefs(); };
 
 const levelSel = $('#level');
-levelSel.innerHTML = ZONES.map(z => `<optgroup label="${z.name}">${z.levels.map(l => `<option value="${l.key}">${l.name} (${l.format})</option>`).join('')}</optgroup>`).join('');
+levelSel.innerHTML = ZONES.map(z => `<optgroup label="${z.name}">${z.levels.map(l => `<option value="${l.key}">${l.name} (${l.format})</option>`).join('')}</optgroup>`).join('') +
+  '<optgroup label="Castle Tomorrow (tower)" id="towerOpts"></optgroup>';
 // Level hint: each monster's tells, a live readout of how hard P1 pushes it (STR vs weight), the scouting report, and co-op scaling.
 function updateHint() {
   if (!$('#f1').innerHTML) return;   // panels still building
@@ -3582,7 +3884,7 @@ function renderShop() {
   $('#pump').innerHTML = wallet.pump > 0
     ? `<b style="color:#7ee08a">Post-workout pump:</b> your next ${wallet.pump} win${wallet.pump > 1 ? 's' : ''} today pay ×${E.pumpMult}.`
     : wallet.pumpDay === wallet.day ? 'Pump used up for today. Come back tomorrow.' : 'No pump yet today. Log a workout to get one.';
-  $('#fresh').innerHTML = Object.values(LEVELS).map(l => {
+  $('#fresh').innerHTML = Object.values(LEVELS).filter(l => !l.tower).map(l => {
     const first = !wallet.clears[l.key], f = first ? 1 : freshOf(l.key), g = Math.round(l.gold * (first ? E.firstClearMult : f));
     return `<div class="fresh"><span>${l.name}</span><div class="bar"><i style="width:${f * 100}%"></i></div>` +
       `<b>${first ? `NEW ${g}g` : `${Math.round(f * 100)}% ${g}g`}</b></div>`;
@@ -3630,7 +3932,7 @@ function logWorkout(key) {
   if (pumpNow) { wallet.pump = E.pumpWins; wallet.pumpDay = wallet.day; }
   saveWallet();
   fighterSync[0]();
-  logLine(`Day ${wallet.day}: logged <b>${w.name}</b> (${Object.entries(w.gains).map(([st, v]) => `+${v} ${st}`).join(' ')})` +
+  logLine(`Day ${wallet.day}: logged <b>${w.name}</b> (${Object.entries(w.gains).map(([st, v]) => `+${v} ${st}`).join(' ')}) → <b>Level ${setup[0].level}</b>, ${ptsToNext(setup[0].stats)} pts to the next` +
     (wasRusty ? ' · <b>Rusty cleared</b>' : '') +
     (pumpNow ? ` · <b style="color:#7ee08a">pump ×${E.pumpMult} for ${E.pumpWins} wins</b>` : ' · pump already used today'));
 }
@@ -3647,10 +3949,10 @@ function buildEcon() {
   const priced = Object.entries(ITEMS).filter(([, it]) => it.price);
   $('#econ').innerHTML = Object.keys(DEFAULT_ECON).map(k =>
     `<label for="e_${k}">${k}</label><input type="number" id="e_${k}" step="any" value="${E[k]}">`).join('') +
-    Object.values(LEVELS).map(l => `<label for="g_${l.key}">gold: ${l.name}</label><input type="number" id="g_${l.key}" step="5" value="${l.gold}">`).join('') +
+    Object.values(LEVELS).filter(l => !l.tower).map(l => `<label for="g_${l.key}">gold: ${l.name}</label><input type="number" id="g_${l.key}" step="5" value="${l.gold}">`).join('') +
     priced.map(([k, it]) => `<label for="p_${k}">price: ${it.name}</label><input type="number" id="p_${k}" step="10" value="${it.price}">`).join('');
   Object.keys(DEFAULT_ECON).forEach(k => $('#e_' + k).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { E[k] = v; renderShop(); } });
-  Object.values(LEVELS).forEach(l => $('#g_' + l.key).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { l.gold = v; renderShop(); } });
+  Object.values(LEVELS).filter(l => !l.tower).forEach(l => $('#g_' + l.key).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { l.gold = v; renderShop(); } });
   priced.forEach(([k, it]) => $('#p_' + k).oninput = ev => { const v = parseFloat(ev.target.value); if (!isNaN(v)) { it.price = v; renderShop(); } });
 }
 // ---------------------------------------------------------------------------
@@ -3720,6 +4022,7 @@ $('#rusty').onchange = updateHint;
 $('#start').onclick = () => { startFight(); $('#start').blur(); };
 $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); updateHint(); };
 buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
+ensureTower(towerBest() + 2);
 level = LEVELS[levelSel.value];
 // App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet }) after the page loads, and also sets
 // window.BB_INIT in case its script runs first. P1 takes the real stats, the wallet comes from the app (already moved
@@ -3732,7 +4035,7 @@ window.bbInit = init => {
     $('#locks').checked = true;
     renderShop(); updateHint();
   }
-  if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; }
+  if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; realStats = true; }
   if (init && init.level) setup[0].level = init.level;
   if (init && 'rusty' in init) $('#rusty').checked = !!init.rusty;
   fighterSync[0]();
