@@ -526,13 +526,16 @@ const MONSTERS = {
   },
   // Zone 3, the Iron Mountains (2026-10-05): the boss of the labyrinth
   minotaur: {
-    name: 'Minotaur Champion', kit: 'minotaur', rank: 'boss', enrage: true, hp: 950, width: 120, height: 205, speed: 60, color: '#7a4a2c', weight: 3,
-    hint: '"Who\'s next on the platform?" Paws the ground, then CHARGES all the way across (can\'t block it: dodge through or jump it). Bait the charge into a stone wall and his horns get STUCK: free hits. Double axe: HIGH cleave (duck it), OVERHEAD chop (dodge it or step out). His CHEST BUMP (MID: block it) shoves you back for a charge. The labyrinth shifts: walls rise and sink every few seconds. Stand on one and he rams it.',
+    name: 'Minotaur Champion', kit: 'minotaur', rank: 'boss', enrage: true, hp: 850, width: 120, height: 205, speed: 60, color: '#7a4a2c', weight: 3,
+    hint: '"Who\'s next on the platform?" Paws the ground, then CHARGES all the way across (can\'t block it: dodge through or jump it). Bait the charge into a stone wall and his horns get STUCK: free hits. But he learns: the more often he gets stuck, the more he throws his AXE instead. It arcs over the walls onto your spot (MID: block it or move), spins there, and comes back. Without it he can only charge and bump. Double axe: HIGH cleave (duck it), OVERHEAD chop (dodge it or step out; it breaks walls). His CHEST BUMP (MID: block it) shoves you back for a charge. The labyrinth shifts: walls rise and sink every few seconds. Stand on one and he rams it out from under you.',
     attacks: {
       cleave: { windup: 600, active: 150, recover: 700, range: 175, dmg: 22, height: 'high' },
       chop:   { windup: 850, active: 160, recover: 850, range: 160, dmg: 30, height: 'overhead' },
-      bump:   { windup: 420, active: 120, recover: 500, range: 55, dmg: 10, height: 'mid', shove: 260 },
-      charge: { windup: 850, dmg: 26, speed: 780, band: 70, toss: 300, from: 300, stuckWall: 2.2, stuckEdge: 0.8, height: 'charge' },
+      bump:   { windup: 420, active: 120, recover: 500, range: 55, dmg: 10, height: 'mid', shove: 260, chance: 0.35 },
+      // chance: per second, at range. learn: each time he's stuck in a wall, his odds of charging at one (from 0.5) × this
+      charge: { windup: 850, dmg: 26, speed: 780, band: 70, toss: 300, from: 300, chance: 3, learn: 0.5, stuckWall: 1.6, stuckEdge: 0.8, height: 'charge' },
+      // the axe throw: arcs over the walls to where you stand (flight s, peak px), spins there (hover s), flies back (back s)
+      hurl:   { windup: 650, recover: 450, dmg: 18, flight: 0.75, hover: 0.45, back: 0.6, peak: 150, radius: 34, from: 220, chance: 1.2, height: 'mid' },
     },
   },
   wraith: {
@@ -565,7 +568,7 @@ const ZONES = [
       scout: { stat: 'DEX', want: 16, text: 'Kitsune Sprinter dashes low and claws high. DEX widens your dodge window and jumps you higher; SPD makes her slower relative to you.' } },
   ] },
   // Zone 3 so far: only its boss. labyrinth = the arena's shifting stone walls (the Minotaur charges into them).
-  { name: 'Zone 3 · Iron Mountains', ladder: true, after: ['golem'], levels: [
+  { name: 'Zone 3 · Iron Mountains', ladder: true, after: ['z2run', 'z2kitsune'], levels: [
     { key: 'z3minotaur', name: 'Minotaur Champion', format: 'Boss Arena', gold: 100, boss: true, waves: [['minotaur']],
       labyrinth: {
         every: 9, enrageEvery: 6,          // seconds between shifts (faster once he's enraged)
@@ -574,7 +577,7 @@ const ZONES = [
         slots: [160, 300, 470, 640, 800],  // where walls can rise (x of the center)
         start: [160, 470],                 // up when the fight starts: the one at 470 sits between you and him
       },
-      scout: { stat: 'DEX', want: 22, text: 'Bait his charge into a wall and punish the stuck horns. DEX widens your dodge window and jumps you higher.' } },
+      scout: { stat: 'STR', want: 30, text: 'Bait his charge into a wall and punish the stuck horns, and block the axe when it comes over. STR makes those short openings count.' } },
   ] },
   { name: 'Side-scroll prototype', levels: [
     { key: 'z1run', name: 'Comfort Zone Run', format: 'Side-scroll', gold: 120, boss: true, run: 'z1run',
@@ -690,7 +693,7 @@ const MAP_NODES = [
   { id: 'golem', x: 1090, y: 150, needs: ['z2run', 'z2kitsune'], preview: true },
   { id: 'z3minotaur', x: 1270, y: 88, needs: ['golem'], boss: true },
   { id: 'soon-hydra', x: 1550, y: 140, soon: 'Excuse Hydra', icon: '🐉' },
-  { id: 'wraith', x: 1800, y: 168, needs: ['golem'], preview: true },
+  { id: 'wraith', x: 1800, y: 168, needs: ['z3minotaur'], preview: true },
   { id: 'soon-wyrm', x: 1960, y: 92, soon: 'Plateau Wyrm', icon: '🐲' },
   { id: 'tower', x: 2190, y: 118, needs: ['z2run', 'z2kitsune'], tower: true, boss: true },
 ];
@@ -765,7 +768,7 @@ function updateMaze(dt) {
   const L = level.labyrinth, boss = monsters.find(m => m.hp > 0 && m.def.kit === 'minotaur');
   if ((maze.shiftT -= dt) <= 0) { shiftMaze(); maze.shiftT = boss && isEnraged(boss) ? L.enrageEvery : L.every; }
   for (const w of platforms) {
-    w.t += dt;
+    w.t += dt; w.prevH = w.h;
     if (w.phase === 'warn' && w.t >= L.warn) { w.phase = 'rise'; w.t = 0; sfx.slam(); chalkPuff((w.x1 + w.x2) / 2, FLOOR - 4, J.particleCount, '#8a8378'); }
     else if (w.phase === 'rise') { w.rise = Math.min(1, w.t / L.rise); if (w.rise >= 1) { w.phase = 'up'; w.t = 0; } }
     else if (w.phase === 'sink') w.rise = Math.max(0, 1 - w.t / L.rise);
@@ -776,9 +779,9 @@ function updateMaze(dt) {
   for (const p of players) {
     if (!alive(p) || p.grab) continue;
     for (const w of platforms) {
-      if (w.h < 8 || p.y >= w.h - 1 || p.x < w.x1 - T.bodyRadius || p.x > w.x2 + T.bodyRadius) continue;
-      if (w.phase === 'rise' && p.x >= w.x1 && p.x <= w.x2) { p.y = w.h; p.vy = Math.max(0, p.vy); p.onGround = true; p.support = w.h; }   // lifted up
-      else p.x = clamp(p.x < (w.x1 + w.x2) / 2 ? w.x1 - T.bodyRadius : w.x2 + T.bodyRadius, LEFT, RIGHT);                              // a wall's side
+      if (p.y >= w.h - 1 || p.x < w.x1 - T.bodyRadius || p.x > w.x2 + T.bodyRadius) continue;
+      if (w.h > w.prevH && p.x >= w.x1 && p.x <= w.x2 && p.y >= w.prevH - 1) { p.y = w.h; p.vy = Math.max(0, p.vy); p.onGround = true; p.support = w.h; }   // rising under you: lifted up
+      else if (w.h >= 8) p.x = clamp(p.x < (w.x1 + w.x2) / 2 ? w.x1 - T.bodyRadius : w.x2 + T.bodyRadius, LEFT, RIGHT);                              // a wall's side
     }
   }
 }
@@ -1785,6 +1788,8 @@ function cpuThink(p) {
   }
   const plate = plates.find(pl => pl.kind === 'roll' && Math.abs(pl.x - p.x) < 110 && sign(p.x - pl.x) === sign(pl.vx));
   if (plate && p.onGround) { inp.press.jump = gt; return; }
+  const axe = plates.find(pl => pl.kind === 'axe' && Math.abs((pl.phase === 'out' ? pl.x1 : pl.x) - p.x) < 90);
+  if (axe && p.onGround) { if (p.st >= T.dodgeCost) { inp.press.dodge = gt; return; } inp.block = true; return; }
   const crumb = plates.find(pl => pl.kind === 'crumb' && Math.abs(pl.x - p.x) < 120 && sign(p.x - pl.x) === sign(pl.vx));
   if (crumb && p.onGround) { inp.block = true; return; }
 
@@ -2045,18 +2050,42 @@ const KITS = {
 
 KITS.minotaur = {   // Minotaur Champion: charges across the arena (into walls, ideally), double axe, chest bump
   walk(m, dt, tgt, dist, ef) {
-    const A = m.def.attacks, wall = wallBetween(m.x, tgt.x);
-    if (m.cd <= 0 && (wall || tgt.support > 0 || m.bumped || (dist > A.charge.from && rng() < dt * 3))) { m.bumped = false; startAttack(m, 'charge', tgt); }
-    else if (m.cd <= 0 && dist < A.bump.range + m.def.width / 2 && rng() < 0.35) startAttack(m, 'bump', tgt);
-    else if (m.cd <= 0 && dist < A.cleave.range + 10) startAttack(m, rng() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'chop' : 'cleave', tgt);
+    const A = m.def.attacks, wall = wallBetween(m.x, tgt.x), armed = !m.axeOut;
+    let pick = null;
+    if (m.cd <= 0) {
+      if (m.bumped) pick = 'charge';
+      else if (wall || tgt.support > 0) {   // you're hiding behind a wall or up on one
+        const gap = wall ? (m.facing > 0 ? wall.x1 - m.x : m.x - wall.x2) - m.def.width / 2 : Infinity;
+        const charge = 0.5 * A.charge.learn ** (m.stucks || 0);   // he learns: fewer charges into walls each time he's stuck
+        if (armed && gap < A.chop.range - 40 && rng() < 0.5) pick = 'chop';   // right up to the wall: chop it down
+        else if (rng() < charge || (!armed && rng() < 0.35)) pick = 'charge';
+        else if (armed) pick = 'hurl';
+      } else if (dist < A.bump.range + m.def.width / 2 && (!armed || rng() < A.bump.chance)) pick = 'bump';
+      else if (armed && dist < A.cleave.range + 10) pick = rng() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'chop' : 'cleave';
+      else if (dist > A.charge.from && rng() < dt * A.charge.chance) pick = 'charge';
+      else if (armed && dist > A.hurl.from && rng() < dt * A.hurl.chance) pick = 'hurl';
+    }
+    if (pick) { m.bumped = false; startAttack(m, pick, tgt); }
     else if (!wall && dist > A.cleave.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
   },
   windup(m, dt) {   // pawing the ground before a charge
     if (m.attack === 'charge' && (m.pawT = (m.pawT || 0) - dt) <= 0) { m.pawT = 0.22; chalkPuff(m.x - m.facing * 30, FLOOR - 4, 2, '#8a7a66'); }
   },
-  fire(m, a) {
+  fire(m, a, tgt) {
     if (m.attack === 'cleave') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50); }
-    else if (m.attack === 'chop') { m.state = 'active'; doShake(1.2); sfx.slam(); strike(m, a, 'overhead', (p, rel) => inFront(m, a, rel)); }
+    else if (m.attack === 'chop') {
+      m.state = 'active'; doShake(1.2); sfx.slam(); strike(m, a, 'overhead', (p, rel) => inFront(m, a, rel));
+      for (const w of platforms) {   // the axe comes down on any wall in reach: it breaks (no stuck horns this way)
+        const edge = m.facing > 0 ? w.x1 - m.x : m.x - w.x2;
+        if (w.look === 'wall' && wallUp(w) && edge > -20 && edge < a.range) breakWall(w);
+      }
+    } else if (m.attack === 'hurl') {   // the axe flies: up over the walls, down onto your spot, spins, comes back
+      m.state = 'recover'; m.axeOut = true; sfx.grab();
+      const x1 = clamp(tgt.x, LEFT + 20, RIGHT - 20), x0 = m.x + m.facing * 40;
+      plates.push({ kind: 'axe', owner: m, dmg: a.dmg * m.dmgMult, phase: 'out', t: 0, dur: a.flight, hover: a.hover, back: a.back, peak: a.peak,
+                    radius: a.radius, x0, y0: 130, x1, y1: tgt.support + 55, fy: tgt.support, x: x0, y: 130, spin: 0, hit: new Set() });
+      floater('AXE!', m.x, FLOOR - m.def.height - 30, '#e0555a', 20);
+    }
     else if (m.attack === 'bump') {
       m.state = 'active';
       for (const p of players) {
@@ -2091,10 +2120,14 @@ KITS.minotaur = {   // Minotaur Champion: charges across the arena (into walls, 
     const front = m.x + dir * m.def.width * 0.4, wall = platforms.find(w => w.look === 'wall' && wallUp(w) && front >= w.x1 && front <= w.x2);
     const edge = dir > 0 ? m.x >= RIGHT - half : m.x <= LEFT + half;
     if (wall) {
+      // Someone standing on it gets knocked off, and the wall's give means he's only dazed.
+      const riders = players.filter(p => alive(p) && p.onGround && p.support > 0 && p.x >= wall.x1 - T.bodyRadius && p.x <= wall.x2 + T.bodyRadius);
       breakWall(wall);
       m.x = dir > 0 ? wall.x1 - m.def.width * 0.4 : wall.x2 + m.def.width * 0.4;
-      m.state = 'stuck'; m.t = 0; m.stuckT = a.stuckWall; m.chained = false;
-      floater('HORNS STUCK!', m.x, FLOOR - m.def.height - 30, '#7ee08a', 24);
+      m.state = 'stuck'; m.t = 0; m.chained = false; m.stucks = (m.stucks || 0) + 1;
+      for (const p of riders) { p.kx = dir * 500; p.vy = 300; p.onGround = false; floater('TUMBLE!', p.x, FLOOR - p.y - 150, '#e0555a', 18); }
+      if (riders.length) { m.stuckT = a.stuckEdge; floater('DAZED', m.x, FLOOR - m.def.height - 30, '#e8c547', 18); }
+      else { m.stuckT = a.stuckWall; floater('HORNS STUCK!', m.x, FLOOR - m.def.height - 30, '#7ee08a', 24); }
     } else if (edge) {
       m.x = clamp(m.x, LEFT + half, RIGHT - half);
       doShake(0.8); sfx.slam();
@@ -2246,6 +2279,27 @@ function updatePlates(dt) {
         }
       }
       if (pl.x < camX - 40 || pl.x > camX + W + 40) pl.dead = true;
+    } else if (pl.kind === 'axe') {
+      const o = pl.owner;
+      if (!o || o.hp <= 0) { pl.dead = true; continue; }
+      pl.t += dt; pl.spin += dt * 16;
+      const px = pl.x;
+      if (pl.phase === 'out') {
+        const u = Math.min(1, pl.t / pl.dur);
+        pl.x = lerp(pl.x0, pl.x1, u); pl.y = lerp(pl.y0, pl.y1, u) + pl.peak * 4 * u * (1 - u);
+        if (u >= 1) { pl.phase = 'hover'; pl.t = 0; doShake(0.4); }
+      } else if (pl.phase === 'hover') {
+        if (pl.t >= pl.hover) { pl.phase = 'back'; pl.t = 0; pl.x0 = pl.x; pl.y0 = pl.y; pl.hit = new Set(); }   // it can hit you again on the way back
+      } else {
+        const u = Math.min(1, pl.t / pl.back), hx = o.x + o.facing * 30;
+        pl.x = lerp(pl.x0, hx, u); pl.y = lerp(pl.y0, 130, u) + pl.peak * 0.6 * 4 * u * (1 - u);
+        if (u >= 1) { pl.dead = true; o.axeOut = false; }                                          // caught
+      }
+      for (const p of players) {
+        if (!alive(p) || pl.hit.has(p) || Math.abs(p.x - pl.x) > 28 || pl.y < p.y - 10 || pl.y > p.y + 100) continue;
+        pl.hit.add(p);
+        hurtPlayer(p, pl.dmg, pl.phase === 'hover' ? o.x : px, 'mid', o);   // block it facing the way it came from
+      }
     } else if (pl.kind === 'crumb') {
       pl.x += pl.vx * dt; pl.spin += dt * 14;
       for (const p of players) {
@@ -2826,6 +2880,10 @@ function drawGlint(m) {
 }
 function drawLobMarkers() {
   for (const pl of plates) {
+    if (pl.kind === 'axe' && pl.phase === 'out') {   // where the thrown axe comes down
+      ctx.fillStyle = `rgba(224,85,90,${0.2 + pl.t / pl.dur * 0.4})`;
+      ctx.beginPath(); ctx.ellipse(pl.x1, FLOOR - pl.fy, pl.radius, 7, 0, 0, Math.PI * 2); ctx.fill();
+    }
     if (pl.kind !== 'lob') continue;
     const u = pl.t / pl.dur;
     ctx.fillStyle = `rgba(224,85,90,${0.2 + u * 0.4})`;
@@ -3391,8 +3449,8 @@ const SPR = (() => {
     // Zone 3. Minotaur Champion, from monster-directions.html: bull head, champion belt, chalked hands, double axe.
     minotaur: { W: 66, H: 72, pad: [26, 24], ax: 32, scale: 2.85, build: (part, o) => {   // o: b, ang + lift (axe arm), bump, rage
       const u = o.b, sh = [44, 42 + u], arm = t => { t.translate(0, -o.lift); rot(t, ...sh, o.ang); }, cx = o.bump ? 3 : 0;
-      part('wood', t => { arm(t); L(t, 3, [54, 54 + u], [54, 4 + u]); });                            // axe handle
-      part('metal', t => { arm(t); P(t, [[54, 9 + u], [64, 1 + u], [64, 21 + u]]); P(t, [[54, 9 + u], [44, 1 + u], [44, 21 + u]]); }, { r: 2 });   // double axe
+      if (!o.noAxe) part('wood', t => { arm(t); L(t, 3, [54, 54 + u], [54, 4 + u]); });              // axe handle
+      if (!o.noAxe) part('metal', t => { arm(t); P(t, [[54, 9 + u], [64, 1 + u], [64, 21 + u]]); P(t, [[54, 9 + u], [44, 1 + u], [44, 21 + u]]); }, { r: 2 });   // double axe
       part('fur', t => { L(t, 7, [27, 60], [27, 66]); L(t, 7, [37, 60], [37, 66]); });
       part('hair', t => { E(t, 26, 68, 5, 3); E(t, 38, 68, 5, 3); }, { r: 2 });                       // hooves
       part('red', t => P(t, [[21, 52], [43, 52], [45, 63], [33, 63], [32, 59], [31, 63], [19, 63]]), { r: 2 });   // trunks
@@ -3478,8 +3536,9 @@ function spritePose(m) {
     case 'kitsune': return { b: m.state === 'dash' ? 0 : idle, rage: m.def.illusion ? false : rage };
     case 'wraith': return { b: Math.sin(m.bob * 4) > 0 ? 1 : 0, arm: w && atk === 'swipe' ? 'up' : a && atk === 'swipe' ? 'out' : 'rest', dash: m.state === 'dash' || (w && atk === 'dash'), rage };
     case 'minotaur': {
-      const o = { b: idle, ang: 0, lift: 0, bump: false, rage };
-      if (w && atk === 'chop') Object.assign(o, { ang: -0.25, lift: 16 }); else if (a && atk === 'chop') o.ang = 2.0;
+      const o = { b: idle, ang: 0, lift: 0, bump: false, rage, noAxe: !!m.axeOut };
+      if (w && atk === 'hurl') Object.assign(o, { ang: -1.5, lift: 18 });                                // axe wound back over the shoulder
+      else if (w && atk === 'chop') Object.assign(o, { ang: -0.25, lift: 16 }); else if (a && atk === 'chop') o.ang = 2.0;
       else if (w && atk === 'cleave') o.ang = -1.9; else if (a && atk === 'cleave') o.ang = 1.3;
       else if ((w || a) && atk === 'bump') Object.assign(o, { ang: -0.6, bump: true });
       else if (m.state === 'charge' || (w && atk === 'charge')) o.ang = -0.9;                          // axe tucked back, head down
@@ -3573,6 +3632,13 @@ function drawPlate(pl, color = '#b8bcc4') {
   ctx.save(); ctx.translate(pl.x, FLOOR - pl.y - (pl.kind === 'roll' ? 20 : 0)); ctx.rotate(pl.spin);
   if (pl.fire) { ctx.restore(); ctx.globalAlpha = 0.5; disc(pl.x - sign(pl.vx) * 10, FLOOR - pl.y, 9, '#ffa860'); ctx.globalAlpha = 1; disc(pl.x, FLOOR - pl.y, 10, '#ff7a1a'); disc(pl.x, FLOOR - pl.y, 5, '#fff0a0'); return; }
   if (pl.kind === 'crumb') { ctx.fillStyle = '#e8c547'; ctx.fillRect(-5, -4, 10, 8); ctx.restore(); return; }
+  if (pl.kind === 'axe') {                                                         // the Minotaur's double axe, spinning
+    ctx.fillStyle = '#6a4228'; ctx.fillRect(-3, -30, 6, 60);
+    ctx.fillStyle = '#d0d6e4';
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(s * 26, -36); ctx.lineTo(s * 26, -6); ctx.closePath(); ctx.fill(); }
+    ctx.strokeStyle = '#141828'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore(); return;
+  }
   disc(0, 0, 20, color);
   disc(0, 0, 5, '#50555d');
   ctx.fillRect(-2, -18, 4, 10);
