@@ -168,6 +168,7 @@
   #menu .maphead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #menu .maphead h3 { margin-right: auto; }
   #menu .maphead button { padding: 6px 10px; }
+  #menu .maphead button small { display: inline; margin-left: 6px; }
   #menu .chip { font-size: 12px; color: var(--muted); }
   #menu .chip b { color: var(--text); }
   #menu .mapwrap { position: relative; overflow-x: auto; overflow-y: hidden; flex: 0 0 auto; height: 240px; border-radius: 10px; touch-action: pan-x; border: 1px solid var(--line); }
@@ -192,6 +193,15 @@
   #menu .floors button { text-align: left; }
   #menu .floors button.boss { border-color: #b48cff; }
   #menu .floors button.next { border-color: var(--p1); }
+  /* Live co-op lobby (#34) */
+  #menu .code { font: 800 30px/1 ui-monospace, Consolas, monospace; letter-spacing: 8px; color: var(--p1); }
+  #menu input.coopin { background: #1e2125; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 16px; min-width: 0; flex: 1; }
+  #menu input.coopin.codein { font: 800 22px/1 ui-monospace, Consolas, monospace; letter-spacing: 6px; text-transform: uppercase; max-width: 160px; }
+  #menu .coopnote { color: #e8c547; font-size: 13px; margin: 0; }
+  #menu .players { display: flex; flex-direction: column; gap: 4px; }
+  #menu .players div { background: #1e2125; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+  #menu .players div.me { border-color: var(--p1); }
+  #menu .players small { color: var(--muted); }
   @media (orientation: portrait) {
     body.play #rotate { display: flex; position: absolute; inset: 0; z-index: 10; background: #15171a; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 20px; }
   }
@@ -514,6 +524,17 @@ const MONSTERS = {
       lob:   { windup: 750, recover: 700, dmg: 20, flight: 0.9, radius: 48, height: 'mid' },
     },
   },
+  // Zone 3, the Iron Mountains (2026-10-05): the boss of the labyrinth
+  minotaur: {
+    name: 'Minotaur Champion', kit: 'minotaur', rank: 'boss', enrage: true, hp: 950, width: 120, height: 205, speed: 60, color: '#7a4a2c', weight: 3,
+    hint: '"Who\'s next on the platform?" Paws the ground, then CHARGES all the way across (can\'t block it: dodge through or jump it). Bait the charge into a stone wall and his horns get STUCK: free hits. Double axe: HIGH cleave (duck it), OVERHEAD chop (dodge it or step out). His CHEST BUMP (MID: block it) shoves you back for a charge. The labyrinth shifts: walls rise and sink every few seconds. Stand on one and he rams it.',
+    attacks: {
+      cleave: { windup: 600, active: 150, recover: 700, range: 175, dmg: 22, height: 'high' },
+      chop:   { windup: 850, active: 160, recover: 850, range: 160, dmg: 30, height: 'overhead' },
+      bump:   { windup: 420, active: 120, recover: 500, range: 55, dmg: 10, height: 'mid', shove: 260 },
+      charge: { windup: 850, dmg: 26, speed: 780, band: 70, toss: 300, from: 300, stuckWall: 2.2, stuckEdge: 0.8, height: 'charge' },
+    },
+  },
   wraith: {
     name: 'Marathon Wraith', kit: 'flyer', rank: 'elite', enrage: true, flies: true, hp: 380, width: 70, height: 110, speed: 170, body: [45, 138], color: '#bfefff', weight: 0.8,
     hint: 'Was the Treadmill Wraith. Fast and fragile, and it flies. LIGHT: strong hits launch it. Rises to the height of its target, then dashes across at that height (MID: jump over a ground dash, or drop off the bench). Quick HIGH swipes up close (duck under them). Air kicks reach it when it hovers.',
@@ -542,6 +563,18 @@ const ZONES = [
       scout: { stat: 'SPD', want: 18, text: 'Goblins run for the edge to fetch friends and beams slow you down. SPD catches them first.' } },
     { key: 'z2run', name: 'Whispering Woods Run', format: 'Side-scroll', gold: 160, boss: true, run: 'z2run',
       scout: { stat: 'DEX', want: 16, text: 'Kitsune Sprinter dashes low and claws high. DEX widens your dodge window and jumps you higher; SPD makes her slower relative to you.' } },
+  ] },
+  // Zone 3 so far: only its boss. labyrinth = the arena's shifting stone walls (the Minotaur charges into them).
+  { name: 'Zone 3 · Iron Mountains', ladder: true, after: ['golem'], levels: [
+    { key: 'z3minotaur', name: 'Minotaur Champion', format: 'Boss Arena', gold: 100, boss: true, waves: [['minotaur']],
+      labyrinth: {
+        every: 9, enrageEvery: 6,          // seconds between shifts (faster once he's enraged)
+        warn: 1.1, rise: 0.35,             // cracks show this long before a wall rises; rising or sinking takes this long
+        count: 2, top: 110, w: 44,         // walls up at once, their height (a level 1 jump clears it) and width
+        slots: [160, 300, 470, 640, 800],  // where walls can rise (x of the center)
+        start: [160, 470],                 // up when the fight starts: the one at 470 sits between you and him
+      },
+      scout: { stat: 'DEX', want: 22, text: 'Bait his charge into a wall and punish the stuck horns. DEX widens your dodge window and jumps you higher.' } },
   ] },
   { name: 'Side-scroll prototype', levels: [
     { key: 'z1run', name: 'Comfort Zone Run', format: 'Side-scroll', gold: 120, boss: true, run: 'z1run',
@@ -655,7 +688,7 @@ const MAP_NODES = [
   { id: 'z2run', x: 790, y: 92, needs: ['z2swarm'], boss: true },
   { id: 'z2kitsune', x: 880, y: 172, needs: ['z2swarm'], side: true },
   { id: 'golem', x: 1090, y: 150, needs: ['z2run', 'z2kitsune'], preview: true },
-  { id: 'soon-minotaur', x: 1270, y: 88, soon: 'Minotaur Champion', icon: '🐂' },
+  { id: 'z3minotaur', x: 1270, y: 88, needs: ['golem'], boss: true },
   { id: 'soon-hydra', x: 1550, y: 140, soon: 'Excuse Hydra', icon: '🐉' },
   { id: 'wraith', x: 1800, y: 168, needs: ['golem'], preview: true },
   { id: 'soon-wyrm', x: 1960, y: 92, soon: 'Plateau Wyrm', icon: '🐲' },
@@ -699,12 +732,73 @@ function towerFloor(f) {
 }
 const ensureTower = n => { for (let f = 1; f <= n; f++) towerFloor(f); };
 
+// The labyrinth (z3minotaur): stone walls rise out of the floor and sink again every few seconds ("the labyrinth
+// shifts"). A wall is a platform with solid sides: stand on it, or get pushed out of it. Cracks warn where one will
+// rise; a wall rising under you lifts you up. The Minotaur's charge smashes a wall, and his horns get stuck.
+let maze = null;   // { shiftT }: seconds to the next shift (the walls themselves are the level's platforms)
+const newWall = (x, phase) => {
+  const L = level.labyrinth, up = phase === 'up';
+  return { x1: x - L.w / 2, x2: x + L.w / 2, h: up ? L.top : 0, top: L.top, rise: up ? 1 : 0, phase, t: 0, look: 'wall' };
+};
+const wallUp = w => w.h > 30;
+// The first standing wall between x and toX (for the Minotaur: is there a wall in the way?)
+const wallBetween = (x, toX) => platforms.find(w => w.look === 'wall' && wallUp(w) && Math.min(x, toX) < w.x1 && Math.max(x, toX) > w.x2);
+function breakWall(w) {
+  if (w.phase === 'broken') return;
+  w.phase = 'broken'; w.t = 0;
+  doShake(1.2); sfx.slam(); buzz([40, 30, 60], true);
+  const cx = (w.x1 + w.x2) / 2;
+  for (let k = 0; k < 3; k++) chalkPuff(cx, FLOOR - w.h * (k + 0.5) / 3, J.particleCount, '#8a8378');
+  floater('CRASH!', cx, FLOOR - w.top - 30, '#e8c547', 22);
+}
+function shiftMaze() {
+  const L = level.labyrinth, boss = monsters.find(m => m.hp > 0 && m.def.kit === 'minotaur');
+  const taken = platforms.filter(w => w.phase !== 'sink' && w.phase !== 'broken').map(w => (w.x1 + w.x2) / 2);
+  for (const w of platforms) if (w.phase === 'up' || w.phase === 'rise') { w.phase = 'sink'; w.t = 0; }
+  // New walls rise somewhere else, never on top of the Minotaur.
+  const free = L.slots.filter(x => !taken.includes(x) && !(boss && Math.abs(boss.x - x) < boss.def.width / 2 + L.w));
+  for (let k = 0; k < L.count && free.length; k++) platforms.push(newWall(free.splice(Math.floor(rng() * free.length), 1)[0], 'warn'));
+  floater('THE LABYRINTH SHIFTS!', W / 2, 90, '#c9b48a', 22);
+  doShake(0.4);
+}
+function updateMaze(dt) {
+  const L = level.labyrinth, boss = monsters.find(m => m.hp > 0 && m.def.kit === 'minotaur');
+  if ((maze.shiftT -= dt) <= 0) { shiftMaze(); maze.shiftT = boss && isEnraged(boss) ? L.enrageEvery : L.every; }
+  for (const w of platforms) {
+    w.t += dt;
+    if (w.phase === 'warn' && w.t >= L.warn) { w.phase = 'rise'; w.t = 0; sfx.slam(); chalkPuff((w.x1 + w.x2) / 2, FLOOR - 4, J.particleCount, '#8a8378'); }
+    else if (w.phase === 'rise') { w.rise = Math.min(1, w.t / L.rise); if (w.rise >= 1) { w.phase = 'up'; w.t = 0; } }
+    else if (w.phase === 'sink') w.rise = Math.max(0, 1 - w.t / L.rise);
+    else if (w.phase === 'broken') w.rise = Math.max(0, w.rise - dt * 5);
+    w.h = w.top * w.rise;
+  }
+  platforms = platforms.filter(w => (w.phase !== 'sink' && w.phase !== 'broken') || w.rise > 0);
+  for (const p of players) {
+    if (!alive(p) || p.grab) continue;
+    for (const w of platforms) {
+      if (w.h < 8 || p.y >= w.h - 1 || p.x < w.x1 - T.bodyRadius || p.x > w.x2 + T.bodyRadius) continue;
+      if (w.phase === 'rise' && p.x >= w.x1 && p.x <= w.x2) { p.y = w.h; p.vy = Math.max(0, p.vy); p.onGround = true; p.support = w.h; }   // lifted up
+      else p.x = clamp(p.x < (w.x1 + w.x2) / 2 ? w.x1 - T.bodyRadius : w.x2 + T.bodyRadius, LEFT, RIGHT);                              // a wall's side
+    }
+  }
+}
+// Grounded monsters can't walk through a standing wall either.
+function wallStop(m) {
+  if (m.def.flies || m.state === 'launched') return;
+  const r = m.def.width * 0.4;
+  for (const w of platforms) {
+    if (w.look !== 'wall' || !wallUp(w) || m.y >= w.h || m.x + r <= w.x1 || m.x - r >= w.x2) continue;
+    m.x = m.x < (w.x1 + w.x2) / 2 ? w.x1 - r : w.x2 + r;
+  }
+}
+
 // Benches: one-way platforms you can jump onto from below.
 const PLATFORMS = [
   { x1: 90, x2: 250, h: 100 },
   { x1: 710, x2: 870, h: 100 },
 ];
-let platforms = PLATFORMS;   // the current level's (a run brings its own)
+let platforms = PLATFORMS;   // the current level's (a run brings its own; the labyrinth's are its walls)
+const levelPlatforms = lv => lv && lv.run ? lv.run.platforms : lv && lv.labyrinth ? [] : PLATFORMS;
 
 const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
 const PRESETS = {
@@ -852,8 +946,24 @@ let camX = 0;                     // camera's left edge in world px (always 0 in
 const $ = s => document.querySelector(s);
 const canvas = $('#game'), ctx = canvas.getContext('2d');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const rand = (a, b) => a + Math.random() * (b - a);
+// Randomness: every random number comes from rng(). Unseeded (normal play) it is Math.random(); a test seeds it with
+// __bb.seed(n) to make fights repeatable. Two streams so cosmetics never shift the fight: 'sim' for anything that
+// changes the outcome, 'fx' for chalk puffs, damage-number jitter and sound, which depend on audio. Screen shake uses
+// neither: draw() runs every rAF frame, so its offset is derived from shakeT instead (shakeOffset).
+const rngStreams = { sim: null, fx: null };
+function mulberry32(a) {
+  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function rng(stream = 'sim') {
+  if (!Object.hasOwn(rngStreams, stream)) throw new Error(`rng: unknown stream '${stream}'`);
+  const f = rngStreams[stream]; return f ? f() : Math.random();
+}
+function seedRng(n) { rngStreams.sim = mulberry32(n); rngStreams.fx = mulberry32(n ^ 0x5bd1e995); }
+const rand = (a, b) => a + rng() * (b - a);
+const fxRand = (a, b) => a + rng('fx') * (b - a);
 const sign = v => v < 0 ? -1 : 1;
+// Screen-shake offset in [-1, 1) for the shake time left: it jitters as shakeT decays and repeats while the clock is held.
+const shakeOffset = () => { const r = mulberry32(Math.round(shakeT * 1e6)); return [r() * 2 - 1, r() * 2 - 1]; };
 const lerp = (a, b, t) => a + (b - a) * t;
 
 let phase = 'ready';   // ready | fight | over
@@ -873,8 +983,15 @@ let shakeAmp = 0, shakeT = 0, shakeDur = 1;   // screen shake (real time)
 let hitstop = 0;                              // seconds of frozen simulation left
 let ko = null;                                // final KO slow-mo: { t, x, y }
 let puffs = [];                               // chalk-puff particles
+// Live co-op (#35): while the host runs a co-op fight, every effect below is also written down (with the host's clock,
+// in ms) so the guest's phone can replay it when its view of the fight reaches that moment. Hitstop isn't: the guest adds
+// none of its own, though it sees the host's freezes (docs/08 Realtime ❓).
+let coopRec = null, coopClock = 0;            // coopClock: seconds of real time the page has run, the stamp on everything it sends
+let ticking = false;                          // only the fight's own effects count, not a button's buzz
+const rec = (name, args) => { if (coopRec && ticking) coopRec.push([Math.round(coopClock * 1000), name, ...args]); };
 
 function doShake(factor) {
+  rec('doShake', arguments);
   if (!J.on.shake) return;
   const amp = J.shakePx * factor * (J.on.reduce ? 0.35 : 1);
   const current = shakeT > 0 ? shakeAmp * shakeT / shakeDur : 0;
@@ -882,16 +999,18 @@ function doShake(factor) {
 }
 function doHitstop(ms) { if (J.on.hitstop) hitstop = Math.max(hitstop, ms / 1000); }
 const flashTime = () => (J.on.flash && !J.on.reduce ? J.flashMs / 1000 : 0);
-function buzz(pattern) { if (!simMode && J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
+// Haptics are about you (05 Game feel): a co-op guest only feels the ones marked shared, like the final KO.
+function buzz(pattern, shared = false) { if (shared) rec('buzz', [pattern]); if (!simMode && J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
 function chalkPuff(x, y, n, color) {
+  rec('chalkPuff', arguments);
   if (!J.on.particles) return;
   for (let k = 0; k < n; k++) {
-    const a = rand(0, Math.PI * 2), sp = rand(40, 170);
-    puffs.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, r: rand(3, 7), t: 0, life: rand(0.25, 0.45), color });
+    const a = fxRand(0, Math.PI * 2), sp = fxRand(40, 170);
+    puffs.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 30, r: fxRand(3, 7), t: 0, life: fxRand(0.25, 0.45), color });
   }
 }
 // Expanding ring effect (alarm bursts, kanabo quakes). y is screen y; flat rings hug the floor.
-function ring(x, y, r1, color, dur = 0.35, flat = false) { rings.push({ x, y, r1, color, dur, flat, t: 0 }); }
+function ring(x, y, r1, color, dur = 0.35, flat = false) { rec('ring', arguments); rings.push({ x, y, r1, color, dur, flat, t: 0 }); }
 
 // Tiny synthesized sound set (Web Audio). No asset files.
 let ac = null, master = null, noiseBuf = null;
@@ -902,14 +1021,14 @@ function ensureAudio() {
       master = ac.createGain(); master.connect(ac.destination);
       noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
       const d = noiseBuf.getChannelData(0);
-      for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
+      for (let k = 0; k < d.length; k++) d[k] = rng('fx') * 2 - 1;
     }
     if (ac.state === 'suspended') ac.resume();
   } catch (e) { ac = null; }
 }
 let simMode = false;   // bot difficulty check: fights run headless, with no sound, gold or wallet changes
 const canPlay = () => !simMode && J.on.sound && ac && ac.state === 'running';
-const pv = () => 1 + rand(-J.pitchVar, J.pitchVar);
+const pv = () => 1 + fxRand(-J.pitchVar, J.pitchVar);
 function tone(freq, dur, type, vol, slideTo, delay = 0) {
   const t0 = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t0);
@@ -941,6 +1060,20 @@ const sfx = {
   grab() { if (!canPlay()) return; tone(180 * pv(), 0.2, 'sawtooth', 0.2, 90); },
   horn() { if (!canPlay()) return; [466, 587, 698].forEach(f => tone(f, 0.7, 'sawtooth', 0.14)); },
   coin() { if (!canPlay()) return; tone(988, 0.08, 'square', 0.12); tone(1319, 0.25, 'square', 0.12, null, 0.08); },
+};
+for (const k of Object.keys(sfx)) { const play = sfx[k]; sfx[k] = (...a) => { rec('sfx.' + k, a); play(...a); }; }   // co-op replay (#35)
+// What the guest may replay: only these, by name (the names come over the network), with every argument clamped so a
+// bad or hostile message can't hang the page. Not sfx.coin: the gold is the host's.
+const num = (v, lo, hi, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : d);
+const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+const XY = 5000;   // further off-screen than anything real
+const REPLAY = {
+  floater: (t, x, y, c, size) => floater(String(t ?? '').slice(0, 80), num(x, -XY, XY), num(y, -XY, XY), str(c, 32), num(size, 6, 60, 18)),
+  ring: (x, y, r1, c, dur, flat) => ring(num(x, -XY, XY), num(y, -XY, XY), num(r1, 0, 1000), str(c, 32), num(dur, 0.01, 3, 0.35), !!flat),
+  chalkPuff: (x, y, n, c) => chalkPuff(num(x, -XY, XY), num(y, -XY, XY), num(n, 0, 60) | 0, str(c, 32)),
+  doShake: f => doShake(num(f, 0, 3)),
+  buzz: pat => buzz(Array.isArray(pat) ? pat.slice(0, 10).map(v => num(v, 0, 500)) : num(pat, 0, 500)),
+  ...Object.fromEntries(Object.keys(sfx).filter(k => k !== 'coin').map(k => ['sfx.' + k, (a, b) => sfx[k](!!a, !!b)])),
 };
 
 // Derived player numbers
@@ -983,6 +1116,9 @@ function pressed(inp, a) {
   return false;
 }
 window.addEventListener('keydown', e => {
+  if (e.target instanceof Element && e.target.closest('input.coopin')) return;   // typing a co-op name or room code
+  // In a co-op room before Start, R/P/Esc would leave for a fight or the map without closing the room.
+  if (coop && !coop.started && (e.code === 'KeyR' || e.code === 'KeyP' || e.code === 'Escape')) return;
   if (e.code === 'KeyR') { startFight(); return; }
   if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
   const m = KEYMAP[e.code];
@@ -1009,6 +1145,7 @@ function makePlayer(i, stats, ctrl, weaponKey = 'fists') {
     dmgDealt: 0, dmgTaken: 0, dodges: 0, blocks: 0, revives: 0, flexes: 0, aggroTime: 0, ducks: 0, launches: 0, kills: 0, escapes: 0,
     finishers: 0, throws: 0, strikes: 0,
     react: 0.6, reacts: new Map(), flexCd: 0,
+    preset: setup[i].preset, rusty: i === 0 && isRusty(), headband: i === 0 && looksOn('headband'),   // for the HUD and drawing (a co-op guest has no setup of its own for them)
   };
   p.maxHp = p.hp = maxHp(stats);
   p.maxSt = p.st = maxSt(stats);
@@ -1060,6 +1197,7 @@ function spawnWave() {
 }
 
 function startFight() {
+  if (watch) return;   // a co-op guest is watching the host's fight: leave the room first
   const lv = LEVELS[$('#level').value];
   if (!levelOpen(lv)) { logLine(`🔒 <b>${lv.name}</b> is locked: ${lockText(lv)} (or turn off ladder locks).`); return; }
   level = lv;
@@ -1076,9 +1214,11 @@ function startFight() {
   }
   if (lv.scale) coopScaleNow = { ...coopScaleNow, hp: coopScaleNow.hp * lv.scale.hp, dmg: coopScaleNow.dmg * lv.scale.dmg };   // tower floors
   if (lv.tower) ensureTower(lv.tower + 1);   // so a win can offer the next floor
-  monsters = []; waveIdx = 0; waveGap = null; camX = 0; LEFT = 30; RIGHT = W - 30;
+  monsters = []; monUid = 0; waveIdx = 0; waveGap = null; camX = 0; LEFT = 30; RIGHT = W - 30;
   run = lv.run ? { enc: 0, locked: false, pickups: lv.run.pickups.map(q => ({ ...q })), plates: 0, shakes: 0 } : null;
-  platforms = lv.run ? lv.run.platforms : PLATFORMS;
+  platforms = levelPlatforms(lv);
+  maze = lv.labyrinth ? { shiftT: lv.labyrinth.every } : null;
+  if (maze) for (const x of lv.labyrinth.start) platforms.push(newWall(x, 'up'));
   waves = run ? [] : lv.waves;
   if (!run) spawnWave();
   plates = []; shots = []; floaters = []; puffs = []; rings = []; shakeT = 0; hitstop = 0; ko = null; gt = 0; result = null; paused = false;
@@ -1088,6 +1228,7 @@ function startFight() {
   if (!simMode) ensureAudio();
   inputs.forEach(inp => Object.assign(inp, newInput()));
   phase = 'fight';
+  coopHostFight();
   $('#start').textContent = 'Restart fight (R)';
   if (playMode) showMenu(null);
 }
@@ -1095,7 +1236,7 @@ function startFight() {
 // ---------------------------------------------------------------------------
 // Combat helpers
 // ---------------------------------------------------------------------------
-function floater(text, x, y, color, size = 18) { floaters.push({ text, x, y, color, size, t: 0 }); }
+function floater(text, x, y, color, size = 18) { rec('floater', arguments); floaters.push({ text, x, y, color, size, t: 0 }); }
 const isEnraged = m => m.def.enrage && m.hp < m.maxHp * T.enrageAt;
 const speedMult = m => (isEnraged(m) ? T.enrageMult : 1) * (gt < m.buffUntil ? MONSTERS.snack.attacks.cheat.mult : 1);
 
@@ -1165,7 +1306,7 @@ function flinch(m) {
 // push: override the push in px (0 = none); by default it comes from STR vs weight and the move.
 function hitMonster(p, m, mult, move, at, push) {
   if (m.hp <= 0 || phase !== 'fight') return;
-  const crit = Math.random() < critChance(p);
+  const crit = rng() < critChance(p);
   const dmg = Math.round(dmgOf(p) * mult * (crit ? T.critMult : 1));
   const special = SPECIAL_MOVES.has(move), heavy = special || mult > 1 || crit;
   m.hp = Math.max(0, m.hp - dmg);
@@ -1174,7 +1315,7 @@ function hitMonster(p, m, mult, move, at, push) {
   p.threat += dmg;
   combo = gt - lastHitAt <= T.comboMs / 1000 ? combo + 1 : 1; lastHitAt = gt; comboBest = Math.max(comboBest, combo);
   if (m.holding) release(m);                                          // hitting a grabber frees its victim
-  if (J.on.numbers) floater(crit ? `${dmg}!` : `${dmg}`, m.x + rand(-20, 20), FLOOR - m.y - m.def.height + 10, crit ? '#e8c547' : '#fff', crit ? 26 : 18);
+  if (J.on.numbers) floater(crit ? `${dmg}!` : `${dmg}`, m.x + fxRand(-20, 20), FLOOR - m.y - m.def.height + 10, crit ? '#e8c547' : '#fff', crit ? 26 : 18);
   // Juice: contact point sits near the monster's edge, at arm height (lower for small monsters).
   const cx = at ? at.x : m.x - sign(m.x - p.x) * m.def.width * 0.35, cy = at ? at.y : FLOOR - m.y - Math.min(m.def.height * 0.6, 88);
   chalkPuff(cx, cy, Math.round(J.particleCount * (heavy ? 1.6 : 1)), p.i === 0 && looksOn('goldchalk') ? '#e8c547' : null);
@@ -1271,7 +1412,7 @@ function killMonster(m, p) {
   const last = waveIdx >= waves.length - 1 && !monsters.some(o => o !== m && o.hp > 0) && (!run || run.enc === level.run.encounters.length - 1);
   if (last) {
     doHitstop(J.hitstopFinisherMs);
-    sfx.ko(); buzz([60, 40, 120]);
+    sfx.ko(); buzz([60, 40, 120], true);
     if (looksOn('airhorn')) sfx.horn();
     if (J.on.koSlowmo) ko = { t: 0, x: m.x, y: FLOOR - m.y - m.def.height * 0.6 };
     else endFight(true);
@@ -1286,7 +1427,9 @@ function killMonster(m, p) {
 }
 
 // height: 'high' (duck it or stand-block), 'mid' (any block), 'low' (jump it or crouch-block),
-// 'grab' / 'ring' (can't be blocked). Returns 'blocked', 'hit', or false (dodged, ducked, or invulnerable).
+// 'grab' / 'ring' / 'overhead' / 'charge' (can't be blocked).
+// Returns 'blocked', 'hit', or false (dodged, ducked, or invulnerable).
+const UNBLOCKABLE = new Set(['grab', 'ring', 'overhead', 'charge']);
 function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
   if (!alive(p) || phase !== 'fight' || ko) return false;
   if (gt < p.iUntil) { p.dodges++; floater('DODGE', p.x, FLOOR - p.y - 140, '#9fe3ff', 16); return false; }
@@ -1294,7 +1437,7 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
   // A crouch ducks HIGH attacks, but a low sweep is a swing, not a duck: HIGH attacks hit you mid-sweep.
   if (height === 'high' && p.crouch && p.onGround && p.state !== 'attack') { p.ducks++; floater('DUCK', p.x, FLOOR - p.y - 110, '#9fe3ff', 16); return false; }
   let dmg = rawDmg * T.monsterDmgMult;
-  const unblockable = height === 'grab' || height === 'ring' || height === 'overhead';
+  const unblockable = UNBLOCKABLE.has(height);
   const facingSrc = sign(srcX - p.x) === p.facing;
   const heightOk = !unblockable && (height === 'mid' || (height === 'high' ? !p.crouch : p.crouch));
   const blocking = p.state === 'block' && p.st > 0 && facingSrc;
@@ -1592,6 +1735,7 @@ function decayRevives(dt) {
 // Does monster t's wound-up attack a threaten player p (d = horizontal distance)?
 function threatens(t, a, p, d) {
   if (t.attack === 'dash') return t.dashY < 20;
+  if (t.attack === 'charge') return sign(p.x - t.x) === t.facing && p.y < a.band;
   if (t.attack === 'throw' || t.attack === 'crumbs' || t.attack === 'foxfire') return sign(p.x - t.x) === t.facing;
   if (t.attack === 'lob') return t.lobTarget === p;
   if (a.radius) return d < a.radius + 30;
@@ -1624,7 +1768,7 @@ function cpuThink(p) {
     if (t.state !== 'windup') continue;
     const key = t.id + ':' + t.seq;
     let r = p.reacts.get(key);
-    if (!r) { r = { at: rand(0.45, 0.9), jump: Math.random() < 0.5, miss: Math.random() < (p.miss || 0) }; p.reacts.set(key, r); }
+    if (!r) { r = { at: rand(0.45, 0.9), jump: rng() < 0.5, miss: rng() < (p.miss || 0) }; p.reacts.set(key, r); }
     const prog = t.t / (a.windup / 1000 / speedMult(t));
     if (r.miss || prog < r.at || !p.onGround || !threatens(t, a, p, d)) continue;   // miss: a bot standing in for a human doesn't react
     const h = a.height;
@@ -1634,9 +1778,9 @@ function cpuThink(p) {
     }
     if (h === 'overhead') { inp.press.jump = gt; return; }                         // out past the arc: jump the shockwave
     if (h === 'high' && r.jump) inp.down = true;                                  // duck under it
-    else if ((h === 'low' || h === 'grab') && r.jump) inp.press.jump = gt;         // jump it
+    else if ((h === 'low' || h === 'grab' || h === 'charge') && r.jump) inp.press.jump = gt;   // jump it
     else if (p.st >= T.dodgeCost) inp.press.dodge = gt;
-    else if (h !== 'grab' && h !== 'ring') { inp.block = true; inp.down = h === 'low'; }
+    else if (!UNBLOCKABLE.has(h)) { inp.block = true; inp.down = h === 'low'; }
     return;
   }
   const plate = plates.find(pl => pl.kind === 'roll' && Math.abs(pl.x - p.x) < 110 && sign(p.x - pl.x) === sign(pl.vx));
@@ -1665,7 +1809,7 @@ function cpuThink(p) {
     if (m.state !== 'windup') {
       const pack = living().filter(o => Math.abs(o.x - p.x) < T.specialRange + o.def.width / 2).length;
       if (m.def.flies && m.y > 40 && p.onGround) inp.press.jump = gt;
-      if (p.st >= T.specialCost + 20 && (pack >= 3 || Math.random() < 0.02)) inp.press.special = gt;
+      if (p.st >= T.specialCost + 20 && (pack >= 3 || rng() < 0.02)) inp.press.special = gt;
       else inp.press.attack = gt;
     }
   } else {
@@ -1723,7 +1867,7 @@ const KITS = {
     walk(m, dt, tgt, dist, ef) {
       const A = m.def.attacks, elevated = tgt.support > 0 && tgt.onGround;
       if (m.cd <= 0 && elevated) startAttack(m, 'lob', tgt);
-      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, Math.random() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'slam' : 'sweep', tgt);
+      else if (m.cd <= 0 && dist < A.slam.range + 10) startAttack(m, rng() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'slam' : 'sweep', tgt);
       else if (m.cd <= 0 && dist > 280) startAttack(m, 'throw', tgt);
       else if (dist > A.slam.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
     },
@@ -1763,8 +1907,8 @@ const KITS = {
   troll: {   // Bridge Troll
     walk(m, dt, tgt, dist, ef) {
       const A = m.def.attacks;
-      if (m.cd <= 0 && dist < A.grab.range + m.def.width / 2 - 20 && tgt.onGround && Math.random() < 0.4) startAttack(m, 'grab', tgt);
-      else if (m.cd <= 0 && dist < A.club.range + 10) startAttack(m, Math.random() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'smash' : 'club', tgt);
+      if (m.cd <= 0 && dist < A.grab.range + m.def.width / 2 - 20 && tgt.onGround && rng() < 0.4) startAttack(m, 'grab', tgt);
+      else if (m.cd <= 0 && dist < A.club.range + 10) startAttack(m, rng() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'smash' : 'club', tgt);
       else if (dist > A.grab.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
     },
     fire(m, a) {
@@ -1786,7 +1930,7 @@ const KITS = {
       m.cheatT -= dt;
       if (m.cheatT <= 0) { m.cheatT = rand(A.cheat.every * 0.7, A.cheat.every * 1.3); cheatDay(m); }
       if (m.cd <= 0 && dist < A.bite.range + m.def.width / 2 + 8) startAttack(m, 'bite', tgt);
-      else if (m.cd <= 0 && dist > 220 && Math.random() < dt * 1.2) startAttack(m, 'crumbs', tgt);
+      else if (m.cd <= 0 && dist > 220 && rng() < dt * 1.2) startAttack(m, 'crumbs', tgt);
       else if (dist > A.bite.range * 0.8) m.x += m.facing * m.def.speed * ef * dt;
     },
     fire(m, a) {
@@ -1878,8 +2022,8 @@ const KITS = {
       if (m.def.illusion && (m.life -= dt) <= 0) { m.hp = 0; m.gone = true; chalkPuff(m.x, FLOOR - 60, J.particleCount, '#ffa860'); return; }
       m.cloneCd = (m.cloneCd ?? 3) - dt;
       if (m.cd <= 0 && A.clones && isEnraged(m) && m.cloneCd <= 0) startAttack(m, 'clones', tgt);
-      else if (m.cd <= 0 && dist < A.claw.range + m.def.width / 2) startAttack(m, tgt.crouch && Math.random() < T.crouchReadChance ? 'dash' : 'claw', tgt);
-      else if (m.cd <= 0 && dist > 260 && Math.random() < 0.5) startAttack(m, 'foxfire', tgt);
+      else if (m.cd <= 0 && dist < A.claw.range + m.def.width / 2) startAttack(m, tgt.crouch && rng() < T.crouchReadChance ? 'dash' : 'claw', tgt);
+      else if (m.cd <= 0 && dist > 260 && rng() < 0.5) startAttack(m, 'foxfire', tgt);
       else if (m.cd <= 0) startAttack(m, 'dash', tgt);
       else if (dist > 220) m.x += m.facing * m.def.speed * ef * dt;
       else if (dist < 130) m.x -= m.facing * m.def.speed * 0.8 * ef * dt;   // keeps her distance between attacks
@@ -1896,6 +2040,68 @@ const KITS = {
         }
       } else m.state = 'dash';
     },
+  },
+};
+
+KITS.minotaur = {   // Minotaur Champion: charges across the arena (into walls, ideally), double axe, chest bump
+  walk(m, dt, tgt, dist, ef) {
+    const A = m.def.attacks, wall = wallBetween(m.x, tgt.x);
+    if (m.cd <= 0 && (wall || tgt.support > 0 || m.bumped || (dist > A.charge.from && rng() < dt * 3))) { m.bumped = false; startAttack(m, 'charge', tgt); }
+    else if (m.cd <= 0 && dist < A.bump.range + m.def.width / 2 && rng() < 0.35) startAttack(m, 'bump', tgt);
+    else if (m.cd <= 0 && dist < A.cleave.range + 10) startAttack(m, rng() < (tgt.crouch ? T.crouchReadChance : 0.5) ? 'chop' : 'cleave', tgt);
+    else if (!wall && dist > A.cleave.range * 0.6) m.x += m.facing * m.def.speed * ef * dt;
+  },
+  windup(m, dt) {   // pawing the ground before a charge
+    if (m.attack === 'charge' && (m.pawT = (m.pawT || 0) - dt) <= 0) { m.pawT = 0.22; chalkPuff(m.x - m.facing * 30, FLOOR - 4, 2, '#8a7a66'); }
+  },
+  fire(m, a) {
+    if (m.attack === 'cleave') { m.state = 'active'; strike(m, a, 'high', (p, rel) => inFront(m, a, rel) && p.y < 50); }
+    else if (m.attack === 'chop') { m.state = 'active'; doShake(1.2); sfx.slam(); strike(m, a, 'overhead', (p, rel) => inFront(m, a, rel)); }
+    else if (m.attack === 'bump') {
+      m.state = 'active';
+      for (const p of players) {
+        const rel = (p.x - m.x) * m.facing;
+        if (!alive(p) || rel < -12 || rel > a.range + m.def.width / 2 || p.y > 40) continue;
+        const r = hurtPlayer(p, a.dmg * m.dmgMult, m.x, 'mid', m);
+        if (r && alive(p) && !p.grab) { p.kx = m.facing * a.shove * (r === 'blocked' ? 1.5 : 4); if (r === 'hit') floater('CHEST BUMP!', p.x, FLOOR - p.y - 150, m.def.color, 18); m.bumped = true; }
+      }
+    } else {   // charge
+      m.state = 'charge'; m.t = 0; sfx.grab();
+      floater('CHARGE!', m.x, FLOOR - m.def.height - 30, '#e0555a', 22);
+    }
+  },
+  // The states only this kit has: charge (running until a wall or the arena's edge) and stuck (horns in the wall).
+  tick(m, dt, tgt, ef) {
+    if (m.state === 'stuck') {
+      if (m.t >= m.stuckT) { m.state = 'walk'; m.t = 0; m.cd = 0.5; }
+      return true;
+    }
+    if (m.state !== 'charge') return false;
+    const a = m.def.attacks.charge, dir = m.facing, half = m.def.width / 2;
+    m.trail.push({ x: m.x, y: m.y, t: gt });
+    m.x += dir * a.speed * ef * dt;
+    for (const p of players) {
+      if (m.hitSet.has(p) || !alive(p) || Math.abs(p.x - m.x) > half || p.y > a.band) continue;
+      m.hitSet.add(p);
+      if (hurtPlayer(p, a.dmg * m.dmgMult, m.x - dir * 50, 'charge', m) === 'hit' && alive(p) && !p.grab) {
+        p.kx = dir * a.toss * 3; p.vy = 420; p.onGround = false; p.state = 'hurt'; p.t = -0.2;
+        floater('GORED!', p.x, FLOOR - p.y - 150, '#e0555a', 20);
+      }
+    }
+    const front = m.x + dir * m.def.width * 0.4, wall = platforms.find(w => w.look === 'wall' && wallUp(w) && front >= w.x1 && front <= w.x2);
+    const edge = dir > 0 ? m.x >= RIGHT - half : m.x <= LEFT + half;
+    if (wall) {
+      breakWall(wall);
+      m.x = dir > 0 ? wall.x1 - m.def.width * 0.4 : wall.x2 + m.def.width * 0.4;
+      m.state = 'stuck'; m.t = 0; m.stuckT = a.stuckWall; m.chained = false;
+      floater('HORNS STUCK!', m.x, FLOOR - m.def.height - 30, '#7ee08a', 24);
+    } else if (edge) {
+      m.x = clamp(m.x, LEFT + half, RIGHT - half);
+      doShake(0.8); sfx.slam();
+      if (isEnraged(m) && !m.chained) { m.chained = true; m.facing = -dir; startAttack(m, 'charge', tgt); }   // enraged: turns and charges again
+      else { m.state = 'stuck'; m.t = 0; m.stuckT = a.stuckEdge; m.chained = false; floater('DAZED', m.x, FLOOR - m.def.height - 30, '#e8c547', 18); }
+    }
+    return true;
   },
 };
 
@@ -1946,6 +2152,10 @@ function updateMonster(m, dt) {
     return;
   }
 
+  if (K.tick && K.tick(m, dt, tgt, ef)) {   // a kit's own states
+    m.trail = m.trail.filter(tr => gt - tr.t < 0.18);
+    return;
+  }
   if (m.state === 'walk') {
     m.facing = sign(tgt.x - m.x);
     m.cd -= dt;
@@ -1974,6 +2184,7 @@ function updateMonster(m, dt) {
     }
   }
   m.x = clamp(m.x, LEFT + m.def.width / 2, RIGHT - m.def.width / 2);
+  if (maze) wallStop(m);
   m.trail = m.trail.filter(tr => gt - tr.t < 0.18);
 }
 
@@ -1984,7 +2195,7 @@ function collideBodies() {
   for (const p of players) {
     if (!alive(p) || p.grab) continue;
     for (const m of monsters) {
-      if (m.hp <= 0 || m.gone || m.state === 'launched' || m.state === 'dash' || m.holding || m.state === 'held') continue;
+      if (m.hp <= 0 || m.gone || m.state === 'launched' || m.state === 'dash' || m.state === 'charge' || m.holding || m.state === 'held') continue;
       const [lo, hi] = bodyOf(m);
       if (p.y >= hi - 8 || lo >= p.y + 95) continue;                          // above it (a jump) or under a flyer
       if (p.state === 'dodge' && (m.def.rank === 'minion' ? T.dodgeThroughMinions : T.dodgeThroughBig)) continue;
@@ -2132,6 +2343,7 @@ function drawPlatforms() {
   for (const pl of platforms) {
     if (pl.x2 < camX || pl.x1 > camX + W) continue;
     const y = FLOOR - pl.h, w = pl.x2 - pl.x1;
+    if (pl.look === 'wall') { drawWall(pl); continue; }
     if (pl.look === 'crate') {                                                   // stacked wooden crates
       ctx.fillStyle = '#6b4a2c'; ctx.fillRect(pl.x1, y, w, pl.h);
       ctx.strokeStyle = '#3e2a18'; ctx.lineWidth = 3; ctx.strokeRect(pl.x1 + 1.5, y + 1.5, w - 3, pl.h - 3);
@@ -2148,6 +2360,45 @@ function drawPlatforms() {
       ctx.fillRect(pl.x1 + 16, y + 12, 8, pl.h - 12); ctx.fillRect(pl.x2 - 24, y + 12, 8, pl.h - 12);
     }
   }
+}
+
+// A labyrinth wall: stone blocks rising out of the floor. Before it rises, cracks and dust mark the spot.
+function drawWall(w) {
+  const x = w.x1, wd = w.x2 - w.x1, y = FLOOR - w.h;
+  if (w.phase === 'warn') {
+    const u = clamp(w.t / level.labyrinth.warn, 0, 1);
+    ctx.strokeStyle = `rgba(201,180,138,${0.35 + 0.5 * u})`; ctx.lineWidth = 2;
+    poly([[x, FLOOR + 2], [x + wd * 0.3, FLOOR - 3 - u * 3], [x + wd * 0.55, FLOOR + 3], [x + wd * 0.8, FLOOR - 2 - u * 4], [x + wd, FLOOR + 1]]);
+    ctx.fillStyle = `rgba(201,180,138,${0.15 + 0.25 * u})`; ctx.fillRect(x - 4, FLOOR - 2, wd + 8, 4);
+    return;
+  }
+  if (w.h <= 0) return;
+  ctx.fillStyle = '#5b554d'; ctx.fillRect(x, y, wd, w.h);
+  ctx.strokeStyle = '#3b3631'; ctx.lineWidth = 2;
+  for (let k = 0, row = FLOOR - 22; row > y; row -= 22, k++) {                    // brick courses, from the floor up
+    line(x, row, x + wd, row);
+    line(x + (k % 2 ? wd * 0.3 : wd * 0.7), row, x + (k % 2 ? wd * 0.3 : wd * 0.7), Math.max(y, row + 22));
+  }
+  ctx.fillStyle = '#7d766b'; ctx.fillRect(x, y, wd, 5);                          // worn top: you can stand here
+  ctx.strokeStyle = '#2a2622'; ctx.strokeRect(x + 1, y + 1, wd - 2, w.h - 1);
+  if (w.phase === 'broken') { ctx.strokeStyle = '#e8c547'; poly([[x + wd * 0.2, y + 6], [x + wd * 0.5, y + w.h * 0.4], [x + wd * 0.35, y + w.h * 0.7]]); }
+}
+// The labyrinth arena: torch-lit stone, deep under the Iron Mountains.
+function drawMazeBack() {
+  ctx.fillStyle = '#211e1c'; ctx.fillRect(0, 0, W, FLOOR);
+  ctx.strokeStyle = '#2c2825'; ctx.lineWidth = 2;
+  for (let row = 0, k = 0; row < FLOOR; row += 34, k++) {
+    line(0, row, W, row);
+    for (let x = (k % 2) * 40; x < W; x += 80) line(x, row, x, row + 34);
+  }
+  for (const tx of [120, 480, 840]) {                                             // torches
+    const f = 0.8 + 0.2 * Math.sin(gt * 9 + tx);
+    ctx.fillStyle = 'rgba(255,150,60,.08)'; ctx.beginPath(); ctx.arc(tx, 120, 90 * f, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a3a2a'; ctx.fillRect(tx - 3, 120, 6, 22);
+    disc(tx, 114, 7 * f, '#ff9a3c'); disc(tx, 116, 3.5 * f, '#ffe08a');
+  }
+  ctx.fillStyle = '#2b2622'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+  ctx.strokeStyle = '#4a433b'; ctx.lineWidth = 2; line(0, FLOOR, W, FLOOR);
 }
 
 // The Comfort Zone at dusk, for runs: parallax hills and cottages (screen space), then the ground, river bridge and
@@ -2311,7 +2562,7 @@ function drawStick(p) {
   ctx.scale((p.state === 'spin' && p.spin ? p.spin.from : p.facing) * turn * k, k);
   if (p.state === 'dodge') ctx.globalAlpha = gt < p.iUntil ? 0.3 : 0.7;
   else if (alive(p) && (gt < p.iUntil || (J.on.grace && gt < p.graceUntil))) ctx.globalAlpha = 0.6 + 0.3 * Math.sin(gt * 30);
-  const ink = p.flash > 0 ? '#e0555a' : INK, accent = p.i === 0 && looksOn('headband') ? '#e0555a' : p.color;
+  const ink = p.flash > 0 ? '#e0555a' : INK, accent = p.headband ? '#e0555a' : p.color;
   const lw = (3.6 + sw * 5.4) / k, headR = 11.5 - sw * 3.5;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const crouchPose = p.crouch && p.onGround && alive(p);
@@ -2509,8 +2760,8 @@ function drawGear(p, [hx, hy], k) {
   ctx.restore();
 }
 
-const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge', overhead: 'OVERHEAD · dodge' };
-const BAND_UP = { high: 104, low: 0, mid: 40, grab: 46, overhead: 0 };
+const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge', overhead: 'OVERHEAD · dodge', charge: 'CHARGE · dodge/jump' };
+const BAND_UP = { high: 104, low: 0, mid: 40, grab: 46, overhead: 0, charge: 30 };
 // How loud attack tells are (founder, 2026-10-01: the full tells were far too obvious). The windup time is the same in all
 // three; only what's drawn on top of the monster's windup pose changes.
 const TELLS = {
@@ -2526,11 +2777,16 @@ function drawTelegraph(m) {
   if (style === 'subtle') return drawGlint(m);
   const a = m.def.attacks[m.attack], small = m.def.rank === 'minion';
   const prog = clamp(m.t / (a.windup / 1000 / speedMult(m)), 0, 1);
-  const unblock = a.height === 'grab' || a.height === 'ring' || a.height === 'overhead';
+  const unblock = UNBLOCKABLE.has(a.height);
   ctx.save();
   ctx.fillStyle = unblock ? `rgba(180,140,255,${0.14 + prog * 0.4})` : `rgba(224,85,90,${0.12 + prog * 0.35})`;
   if (m.attack === 'dash') {
     ctx.fillRect(Math.min(m.x, m.dashTo), FLOOR - m.dashY - 6, Math.abs(m.dashTo - m.x), 14);
+  } else if (m.attack === 'charge') {                       // all the way across, or to the first wall
+    const w = platforms.find(q => q.look === 'wall' && wallUp(q) && (m.facing > 0 ? q.x1 > m.x : q.x2 < m.x) &&
+      !platforms.some(o => o !== q && o.look === 'wall' && wallUp(o) && (m.facing > 0 ? o.x1 > m.x && o.x1 < q.x1 : o.x2 < m.x && o.x2 > q.x2)));
+    const end = w ? (m.facing > 0 ? w.x1 : w.x2) : m.facing > 0 ? RIGHT : LEFT;
+    ctx.fillRect(Math.min(m.x, end), FLOOR - 70, Math.abs(end - m.x), 70);
   } else if (m.attack === 'throw') {
     ctx.fillRect(m.facing > 0 ? m.x : camX, FLOOR - 6, m.facing > 0 ? camX + W - m.x : m.x - camX, 6);
   } else if (m.attack === 'crumbs' || m.attack === 'foxfire') {
@@ -2559,7 +2815,7 @@ function drawGlint(m) {
   if (prog < GLINT_AT) return;
   const u = (prog - GLINT_AT) / (1 - GLINT_AT), small = m.def.rank === 'minion';
   const r = (small ? 7 : 12) * Math.sin(Math.min(1, u * 1.15) * Math.PI) + 1;
-  const unblock = a.height === 'grab' || a.height === 'ring' || a.height === 'overhead';
+  const unblock = UNBLOCKABLE.has(a.height);
   const x = m.x + m.facing * m.def.width * 0.3, y = FLOOR - m.y - m.def.height * 0.85;
   ctx.save(); ctx.translate(x, y); ctx.rotate(u * 1.2);
   ctx.fillStyle = unblock ? '#b48cff' : '#ffffff'; ctx.globalAlpha = 0.9;
@@ -2829,6 +3085,8 @@ const SPR = (() => {
     wisp:   ['#1a3040', '#6aa0c0', '#a8d8f0', '#d8f4ff', '#ffffff'],
     gob:    ['#10200a', '#3a6a1c', '#5e9a2e', '#8cc850', '#c8f090'],
     paper:  ['#4a4a44', '#b8b8ac', '#ecece0', '#ffffff', '#ffffff'],
+    fur:    ['#1c0c04', '#4e2e1c', '#7a4a2c', '#a06a44', '#c89068'],
+    muzzle: ['#3a2414', '#a07858', '#c8a080', '#e8c8a8', '#fff0e0'],
   };
   const S = { R: 5, round: 1.6, t1: 0.25, t2: 0.8, hi: 0.97 };
   const LIGHT = (() => { const v = [-0.5, -0.7, 0.55], n = Math.hypot(...v); return v.map(a => a / n); })();
@@ -3130,6 +3388,37 @@ const SPR = (() => {
         q(56, 18 + u, RAMPS.red[1], 2, 1); q(57, 19 + u, RAMPS.red[1], 2, 1);                      // band tails
       } };
     } },
+    // Zone 3. Minotaur Champion, from monster-directions.html: bull head, champion belt, chalked hands, double axe.
+    minotaur: { W: 66, H: 72, pad: [26, 24], ax: 32, scale: 2.85, build: (part, o) => {   // o: b, ang + lift (axe arm), bump, rage
+      const u = o.b, sh = [44, 42 + u], arm = t => { t.translate(0, -o.lift); rot(t, ...sh, o.ang); }, cx = o.bump ? 3 : 0;
+      part('wood', t => { arm(t); L(t, 3, [54, 54 + u], [54, 4 + u]); });                            // axe handle
+      part('metal', t => { arm(t); P(t, [[54, 9 + u], [64, 1 + u], [64, 21 + u]]); P(t, [[54, 9 + u], [44, 1 + u], [44, 21 + u]]); }, { r: 2 });   // double axe
+      part('fur', t => { L(t, 7, [27, 60], [27, 66]); L(t, 7, [37, 60], [37, 66]); });
+      part('hair', t => { E(t, 26, 68, 5, 3); E(t, 38, 68, 5, 3); }, { r: 2 });                       // hooves
+      part('red', t => P(t, [[21, 52], [43, 52], [45, 63], [33, 63], [32, 59], [31, 63], [19, 63]]), { r: 2 });   // trunks
+      part('fur', t => E(t, 32 + cx, 45 + u, 14 + cx, 10), { r: 5 });                                // chest (puffed out for a bump)
+      part('leather', t => R(t, 19, 50, 26, 5), { r: 2 });
+      part('gold', t => RR(t, 26, 47, 12, 10, 2), { r: 3 });                                          // champion belt plate
+      part('fur', t => { P(t, [[19, 23 + u], [10, 26 + u], [19, 28 + u]]); P(t, [[45, 23 + u], [54, 26 + u], [45, 28 + u]]); }, { r: 1 });   // ears
+      part('bone', t => { P(t, [[21, 17 + u], [9, 15 + u], [4, 5 + u], [13, 11 + u], [23, 13 + u]]); P(t, [[43, 17 + u], [55, 15 + u], [60, 5 + u], [51, 11 + u], [41, 13 + u]]); }, { r: 2 });   // horns
+      part('fur', t => E(t, 32, 24 + u, 14, 12), { r: 6 });                                           // big head
+      part('hair', t => P(t, [[27, 13 + u], [29, 8 + u], [32, 12 + u], [35, 8 + u], [37, 13 + u], [32, 15 + u]]), { r: 1 });   // forelock
+      part('muzzle', t => E(t, 32, 32 + u, 9, 6), { r: 3 });
+      part('fur', t => L(t, 6, [21, 44 + u], [14, 49 + u]));
+      part('cream', t => E(t, 13, 51 + u, 4.5, 4.5), { r: 3 });                                       // chalked fist
+      // the axe arm in front of the body, so its windup always shows (lifted high = OVERHEAD chop, pulled back = HIGH cleave)
+      part('fur', t => { arm(t); L(t, 6, sh, [52, 40 + u]); });
+      part('cream', t => { arm(t); E(t, 54, 40 + u, 4, 4); }, { r: 2 });                              // chalked grip
+      return { rim: '#ffcf8a', after: q => {
+        const iris = o.rage ? '#ff3b3b' : '#e03838';
+        eye(q, 22, 19 + u, iris, 5, 6); eye(q, 37, 19 + u, iris, 5, 6);
+        q.line(21, 17 + u, 27, 19 + u, INK); q.line(37, 19 + u, 43, 17 + u, INK); q.line(21, 18 + u, 26, 20 + u, INK); q.line(38, 20 + u, 43, 18 + u, INK);
+        q(28, 31 + u, INK, 2, 2); q(34, 31 + u, INK, 2, 2);                                           // nostrils
+        q(29, 36 + u, '#f0c040', 6, 1); q(28, 34 + u, '#f0c040', 1, 2); q(35, 34 + u, '#f0c040', 1, 2);   // nose ring
+        q(31, 50, RAMPS.gold[4], 2, 2);                                                               // belt jewel
+        [[8, 46], [16, 45], [10, 56]].forEach(([x, y]) => q(x + u, y - u, '#fff'));                   // chalk dust
+      } };
+    } },
     // Marathon Wraith (was Treadmill Wraith): an undead runner who never stops, still wearing a race bib and its shoes.
     wraith: { W: 50, H: 52, pad: [6, 10], ax: 22, scale: 2.0, build: (part, o) => {   // o: b, arm ('rest' | 'up' | 'out'), dash, rage
       const u = o.b, lean = o.dash ? 3 : 0;
@@ -3188,6 +3477,14 @@ function spritePose(m) {
     case 'goblin': return { b: m.state === 'walk' ? (Math.sin(m.bob * 16) > 0 ? 1 : 0) : idle, slap: (w || a) && atk === 'slap', run: !!m.fleeing && Math.sin(m.bob * 16) > 0 };
     case 'kitsune': return { b: m.state === 'dash' ? 0 : idle, rage: m.def.illusion ? false : rage };
     case 'wraith': return { b: Math.sin(m.bob * 4) > 0 ? 1 : 0, arm: w && atk === 'swipe' ? 'up' : a && atk === 'swipe' ? 'out' : 'rest', dash: m.state === 'dash' || (w && atk === 'dash'), rage };
+    case 'minotaur': {
+      const o = { b: idle, ang: 0, lift: 0, bump: false, rage };
+      if (w && atk === 'chop') Object.assign(o, { ang: -0.25, lift: 16 }); else if (a && atk === 'chop') o.ang = 2.0;
+      else if (w && atk === 'cleave') o.ang = -1.9; else if (a && atk === 'cleave') o.ang = 1.3;
+      else if ((w || a) && atk === 'bump') Object.assign(o, { ang: -0.6, bump: true });
+      else if (m.state === 'charge' || (w && atk === 'charge')) o.ang = -0.9;                          // axe tucked back, head down
+      return o;
+    }
     case 'oni': {
       const o = { b: idle, ang: 0, lift: 0, club: true, plate: false, flex: false, rage };
       if (m.state === 'taunt') Object.assign(o, { club: false, flex: true });
@@ -3222,6 +3519,11 @@ function drawSpriteMonster(m) {
   ctx.save();
   monsterFrame(m, lift);
   if (m.key === 'snooze' && m.state === 'windup') ctx.rotate(Math.sin(m.t * 60) * 0.15 * prog);   // the alarm rattles
+  if (sk === 'minotaur') {                                                                           // head down for a charge
+    if (m.state === 'charge') ctx.rotate(0.22);
+    else if (m.state === 'windup' && m.attack === 'charge') ctx.rotate(0.22 * prog + Math.sin(m.t * 30) * 0.02 * prog);
+    else if (m.state === 'stuck') ctx.rotate(0.3 + Math.sin(m.t * 22) * 0.04);
+  }
   if (m.key === 'snack' && m.attack === 'bite') ctx.rotate(m.state === 'windup' ? -prog * 0.25 : m.state === 'active' ? 0.3 : 0);
   const x0 = -d.ax * s, y0 = -d.oy * s;
   ctx.imageSmoothingEnabled = false;
@@ -3238,7 +3540,14 @@ function drawSpriteMonster(m) {
   if (sk === 'kitsune' && m.state === 'windup' && m.attack === 'foxfire') disc(60, -70, 6 + prog * 6, '#ff7a1a');
   ctx.restore();
   ctx.globalAlpha = 1;
-  if (m.state === 'active' && (m.attack === 'slam' || m.attack === 'smash')) {   // ground crack
+  if (sk === 'minotaur' && m.state === 'stuck') {                                                  // seeing stars
+    for (let k = 0; k < 3; k++) {
+      const ang = m.t * 5 + k * 2.1, x = m.x + m.facing * 40 + Math.cos(ang) * 34, y = FLOOR - m.def.height + 10 + Math.sin(ang) * 9;
+      ctx.fillStyle = '#e8c547'; ctx.font = '800 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText('★', x, y);
+    }
+  }
+  if (sk === 'minotaur' && m.state === 'charge') for (const tr of m.trail) { ctx.globalAlpha = 0.35 * (1 - (gt - tr.t) / 0.18); disc(tr.x - m.facing * 40, FLOOR - 10, 16, '#8a7a66'); ctx.globalAlpha = 1; }
+  if (m.state === 'active' && (m.attack === 'slam' || m.attack === 'smash' || m.attack === 'chop')) {   // ground crack
     ctx.strokeStyle = 'rgba(232,197,71,.7)'; ctx.lineWidth = 4;
     const heavy = m.def.kit === 'heavy', r = (heavy ? 30 : 24) + m.t * (heavy ? 900 : 700);
     ctx.beginPath(); ctx.ellipse(m.x + m.facing * (heavy ? 110 : 100), FLOOR, r, r * 0.18, 0, 0, Math.PI * 2); ctx.stroke();
@@ -3330,8 +3639,8 @@ function drawHud() {
     const y = 26 + k * 42;
     const tag = !alive(p) ? '  DOWN' : (players.length > 1 && monsters.some(m => m.hp > 0 && m.target === p) ? '  ◀ TARGET' : '');
     const wpn = p.weaponKey !== 'fists' ? ' · ' + ITEMS[p.weaponKey].name : '';
-    const rust = p.i === 0 && isRusty() ? ' · RUSTY' : '';
-    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} L${p.level} ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
+    const rust = p.rusty ? ' · RUSTY' : '';
+    bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} L${p.level} ${p.preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
     bar(16, y + 13, 180, 7, p.st / p.maxSt, p.stFlash > 0 && Math.sin(gt * 40) > 0 ? '#e0555a' : p.st >= T.specialCost ? '#e8c547' : '#8a7a3a');
     ctx.fillStyle = '#eceae4'; ctx.fillRect(16 + 180 * Math.min(1, T.specialCost / p.maxSt) - 1, y + 11, 2, 11);   // special cost
   });
@@ -3341,10 +3650,19 @@ function drawHud() {
   ctx.fillText(`${wallet.gold} gold${wallet.pump > 0 ? `  ·  PUMP ×${E.pumpMult}` : ''}`, W - (playMode ? 110 : 16), 42);
 }
 function drawOverlay() {
-  if (phase === 'fight' && !paused) return;
+  if (watch && !watch.seen) {                                 // a co-op guest, before the host's first state arrives
+    ctx.fillStyle = 'rgba(10,11,13,.6)'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'center';
+    ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui'; ctx.fillText(`Joining ${watch.host}'s fight…`, W / 2, 150);
+    return;
+  }
+  const waiting = watchWaiting();
+  if (phase === 'fight' && !paused && !waiting) return;
   ctx.fillStyle = 'rgba(10,11,13,.6)'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
-  if (phase === 'fight') {
+  if (watch && phase === 'fight') {                         // a co-op guest: the host paused, or nothing has come lately
+    ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui';
+    ctx.fillText(paused ? `${watch.host} paused` : `Waiting for ${watch.host}…`, W / 2, 120);
+  } else if (phase === 'fight') {
     ctx.fillStyle = '#eceae4'; ctx.font = '800 36px system-ui'; ctx.fillText('PAUSED', W / 2, 120);
     ctx.font = '500 15px system-ui'; ctx.fillStyle = '#9a9ca0'; ctx.fillText(playMode ? '' : 'Press P or Esc to resume', W / 2, 150);
   } else if (phase === 'ready') {
@@ -3361,6 +3679,11 @@ function drawOverlay() {
          'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, 146 + i * 24));
     if (sc && !playMode) { ctx.fillStyle = '#e8c547'; ctx.fillText(`Scouting report: ${sc.text}`, W / 2, 146 + lines.length * 24 + 12); }
+  } else if (result && result.watched) {                     // a co-op guest: the host's result, no gold of its own yet
+    ctx.fillStyle = result.won ? '#e8c547' : '#e0555a'; ctx.font = '800 40px system-ui';
+    ctx.fillText(result.won ? 'VICTORY' : 'DEFEATED', W / 2, 120);
+    ctx.fillStyle = '#eceae4'; ctx.font = '500 16px system-ui';
+    ctx.fillText(`${result.time.toFixed(1)}s · ${watch ? watch.host : 'the host'}'s fight`, W / 2, 152);
   } else if (!result || !result.reward) {                    // the bot difficulty check is running fights
     ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui'; ctx.fillText('Running bots…', W / 2, 150);
   } else {
@@ -3390,12 +3713,13 @@ function drawOverlay() {
 function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (shakeT > 0) { const a = shakeAmp * shakeT / shakeDur; ctx.translate(rand(-a, a), rand(-a, a) * 0.7); }
+  if (shakeT > 0) { const a = shakeAmp * shakeT / shakeDur, [ox, oy] = shakeOffset(); ctx.translate(ox * a, oy * a * 0.7); }
   if (run) {
     drawRunBack();
     ctx.translate(-Math.round(camX), 0);                     // world space from here on
     drawRunWorld();
-  } else {
+  } else if (level && level.labyrinth) drawMazeBack();
+  else {
     ctx.fillStyle = '#1b1e22'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
     ctx.strokeStyle = '#2c3036'; ctx.lineWidth = 2; line(0, FLOOR, W, FLOOR);
   }
@@ -3438,10 +3762,24 @@ function draw() {
 // Loop
 // ---------------------------------------------------------------------------
 let last = performance.now();
+let manualClock = false;   // a test took the clock (__bb.seed() or __bb.step()): the rAF loop only draws
 function frame(now) {
-  const dt = clamp((now - last) / 1000, 0, 0.05);
+  requestAnimationFrame(frame);   // first, so one bad frame (say a co-op state this build can't draw) never stops the loop
+  const real = Math.max(0, (now - last) / 1000), dt = Math.min(real, 0.05);
   last = now;
-  if (phase === 'fight' && !paused) tick(dt);
+  if (watch && !manualClock) watchRender(now);
+  if (!manualClock) step(dt, real);
+  draw();
+  markSpecialReady();
+}
+// Advance everything that moves by dt seconds: the fight (if one is running) and the effects. The rAF loop calls it with
+// the real frame time; tests call it through __bb.step() with a fixed one. The fight never steps more than 50 ms at once,
+// but coopClock (the stamp on what a co-op host sends) follows the real time, clockDt, so one long frame on the host
+// doesn't leave its clock behind the guest's estimate of it.
+function step(dt, clockDt = dt) {
+  coopClock += clockDt;
+  if (phase === 'fight' && !paused && !watch) { ticking = true; try { tick(dt); } finally { ticking = false; } }   // a co-op guest only draws what the host sends
+  coopSend();
   if (!paused) {
     shakeT = Math.max(0, shakeT - dt);
     for (const q of puffs) { q.t += dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.9; q.vy *= 0.9; }
@@ -3450,9 +3788,6 @@ function frame(now) {
     floaters.forEach(f => f.t += dt);
     floaters = floaters.filter(f => f.t < 0.9);
   }
-  draw();
-  markSpecialReady();
-  requestAnimationFrame(frame);
 }
 // One simulation step (the bots call this directly, with no drawing).
 function tick(dt) {
@@ -3465,6 +3800,7 @@ function tick(dt) {
     players.forEach(p => updatePlayer(p, sdt));
     decayRevives(sdt);
     if (run && phase === 'fight' && !ko) updateRun(sdt);
+    if (maze && phase === 'fight' && !ko) updateMaze(sdt);
     if (phase === 'fight' && !ko) {
       monsters.forEach(m => updateMonster(m, sdt));
       separate(sdt);
@@ -3478,11 +3814,16 @@ function tick(dt) {
 }
 // Fights pause instantly: P/Esc, the ⏸ button, or putting the phone down (tab hidden).
 function togglePause(force) {
+  if (watch) { showMenu(menuView === 'coopwatch' && force !== true ? null : 'coopwatch'); return; }   // the guest can't pause the host
   if (phase !== 'fight') { if (playMode) showMenu('map'); return; }
   paused = force ?? !paused;
   if (playMode) showMenu(paused ? 'pause' : null);
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'fight') togglePause(true); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden || phase !== 'fight') return;
+  togglePause(true);
+  coopSend(true);   // a co-op host's loop stops with the screen: tell the guest it's paused now, not never
+});
 
 // ---------------------------------------------------------------------------
 // Phone play mode (G1): fullscreen landscape, floating left thumbstick, big jump bottom-right,
@@ -3693,7 +4034,7 @@ function mapView() {
     `<circle cx="0" cy="-30" r="6" fill="${COLORS[0]}"/><line x1="0" y1="-24" x2="0" y2="-8"/><line x1="0" y1="-8" x2="-6" y2="4"/><line x1="0" y1="-8" x2="6" y2="4"/><line x1="0" y1="-19" x2="-7" y2="-12"/><line x1="0" y1="-19" x2="8" y2="-26"/></g>`;
   return `<div class="maphead"><h3>World map</h3><span class="chip"><b>Level ${setup[0].level}</b> ${setup[0].preset} · ${wallet.gold} gold</span>` +
     (realStats ? '' : `<button data-m="lvstep" data-v="-1" aria-label="Level down">− Lvl</button><button data-m="lvstep" data-v="1" aria-label="Level up">+ Lvl</button>`) +
-    `<button data-m="maplocks">${mapLocks ? '🔒 Locks on' : '🔓 Locks off'}</button><button data-m="levels">More ▸</button></div>` +
+    `<button data-m="maplocks">${mapLocks ? '🔒 Locks on' : '🔓 Locks off'}</button><button data-m="coop" data-testid="coop-open">👥 Co-op</button><button data-m="levels">More ▸</button></div>` +
     `<div class="mapwrap"><div class="mapin" style="width:${MAP_W}px"><svg width="${MAP_W}" height="240" viewBox="0 0 ${MAP_W} 240">${zones}${deco.join('')}${tower}` +
     `<polyline points="${path}" fill="none" stroke="#e8dcc0" stroke-width="4" stroke-dasharray="2 10" stroke-linecap="round"/>` +
     `<g stroke="#e8dcc0" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round">${branches}</g>${me}</svg>` +
@@ -3718,6 +4059,7 @@ function showMenu(v) {
   const el = $('#menu');
   el.className = v ? 'show ' + v : '';
   if (!v) { el.innerHTML = ''; return; }
+  if (v.startsWith('coop')) { el.innerHTML = coopView(v); return; }
   const cur = LEVELS[$('#level').value];
   if (v === 'map' || v === 'tower') {
     el.innerHTML = v === 'map' ? mapView() : towerView();
@@ -3745,7 +4087,10 @@ $('#menu').addEventListener('click', e => {
   if (!b) return;
   const m = b.dataset.m, v = b.dataset.v;
   ensureAudio(); goFullscreen();
-  if (m === 'again') startFight();
+  if (coop && (m === 'map' || m === 'levels' || m === 'lv')) coopLeave();   // leaving for the map ends the room
+  if (watch && (m === 'map' || m === 'levels' || m === 'lv')) stopWatch();
+  if (m.startsWith('coop')) coopClick(m, v);
+  else if (m === 'again') startFight();
   else if (m === 'levels') { paused = false; phase = phase === 'fight' ? 'ready' : phase; showMenu('levels'); }
   else if (m === 'map') {
     paused = false; phase = phase === 'fight' ? 'ready' : phase;
@@ -3765,12 +4110,490 @@ $('#menu').addEventListener('click', e => {
   else if (m === 'build') { setup[0].preset = v; setup[0].stats = statsFor(BUILDS[v], setup[0].level); fighterSync[0](); showMenu(menuView); }
   else if (m === 'tells') { prefs.tells = v; savePrefs(); $('#tells').value = v; showMenu(menuView); }
 });
+// ---------------------------------------------------------------------------
+// Live co-op lobby (#34; docs/05 Modes, docs/08 Realtime). The host opens a room and gets a 4-character code; a friend
+// on another phone joins with it and both see a lobby. A room is a public Supabase Realtime channel named after the
+// code: Presence lists who's in it (name, level, the host's fight), Broadcast carries Start. No account needed.
+// supabase-js loads only when a room is opened, so solo play still works offline. Syncing the fight itself is #35/#36:
+// Start begins the host's fight (solo until #36 brings the guest in), and the guest's phone watches it live (#35).
+// ---------------------------------------------------------------------------
+const COOP = {
+  alphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',   // no look-alikes: 0/O and 1/I/L are left out
+  codeLen: 4,
+  maxPlayers: 2,
+  connectMs: 8000,   // give up on reaching the server after this
+  findMs: 4000,      // a guest waits this long to see the host before calling the code wrong or expired
+  // Same version as the app's @supabase/supabase-js; the hash pins the exact file.
+  lib: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js',
+  sri: 'sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok',
+  // Watching the host's fight (#35). Placeholders, to tune on two real phones.
+  sendHz: 20,        // the host sends the fight's state this many times a second
+  interpMs: 120,     // the guest draws the fight this far behind the newest state, so it always has two to blend between
+  resyncMs: 600,     // if the guest's view drifts further than this from where it should be, it jumps instead of easing
+  staleMs: 300,      // effects (sounds, puffs, shakes) more than this late are skipped, not played in a burst
+  waitMs: 1000,      // no state for this long: the guest says it's waiting for the host
+  keepMs: 2000,      // the guest keeps this much of the host's fight (states and effects) behind the newest state
+  endHz: 2,          // after the fight, the host resends the end state this often, in case one is lost...
+  endForS: 10,       // ...for this long
+  proto: 1,          // what the start and state messages look like: a phone on another version can't watch
+  lagSteps: [0, 150, 300],   // dev toggle on the co-op menu: test lag added to every state the guest receives
+  lagJitterMs: 30,   // ± this much on top of the test lag, as a real network would
+};
+const COOP_NO_SERVER = 'Co-op isn\'t set up on this device yet: there\'s no co-op server address.';
+const COOP_NO_CONN = 'Couldn\'t reach the co-op server. Check your connection and try again.';
+// The co-op server (a Supabase project's API URL and public anon key). The app passes it in through
+// bbInit({ coop: { url, anonKey } }); in a browser, open the page once with ?sb=<API URL>&sbkey=<anon key> and this
+// device remembers it. A link may only point co-op at https or at this computer (localhost), and the co-op menu shows
+// which server a link set, with a Reset.
+const coopServerOk = u => {
+  try { const x = new URL(u); return x.protocol === 'https:' || (x.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(x.hostname)); }
+  catch (e) { return false; }
+};
+let coopServer = null, coopServerFromLink = false;
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get('sb') && q.get('sbkey') && coopServerOk(q.get('sb'))) localStorage.setItem('bb-coop-server', JSON.stringify({ url: q.get('sb'), anonKey: q.get('sbkey') }));
+  const s = JSON.parse(localStorage.getItem('bb-coop-server'));
+  if (s && typeof s.url === 'string' && typeof s.anonKey === 'string' && s.anonKey && coopServerOk(s.url)) { coopServer = s; coopServerFromLink = true; }
+} catch (e) {}
+let coopName = '';
+try { coopName = localStorage.getItem('bb-coop-name') || ''; } catch (e) {}
+let coop = null;       // the room you're in: { role, code, id, ch, subscribed, members, fight, started, seenHost }
+let coopNote = '';     // why the last room ended (wrong code, no connection…), shown on the co-op menu
+let coopClient = null, coopClientFor = '', coopLib = null;
+
+const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 16);
+const myName = () => cleanName(coopName) || 'Fighter';
+const randomHex = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2, '0')).join('');
+function newRoomCode() {
+  return Array.from(crypto.getRandomValues(new Uint32Array(COOP.codeLen)), n => COOP.alphabet[n % COOP.alphabet.length]).join('');
+}
+const normCode = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const validCode = c => c.length === COOP.codeLen && [...c].every(ch => COOP.alphabet.includes(ch));
+// Fights the host can pick: every open fight on the ladder and test lists (not the tower).
+const coopFights = () => ZONES.flatMap(z => z.levels).filter(levelOpen);
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
+
+function loadSupabase() {
+  if (window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
+  if (!coopLib) coopLib = new Promise((ok, no) => {
+    const s = document.createElement('script');
+    s.src = COOP.lib; s.integrity = COOP.sri; s.crossOrigin = 'anonymous';
+    s.onload = () => window.supabase ? ok(window.supabase) : no(new Error('supabase-js did not load'));
+    s.onerror = () => { coopLib = null; s.remove(); no(new Error('supabase-js did not load')); };
+    document.head.appendChild(s);
+  });
+  return coopLib;
+}
+function coopLeave() {
+  const room = coop;
+  coop = null;
+  coopRec = null;   // a host stops writing effects down for a guest that's gone
+  if (!room) return;
+  clearTimeout(room.giveUp); clearTimeout(room.findTimer); clearTimeout(room.lostTimer);
+  if (room.ch && coopClient) Promise.resolve(coopClient.removeChannel(room.ch)).catch(() => {});
+}
+function coopFail(msg) {
+  const room = coop;
+  coopLeave();
+  coopNote = msg;
+  // Once Start is tapped, a dropped room ends quietly: never put a menu over a running fight.
+  if (watch) {   // the host's fight was on this phone's screen
+    if (phase === 'over') { showMenu('coopwatch'); return; }   // keep the result up; Leave goes back to the map
+    stopWatch();
+  } else if ((room && room.started) || phase === 'fight') return;
+  if (playMode) showMenu('coop');
+}
+async function coopOpen(role, code) {
+  coopLeave();
+  coopNote = '';
+  if (!coopServer) return coopFail(COOP_NO_SERVER);
+  if (navigator.onLine === false) return coopFail('No connection. Check your internet and try again.');
+  const fights = coopFights(), cur = $('#level').value;
+  const room = coop = { role, code, id: randomHex(8), ch: null, subscribed: false, members: [], started: false, seenHost: false,
+    at: Date.now(), fight: role === 'host' ? (fights.some(l => l.key === cur) ? cur : fights[0].key) : null };
+  showMenu('coopwait');
+  let lib;
+  try { lib = await withTimeout(loadSupabase(), COOP.connectMs); } catch (e) { if (coop === room) coopFail(COOP_NO_CONN); return; }
+  if (coop !== room) return;   // cancelled while loading
+  try {
+    if (!coopClient || coopClientFor !== coopServer.url + coopServer.anonKey) {
+      coopClient = lib.createClient(coopServer.url, coopServer.anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      coopClientFor = coopServer.url + coopServer.anonKey;
+    }
+    room.ch = coopClient.channel('bb-coop-' + code, { config: { presence: { key: room.id }, broadcast: { self: false } } });
+  } catch (e) { return coopFail(COOP_NO_CONN); }
+  room.ch
+    .on('presence', { event: 'sync' }, () => { if (coop === room) coopSync(); })
+    .on('broadcast', { event: 'start' }, msg => { if (coop === room) coopStarted(msg && msg.payload); })
+    .on('broadcast', { event: 'state' }, msg => { if (coop === room && role === 'guest') coopState(msg && msg.payload); });
+  room.giveUp = setTimeout(() => { if (coop === room && !room.subscribed) coopFail(COOP_NO_CONN); }, COOP.connectMs);
+  room.ch.subscribe(status => {
+    if (coop !== room) return;
+    if (status === 'SUBSCRIBED') {
+      clearTimeout(room.giveUp); clearTimeout(room.lostTimer); room.lostTimer = null;
+      if (room.subscribed) { coopTrack(); return; }   // back after a dropped socket: say we're still here
+      room.subscribed = true;
+      coopTrack();
+      if (role === 'host') showMenu('cooplobby');
+      else room.findTimer = setTimeout(() => {
+        if (coop === room && !room.seenHost) coopFail(`No room with code ${code}. Check the code, or ask your friend to host again (a code ends when its host leaves).`);
+      }, COOP.findMs);
+    } else if (status === 'CLOSED' || room.started) {
+      coopFail(room.subscribed ? 'Lost the connection to the room.' : COOP_NO_CONN);   // quiet once started
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      // supabase-js rejoins by itself after these. Before the first join, giveUp already covers it; in the lobby,
+      // give it connectMs to come back before calling the room lost.
+      if (room.subscribed && !room.lostTimer) room.lostTimer = setTimeout(() => { if (coop === room) coopFail('Lost the connection to the room.'); }, COOP.connectMs);
+    }
+  });
+}
+// What this phone tells the room about itself. The host also says which guest it let in (`guest`).
+function coopTrack() {
+  if (!coop || !coop.subscribed) return;
+  const meta = { role: coop.role, name: myName(), level: setup[0].level, at: coop.at };
+  if (coop.role === 'host') Object.assign(meta, { fight: coop.fight, started: coop.started, guest: coop.guest || null, v: COOP.proto });
+  Promise.resolve(coop.ch.track(meta)).catch(() => {});
+}
+const isLevel = k => typeof k === 'string' && Object.hasOwn(LEVELS, k);
+const joinedFirst = (a, b) => (a.at - b.at) || (a.id < b.id ? -1 : 1);
+// The room's host: the one that opened it first, if two phones ever rolled the same code.
+const roomHost = () => coop.members.filter(m => m.role === 'host').sort(joinedFirst)[0];
+// The people in the room: the host, then the guest the host let in. Anyone else who joined isn't in it.
+function coopPlayers() {
+  const host = roomHost(), guestId = coop.role === 'host' ? coop.guest : host && host.guest;
+  const guest = guestId && coop.members.find(m => m.id === guestId && m.role === 'guest');
+  return [host, guest].filter(Boolean);
+}
+function coopSync() {
+  const state = coop.ch.presenceState() || {};
+  coop.members = Object.entries(state).map(([id, metas]) => ({ ...metas[metas.length - 1], id }))
+    .filter(m => m.role === 'host' || m.role === 'guest');
+  const host = roomHost();
+  if (coop.role === 'host') {
+    // Another phone already hosts this code (31⁴ codes, so rare): roll a new one.
+    if (host && host.id !== coop.id && !coop.started) { coopLeave(); coopOpen('host', newRoomCode()); return; }
+    // The host decides the seat: the first guest it sees gets it and keeps it until they leave.
+    let g = coop.guest && coop.members.some(m => m.id === coop.guest) ? coop.guest : null;
+    if (!g && !coop.started) { const first = coop.members.filter(m => m.role === 'guest').sort(joinedFirst)[0]; g = first ? first.id : null; }
+    if (g !== coop.guest) { coop.guest = g; coopTrack(); }
+  } else {
+    if (!coop.members.some(m => m.id === coop.id)) return;   // our own join hasn't come back yet
+    if (!coop.seenHost) {
+      if (!host) return;   // still looking; findTimer gives up
+      if (host.started) return coopFail('That room\'s fight has already started. Ask your friend to host a new one.');
+      if (!host.guest) return;   // the host lets the first guest in on its next sync
+      if (host.guest !== coop.id) return coopFail(`Room ${coop.code} is full.`);
+      coop.seenHost = true; clearTimeout(coop.findTimer);
+    } else if (!host) return coopFail('The host left the room.');
+    else if (host.guest && host.guest !== coop.id) return coopFail(`Room ${coop.code} is full.`);
+    else if (host.started) return coopStarted({ fight: host.fight, v: host.v });
+  }
+  if (!coop.started) showMenu('cooplobby');
+}
+// Host: Start. Both phones leave the lobby: the host's fight begins, the guest's phone says so.
+function coopStart() {
+  if (!coop || coop.role !== 'host' || coop.started || coopPlayers().length < COOP.maxPlayers) return;
+  const lv = LEVELS[coop.fight];
+  if (!lv || !levelOpen(lv)) { showMenu('cooplobby'); return; }   // locked since it was picked (a late bbInit): don't tell the guest it started
+  coop.started = true;
+  coopTrack();
+  Promise.resolve(coop.ch.send({ type: 'broadcast', event: 'start', payload: { fight: coop.fight, v: COOP.proto } })).catch(() => {});
+  // The guest's phone watches (#35); until it can fight too (#36), the fight is solo: no CPU buddy standing in for the friend.
+  $('#level').value = coop.fight; $('#p2mode').value = 'none'; updateHint();
+  startFight();
+}
+function coopStarted(payload) {
+  if (!coop || coop.role !== 'guest' || coop.started || !coop.seenHost) return;
+  if (!payload || payload.v !== COOP.proto) return coopFail(COOP_OTHER_VERSION);
+  coop.started = true;
+  coop.fight = isLevel(payload.fight) ? payload.fight : null;
+  if (coop.fight) startWatch(coop.fight);
+  else showMenu('coopwait');   // says the fight isn't in this version
+}
+const COOP_OTHER_VERSION = 'Your friend\'s Barbell Brawl is a different version from yours. Update both to watch each other\'s fights.';
+
+// ---------------------------------------------------------------------------
+// Watching the host's fight (#35; docs/08 Realtime). The host's phone runs the fight and sends its state COOP.sendHz
+// times a second as a Broadcast `state`: the fighters, monsters, projectiles and run, plus every effect since the last
+// one (see rec()). The guest keeps the recent states and draws the fight COOP.interpMs behind the newest, blending the
+// two states either side of that moment, so a late or bunched message never makes anything jump. Its clock eases
+// toward the host's instead of snapping. The guest adds no hitstop of its own.
+// ---------------------------------------------------------------------------
+let watch = null;    // guest: { fight, host, fid, buf, offs, est, rt, lastNow, events, seen, ended, stats }
+let coopLag = 0;     // dev: test lag in ms on every state this phone receives (co-op menu, or ?lag=150)
+try { const l = +new URLSearchParams(location.search).get('lag'); if (l > 0) coopLag = Math.min(2000, l); } catch (e) {}
+// The Test lag button shows only on a development page: this computer, a .test host, or a link with ?lag.
+const devPage = (() => {
+  try { const h = location.hostname; return ['localhost', '127.0.0.1', '[::1]'].includes(h) || h.endsWith('.test') || new URLSearchParams(location.search).has('lag'); }
+  catch (e) { return false; }
+})();
+let coopFid = 0;     // host: which fight this is (Fight again starts a new one in the same room)
+
+// Host: a new fight in a started room. Effects start being written down for the guest.
+function coopHostFight() {
+  if (!coop || coop.role !== 'host' || !coop.started) { coopRec = null; return; }
+  coopFid++; coop.sendAt = 0; coop.endAt = null; coopRec = [];
+}
+// Host: send the state when it's due (or now, if forced). Called every step. After the fight it keeps sending the end
+// state, with the result, COOP.endHz times a second, so one lost message can't keep the result from the guest.
+function coopSend(force = false) {
+  if (!coop || coop.role !== 'host' || !coop.started || !coop.ch || coopRec === null || !level) return;
+  if (phase === 'over') {
+    if (coop.endAt == null) coop.endAt = coopClock;
+    else if (!force && (coopClock < coop.sendAt || coopClock > coop.endAt + COOP.endForS)) return;
+    coop.sendAt = coopClock + 1 / COOP.endHz;
+  } else if (phase !== 'fight' || (coopClock < coop.sendAt && !force)) return;
+  else coop.sendAt = Math.max(coop.sendAt + 1 / COOP.sendHz, coopClock);
+  const snap = coopSnap();
+  Promise.resolve(coop.ch.send({ type: 'broadcast', event: 'state', payload: snap })).catch(() => {});
+}
+// The fight as plain data. Players and monsters that other things point at (a grab, a plate's owner, a monster's target)
+// become { $p: i } / { $m: id }; Sets, Maps and what both phones already have (a monster's def, a weapon's mods) are
+// left out. Numbers are rounded to 0.01.
+let fxUid = 0;
+function coopSnap() {
+  const pIdx = new Map(players.map(p => [p, p.i])), mIds = new Set(monsters.map(m => m.id));
+  const pack = (v, depth) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+    if (v === null || typeof v !== 'object') return typeof v === 'function' ? undefined : v;
+    if (pIdx.has(v)) return { $p: pIdx.get(v) };
+    if (v.def && typeof v.id === 'number') return mIds.has(v.id) ? { $m: v.id } : null;
+    if (v instanceof Set || v instanceof Map || depth > 5) return undefined;
+    if (Array.isArray(v)) return v.map(x => pack(x, depth + 1) ?? null);
+    const o = {};
+    for (const k in v) { const x = pack(v[k], depth + 1); if (x !== undefined) o[k] = x; }
+    return o;
+  };
+  const entity = (e, skip) => { const o = {}; for (const k in e) if (k !== skip) { const x = pack(e[k], 1); if (x !== undefined) o[k] = x; } return o; };
+  for (const q of plates) q.uid ??= ++fxUid;   // so the guest can tell which plate is which between two states
+  for (const q of shots) q.uid ??= ++fxUid;
+  const ev = coopRec || [];
+  coopRec = [];
+  return {
+    v: COOP.proto, fid: coopFid, ts: Math.round(coopClock * 1000), lv: level.key, phase, paused, gt: pack(gt), waveIdx, waves, combo, comboBest,
+    lastHitAt: pack(lastHitAt), camX: pack(camX), LEFT, RIGHT, ko: ko && pack(ko, 1), run: run && pack(run, 0),
+    players: players.map(p => entity(p, 'w')), monsters: monsters.map(m => entity(m, 'def')),
+    plates: plates.map(q => pack(q, 0)), shots: shots.map(q => pack(q, 0)),
+    walls: level.labyrinth ? platforms.map(q => pack(q, 0)) : undefined,
+    result: phase === 'over' && result ? { won: result.won, time: pack(result.time) } : null,
+    ev: ev.map(e => e.map(x => pack(x, 3) ?? null)),
+  };
+}
+
+function startWatch(fight) {
+  const host = coop && roomHost();
+  watch = { fight, host: cleanName(host && host.name) || 'Fighter', fid: null, buf: [], offs: [], est: 0, rt: null, lastNow: 0, lastAt: 0,
+    events: [], seen: false, ended: false, stats: { got: 0, played: 0, jumps: 0, holds: 0, kinds: {} } };
+  level = LEVELS[fight]; $('#level').value = fight;
+  platforms = levelPlatforms(level);
+  players = []; monsters = []; plates = []; shots = []; floaters = []; puffs = []; rings = [];
+  run = null; waves = []; waveIdx = 0; camX = 0; ko = null; result = null; paused = false; hitstop = 0; shakeT = 0;
+  phase = 'ready';   // until the first state arrives (drawOverlay says it's joining)
+  ensureAudio();
+  showMenu(null);
+}
+function stopWatch() {
+  if (!watch) return;
+  watch = null;
+  players = []; monsters = []; plates = []; shots = []; floaters = []; puffs = []; rings = []; run = null; ko = null; result = null;
+  paused = false; phase = 'ready'; camX = 0; LEFT = 30; RIGHT = W - 30; platforms = PLATFORMS;
+}
+// Guest: a state from the host (after the test lag, if one is set).
+function coopState(snap) {
+  if (!snap || typeof snap !== 'object') return;
+  if (snap.v !== COOP.proto) { if (coop && coop.seenHost) coopFail(COOP_OTHER_VERSION); return; }
+  if (!isLevel(snap.lv) || !Number.isFinite(snap.ts) || !['players', 'monsters', 'plates', 'shots'].every(k => Array.isArray(snap[k]))) return;
+  if (!watch && coop && coop.seenHost && !coop.started) coopStarted({ fight: snap.lv, v: snap.v });   // the state beat the start message
+  if (!watch) return;
+  if (!coopLag) { watchRecv(snap, performance.now()); return; }
+  setTimeout(() => { if (watch) watchRecv(snap, performance.now()); }, Math.max(0, coopLag + (Math.random() * 2 - 1) * COOP.lagJitterMs));
+}
+function watchRecv(snap, now) {
+  const w = watch;
+  if (snap.fid !== w.fid) {   // the first state, or the host started a new fight in this room
+    if (w.fid !== null && snap.fid < w.fid) return;
+    Object.assign(w, { fid: snap.fid, buf: [], offs: [], rt: null, events: [], ended: false });
+    if (snap.lv !== w.fight || !level) { w.fight = snap.lv; level = LEVELS[snap.lv]; platforms = levelPlatforms(level); }
+    result = null; floaters = []; puffs = []; rings = [];
+    if (menuView === 'coopwatch') showMenu(null);
+  }
+  const at = w.buf.findIndex(q => q.ts > snap.ts);   // keep them in the host's order (the test lag can reorder them)
+  if (at < 0) w.buf.push(snap); else w.buf.splice(at, 0, snap);
+  // The quickest delivery is the closest to the true clock difference. A state far later than that means the host's
+  // clock fell behind (or the network got slower for good): start the estimate again rather than run past the newest state.
+  const off = now - snap.ts;
+  if (w.offs.length && off > w.est + COOP.resyncMs) w.offs = [];
+  w.offs.push(off); if (w.offs.length > 40) w.offs.shift();
+  w.est = Math.min(...w.offs);
+  for (const e of Array.isArray(snap.ev) ? snap.ev.slice(0, 200) : []) {
+    // Only names on the REPLAY list, and nothing stamped after this state was made.
+    if (Array.isArray(e) && Number.isFinite(e[0]) && e[0] <= snap.ts && Object.hasOwn(REPLAY, e[1])) w.events.push(e);
+  }
+  w.events.sort((a, b) => a[0] - b[0]);
+  // Keep only the last COOP.keepMs of the fight, so a hidden tab (no frames, so no watchRender) doesn't pile states up.
+  const newest = w.buf[w.buf.length - 1].ts, keep = newest - COOP.keepMs;
+  while (w.buf.length > 2 && w.buf[1].ts <= keep) w.buf.shift();
+  while (w.events.length && w.events[0][0] < keep) w.events.shift();
+  w.lastAt = performance.now();
+  w.stats.got++;
+}
+// Guest: true when the host's fight is on screen but nothing has come from the host for a while (its screen locked, say).
+const watchWaiting = () => !!watch && watch.seen && phase === 'fight' && performance.now() - watch.lastAt > COOP.waitMs;
+const LERP = ['x', 'y', 'kx', 'walkPh', 'bob', 'spin'];
+function blend(a, b, u) {
+  if (!b || u <= 0) return a;
+  if (Math.abs((b.x ?? 0) - (a.x ?? 0)) > 200) return a;   // a real jump (a new encounter): don't sweep across the screen
+  for (const k of LERP) if (typeof a[k] === 'number' && typeof b[k] === 'number') a[k] = lerp(a[k], b[k], u);
+  if (typeof a.t === 'number' && typeof b.t === 'number' && a.state === b.state && a.kind === b.kind && b.t >= a.t) a.t = lerp(a.t, b.t, u);
+  return a;
+}
+// Guest: put the host's fight as it was COOP.interpMs ago into the page's globals, for draw(). Called every frame.
+function watchRender(now) {
+  const w = watch;
+  if (!w.buf.length) return;
+  const target = now - w.est - COOP.interpMs;
+  if (w.rt === null || Math.abs(target - w.rt) > COOP.resyncMs) { if (w.rt !== null) w.stats.jumps++; w.rt = target; }
+  else { const d = Math.max(0, now - w.lastNow); w.rt += d + clamp(target - w.rt - d, -0.1 * d, 0.1 * d); }   // ease, ±10% speed
+  w.lastNow = now;
+  // Never run past the newest state: with nothing to blend towards it would only hold still and then hop. Wait there
+  // instead (the host stalled, or a message is late) and ease back to COOP.interpMs behind once states come again.
+  const newest = w.buf[w.buf.length - 1].ts;
+  if (w.rt > newest) { w.rt = newest; w.stats.holds++; }
+  let i = w.buf.length - 1;
+  while (i > 0 && w.buf[i].ts > w.rt) i--;
+  if (i > 0) { w.buf.splice(0, i); i = 0; }   // older states are done with
+  const a = w.buf[0], b = w.buf[1], u = b && w.rt > a.ts ? clamp((w.rt - a.ts) / (b.ts - a.ts), 0, 1) : 0;
+  watchApply(a, b, u);
+  while (w.events.length && w.events[0][0] <= w.rt) {
+    const [ts, name, ...args] = w.events.shift();
+    if (ts < w.rt - COOP.staleMs) continue;   // too late to feel like the same moment
+    try { REPLAY[name](...args); w.stats.played++; w.stats.kinds[name] = (w.stats.kinds[name] || 0) + 1; } catch (e) {}
+  }
+}
+function watchApply(a, b, u) {
+  const w = watch;
+  const by = (list, key) => new Map((list || []).map(e => [e[key], e]));
+  const bp = b && by(b.players, 'i'), bm = b && by(b.monsters, 'id'), bq = b && by(b.plates, 'uid'), bs = b && by(b.shots, 'uid');
+  // Anything this build doesn't know (a newer build's weapon or attack) falls back to something it can draw.
+  players = a.players.map(p => {
+    const q = blend(structuredClone(p), bp && bp.get(p.i), u);
+    if (!Object.hasOwn(ITEMS, q.weaponKey) || !ITEMS[q.weaponKey].mods) q.weaponKey = 'fists';
+    return Object.assign(q, { w: ITEMS[q.weaponKey].mods });
+  });
+  if (players[0]) players[0].name = w.host;
+  monsters = a.monsters.filter(m => Object.hasOwn(MONSTERS, m.key)).map(m => {
+    const q = Object.assign(blend(structuredClone(m), bm && bm.get(m.id), u), { def: MONSTERS[m.key] });
+    if (q.attack != null && !Object.hasOwn(q.def.attacks || {}, q.attack)) { q.attack = null; q.state = 'walk'; }
+    return q;
+  });
+  plates = a.plates.map(q => blend(structuredClone(q), bq && bq.get(q.uid), u));
+  shots = a.shots.map(q => blend(structuredClone(q), bs && bs.get(q.uid), u));
+  // Point the { $p } / { $m } stand-ins back at this frame's fighters and monsters.
+  const mById = new Map(monsters.map(m => [m.id, m]));
+  const link = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth > 6) return o;
+    if (typeof o.$p === 'number') return players[o.$p] || null;
+    if (typeof o.$m === 'number') return mById.get(o.$m) || null;
+    for (const k in o) o[k] = link(o[k], depth + 1);
+    return o;
+  };
+  for (const e of [...players, ...monsters]) for (const k in e) if (k !== 'def' && k !== 'w') e[k] = link(e[k], 1);
+  for (const q of [...plates, ...shots]) link(q, 0);
+  run = a.run ? structuredClone(a.run) : null;
+  if (level && level.labyrinth && Array.isArray(a.walls)) {   // the labyrinth's walls, as the host has them
+    platforms = a.walls.slice(0, 12).map(q => ({ x1: num(q.x1, -XY, XY), x2: num(q.x2, -XY, XY), h: num(q.h, 0, 400), top: num(q.top, 0, 400),
+      rise: num(q.rise, 0, 1), phase: str(q.phase, 8), t: num(q.t, 0, 60), look: 'wall' }));
+  }
+  waves = Array.isArray(a.waves) ? a.waves : []; waveIdx = a.waveIdx | 0; combo = a.combo | 0; comboBest = a.comboBest | 0; lastHitAt = +a.lastHitAt || 0;
+  gt = b && b.gt >= a.gt ? lerp(a.gt, b.gt, u) : a.gt;
+  camX = b && Math.abs(b.camX - a.camX) < 200 ? lerp(a.camX, b.camX, u) : a.camX;
+  LEFT = a.LEFT; RIGHT = a.RIGHT; ko = a.ko ? structuredClone(a.ko) : null; paused = !!a.paused;
+  phase = a.phase === 'over' ? 'over' : 'fight';
+  w.seen = true;
+  if (a.phase === 'over' && !w.ended) {   // the host's result, shown the same on this phone
+    w.ended = true;
+    result = a.result ? { won: !!a.result.won, time: +a.result.time || 0, watched: true } : null;
+    if (playMode) showMenu('coopwatch');
+  }
+}
+function coopView(v) {
+  const head = (title, btn) => `<div class="maphead"><h3>${title}</h3>${btn}</div>`;
+  const note = coopNote ? `<p class="coopnote" role="alert" data-testid="coop-note">${escHtml(coopNote)}</p>` : '';
+  if (v === 'coopjoin') return head('Join co-op', '<button data-m="coop" data-testid="coop-back">◂ Back</button>') + note +
+    `<div class="sub">Room code</div><div class="mrow"><input class="coopin codein" id="coopCode" data-testid="coop-code" maxlength="${COOP.codeLen}" ` +
+    `autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" aria-label="Room code">` +
+    `<button class="primary" data-m="coopgo" data-testid="coop-go">Join</button></div><p class="hint">The code is on your friend's screen after they tap Host co-op.</p>`;
+  if (v === 'coopwait') {
+    const cancel = `<div class="mrow"><button data-m="coopcancel" data-testid="coop-leave">${coop && coop.started ? 'Leave' : 'Cancel'}</button></div>`;
+    if (!coop) return head('Co-op', '') + cancel;
+    if (coop.started) return head('Fight on!', '') + `<p data-testid="coop-started">${coop.fight
+      ? `The host started <b>${LEVELS[coop.fight].name}</b>. Waiting for the fight to come through…`
+      : 'The host started a fight that isn\'t in your version of Barbell Brawl. Update it to watch.'}</p>` + cancel;
+    return head(coop.role === 'host' ? 'Opening a room…' : `Looking for room <span class="code">${coop.code}</span>…`, '') + cancel;
+  }
+  if (v === 'coopwatch') {   // the guest's menu over the host's fight (⏸, Esc, or the fight ended)
+    const over = phase === 'over', who = escHtml(watch ? watch.host : 'The host');
+    return head(over ? 'Fight over' : `Watching ${who}`, '') + note +
+      `<p class="hint" data-testid="coop-watching">${over ? `${who}'s fight is over. If they fight again in this room, it shows up here.` : `${who}'s phone runs this fight; yours shows it live.`}</p>` +
+      `<div class="mrow">${over || !coop ? '' : '<button class="primary" data-m="coopwatchback" data-testid="coop-watch-back">Keep watching</button>'}` +
+      `<button data-m="coopcancel" data-testid="coop-leave">Leave</button></div>`;
+  }
+  if (v === 'cooplobby' && coop) {
+    const host = coop.role === 'host', ps = coopPlayers(), ready = ps.length >= COOP.maxPlayers;
+    const hostP = ps.find(p => p.role === 'host'), fight = host ? coop.fight : hostP && isLevel(hostP.fight) ? hostP.fight : null;
+    const players = ps.map(p => `<div class="${p.id === coop.id ? 'me' : ''}" data-testid="coop-player"><b>${escHtml(cleanName(p.name) || 'Fighter')}</b> · ` +
+      `Level ${Math.max(1, Math.round(+p.level || 1))}${p.role === 'host' ? ' <small>host</small>' : ''}${p.id === coop.id ? ' <small>(you)</small>' : ''}</div>`).join('') +
+      (ready ? '' : '<div><small>Waiting for a friend to join…</small></div>');
+    // Start sits in the header beside Leave, so it's on screen however long the fight list grows.
+    const start = host ? `<button class="primary" data-m="coopstart" data-testid="coop-start" ${ready ? '' : 'disabled'}>Start<small>${ready ? LEVELS[fight].name : 'Waiting for a friend'}</small></button>` : '';
+    return head(`Room <span class="code" data-testid="coop-room-code">${coop.code}</span>`, `${start}<button data-m="coopcancel" data-testid="coop-leave">Leave</button>`) +
+      (host ? '<p class="hint">Tell your friend this code. They tap 👥 Co-op, then Join co-op, and type it in.</p>' : '') +
+      `<div class="sub">Players</div><div class="players" data-testid="coop-players">${players}</div><div class="sub">Fight</div>` +
+      (host ? `<div class="lv">${coopFights().map(l => `<button data-m="cooplv" data-v="${l.key}" data-testid="coop-fight-${l.key}" class="${l.key === fight ? 'sel' : ''}">${l.name}<small>${l.format}</small></button>`).join('')}</div>`
+        : `<p class="hint" data-testid="coop-fight"><b>${fight ? LEVELS[fight].name : '…'}</b> · the host picks the fight and taps Start.</p>`);
+  }
+  return head('Co-op', '<button data-m="map" data-testid="coop-map">◂ Map</button>') + note +
+    `<div class="sub">Your name</div><div class="mrow"><input class="coopin" id="coopName" data-testid="coop-name" maxlength="16" placeholder="Fighter" ` +
+    `autocomplete="off" aria-label="Your name" value="${escHtml(coopName)}"></div>` +
+    `<div class="mrow"><button class="primary" data-m="coophost" data-testid="coop-host">Host co-op<small>Get a room code for a friend</small></button>` +
+    `<button data-m="coopjoin" data-testid="coop-join">Join co-op<small>Type a friend's room code</small></button></div>` +
+    `<p class="hint">Fight together on two phones: one hosts, the other joins with the code. Both need a connection.</p>` +
+    (devPage ? `<div class="mrow"><button data-m="cooplag" data-testid="coop-lag">Test lag: ${coopLag ? coopLag + ' ms' : 'off'}<small>Dev: delay what this phone receives</small></button></div>` : '') +
+    (coopServerFromLink && coopServer ? `<div class="mrow"><p class="hint" data-testid="coop-server">Co-op server: <b>${escHtml(new URL(coopServer.url).host)}</b> (set by a link)</p>` +
+      '<button data-m="coopreset" data-testid="coop-reset">Reset</button></div>' : '');
+}
+function coopClick(m, v) {
+  if (m === 'coop' || m === 'coopcancel') { coopLeave(); stopWatch(); coopNote = ''; showMenu('coop'); }
+  else if (m === 'coopwatchback') showMenu(null);
+  else if (m === 'cooplag') { const L = COOP.lagSteps; coopLag = L[(L.indexOf(coopLag) + 1) % L.length] || 0; showMenu('coop'); }
+  else if (m === 'coophost') coopOpen('host', newRoomCode());
+  else if (m === 'coopjoin') { coopNote = ''; showMenu('coopjoin'); const i = $('#coopCode'); if (i) i.focus(); }
+  else if (m === 'coopgo') {
+    const code = normCode($('#coopCode') && $('#coopCode').value);
+    if (!validCode(code)) coopFail(code ? `${code} isn't a room code: codes are ${COOP.codeLen} letters and numbers.` : 'Type the room code from your friend\'s screen.');
+    else coopOpen('guest', code);
+  }
+  else if (m === 'cooplv' && coop && coop.role === 'host' && isLevel(v)) { coop.fight = v; coopTrack(); showMenu('cooplobby'); }
+  else if (m === 'coopstart') coopStart();
+  else if (m === 'coopreset') {   // forget the server a link set
+    try { localStorage.removeItem('bb-coop-server'); } catch (e) {}
+    coopServer = null; coopServerFromLink = false; coopNote = ''; showMenu('coop');
+  }
+}
+$('#menu').addEventListener('input', e => {
+  if (e.target.id !== 'coopName') return;
+  coopName = cleanName(e.target.value);
+  try { localStorage.setItem('bb-coop-name', coopName); } catch (err) {}
+});
+$('#menu').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'coopCode') coopClick('coopgo'); });
 $('#playBtn').onclick = enterPlay;
 $('#arena').addEventListener('contextmenu', e => e.preventDefault());   // a long press must never open a menu
 // Light up whichever button fires the special once you can afford it.
 let lastReady = null;
 function markSpecialReady() {
-  const ready = playMode && phase === 'fight' && players[0] && players[0].st >= T.specialCost;
+  const ready = playMode && phase === 'fight' && !watch && players[0] && players[0].st >= T.specialCost;
   if (ready === lastReady) return;
   lastReady = ready;
   document.querySelectorAll('.tb.special, .tb.attack').forEach(el => el.classList.toggle('ready', !!ready && (el.dataset.a === 'special' || LAYOUTS[layoutKey].holdSpecial)));
@@ -3997,6 +4820,7 @@ async function runBots(only) {   // only: a list of level keys (all levels by de
   }
   setup[0] = keep.setup0; $('#level').value = keep.lv; $('#p2mode').value = keep.p2; $('#rusty').checked = keep.rusty; $('#locks').checked = keep.locks; wallet.weapon = keep.weapon;
   phase = 'ready'; result = null; run = null; players = []; monsters = []; camX = 0; LEFT = 30; RIGHT = W - 30; platforms = PLATFORMS;
+  maze = null;
   fighterSync[0](); $('#botRun').disabled = false;
   window.botResults = rows;   // for reading from the console
 }
@@ -4024,7 +4848,7 @@ $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); upda
 buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
 ensureTower(towerBest() + 2);
 level = LEVELS[levelSel.value];
-// App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet }) after the page loads, and also sets
+// App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet, coop }) after the page loads, and also sets
 // window.BB_INIT in case its script runs first. P1 takes the real stats, the wallet comes from the app (already moved
 // to today: freshness refilled, pump granted by a real workout), ladder locks are on, and the page opens in play mode.
 // In a browser neither happens and nothing changes.
@@ -4038,12 +4862,48 @@ window.bbInit = init => {
   if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; realStats = true; }
   if (init && init.level) setup[0].level = init.level;
   if (init && 'rusty' in init) $('#rusty').checked = !!init.rusty;
+  if (init && init.coop && typeof init.coop.url === 'string' && typeof init.coop.anonKey === 'string') { coopServer = { url: init.coop.url, anonKey: init.coop.anonKey }; coopServerFromLink = false; }
   fighterSync[0]();
   if (!playMode) enterPlay();
 };
 if (window.BB_INIT) window.bbInit(window.BB_INIT);
 else if (new URLSearchParams(location.search).has('play')) enterPlay();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+// Test hook (docs/10-testing.md §6). Inert in normal play: nothing here runs unless a test calls it.
+//   __bb.seed(n)              seed rng() and take the clock from the rAF loop; seed before starting the fight
+//   __bb.step(seconds = 1/60) advance in fixed 1/60 s steps (round(seconds * 60) of them; 0 does nothing) and
+//                             take the clock too, so the rAF loop only draws
+//   __bb.state()              plain-data snapshot of the fight, for comparing runs
+//   __bb.input(i, action, down) press or release an action for player i (same as a key or touch)
+//   __bb.coop                 live co-op view (#35) without a room: host side record() then snap() after steps; guest
+//                             side watch(fight), recv(snap, nowMs), render(nowMs), stats()
+const STEP = 1 / 60;
+const plain = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v === null || ['number', 'string', 'boolean'].includes(typeof v)));
+window.__bb = {
+  seed(n) { manualClock = true; seedRng(n >>> 0); },
+  step(seconds = STEP) {
+    manualClock = true;
+    for (let k = Math.round(seconds / STEP); k > 0; k--) step(STEP);
+    return phase;
+  },
+  state() {
+    return {
+      phase, paused, gt, waveIdx, combo, comboBest, result: result && JSON.parse(JSON.stringify(result)),
+      hitstop, camX, ko: ko && plain(ko), run: run && { ...plain(run), pickups: run.pickups.map(plain) },
+      players: players.map(plain), monsters: monsters.map(plain),
+      plates: plates.map(plain), shots: shots.map(plain), walls: platforms.filter(w => w.look === 'wall').map(plain),
+    };
+  },
+  input(i, action, down = true) { setInput(i, action, down); },
+  coop: {
+    record() { coopRec = []; },
+    snap() { return coopSnap(); },
+    watch(fight) { manualClock = true; startWatch(fight); },   // a test's own clock drives the view: render(nowMs)
+    recv(snap, now) { if (watch) watchRecv(snap, now); },
+    render(now) { if (watch) watchRender(now); },
+    stats() { return watch && { ...watch.stats, rt: watch.rt, buffered: watch.buf.length, seen: watch.seen }; },
+  },
+};
 requestAnimationFrame(frame);
 </script>
 </body>

@@ -8,7 +8,8 @@
   Barbell Brawl balance sim. Throwaway prototype, not app code.
   Simulates four training styles week by week through the settled XP, PR, consistency, level and
   stat rules (docs/03, docs/04), then maps the final stats onto the fight formulas from
-  realtime-brawl.html. Compares the four B7 lift-XP formulas on identical simulated weeks.
+  realtime-brawl.html. Compares the four B7 lift-XP formulas on identical simulated weeks, and replays each
+  player's weeks as fights to show gold earned and when each shop item is bought and equippable (B13).
 
   Headless use (the /balance-sim skill): BB_SIM.report({ formula: 'c', weeks: 26 }) returns a text report;
   BB_SIM.run(overrides) returns the raw results. Overrides use the keys in DEFAULTS.
@@ -75,6 +76,7 @@
     <div class="card"><h2>Level over time</h2><div class="legend" id="legend"></div><div class="chartbox"><svg id="chart" viewBox="0 0 680 280" width="100%" role="img" aria-label="Level per week for each player"></svg><div id="tip"></div></div></div>
     <div class="card"><h2>Players at the end</h2><div class="scroll" id="players"></div></div>
     <div class="card"><h2>Fight readiness</h2><div class="muted small" style="margin-bottom:8px">From final stats using the realtime-brawl formulas. Kill times assume the player is swinging for the "uptime" share of the fight (slider). Rough guide, not a fight simulation.</div><div class="scroll" id="fight"></div></div>
+    <div class="card"><h2>Gold and shop</h2><div class="muted small" style="margin-bottom:8px">Each player's weeks replayed as fights won at the best-paying level they can beat, paid by the brawl's rules (first clear, freshness, post-workout pump, live co-op). Every fight is a win, so the gold is an upper bound. They save for the cheapest stocked weapon they can equip, else the cheapest stocked one, then looks and sounds. Cells are the week bought / the week the stat requirement is met (equippable); looks and sounds have no requirement.</div><div class="scroll" id="gold"></div><div class="scroll" id="shop" style="margin-top:10px"></div></div>
     <div class="card"><h2>B7: lift XP formulas compared</h2><div class="muted small" style="margin-bottom:8px">The same simulated weeks under each formula. Every formula is scaled so a hard Workout A (You at your starting maxes) earns the same XP, which leaves only the shape of the rewards to compare.</div><div class="scroll" id="compare"></div></div>
     <div class="card"><h2>Exploit checks</h2><div class="muted small" style="margin-bottom:8px">Lift XP for a single session, as % of a hard Workout A at your maxes (no PR or consistency bonus).</div><div class="scroll" id="probes"></div></div>
     <div class="card"><h2>Assumptions</h2><ul class="muted small" id="assump"></ul></div>
@@ -287,6 +289,13 @@ const DEFAULTS = {
   // fight: copied from realtime-brawl.html DEFAULT_TUNING
   hpBase: 60, hpPerVit: 5, dmgBase: 4, dmgPerStr: 0.6, critPerDex: 0.008, critMult: 1.75,
   attackBaseMs: 600, spdRef: 25, stBase: 50, stPerEnd: 3, coopHpMult: 1.6, coopHostWeight: 0.7, coopSync: 0.5, golemHp: 650, uptime: 0.5,
+  // gold and shop (B13, #12): fights won per week, and the share of them in live co-op
+  fightsWeek: 5, coopShare: 0.2,
+  // payout rules: copied from realtime-brawl.html DEFAULT_ECON
+  firstClearMult: 3, freshDecay: 0.5, freshFloor: 0.1, freshRefill: 0.25, pumpMult: 2, pumpWins: 3, coopBonus: 0.25,
+  // shop prices: copied from realtime-brawl.html ITEMS (price_<item key>)
+  price_staff: 150, price_shield: 200, price_flail: 250, price_kanabo: 300, price_gauntlets: 300,
+  price_headband: 40, price_goldchalk: 90, price_airhorn: 120,
 };
 
 const CONTROLS = [
@@ -355,7 +364,60 @@ const CONTROLS = [
   ['coopSync', 'Co-op level sync: helper stats above yours pulled toward yours', 0, 1, 0.05],
   ['golemHp', 'Forge Golem HP', 200, 2000, 10],
   ['uptime', 'Share of the fight spent swinging', 0.1, 1, 0.05],
+  ['Gold and shop (B13)'],
+  ['fightsWeek', 'Fights won per week', 0, 21, 1],
+  ['coopShare', 'Share of fights in live co-op', 0, 1, 0.05],
+  ['firstClearMult', 'First clear pays ×', 1, 6, 0.25],
+  ['freshDecay', 'Each win multiplies freshness by', 0.1, 1, 0.05],
+  ['freshFloor', 'Freshness never drops below', 0, 1, 0.05],
+  ['freshRefill', 'Freshness regained per day', 0, 1, 0.05],
+  ['pumpMult', 'Post-workout pump pays ×', 1, 4, 0.25],
+  ['pumpWins', 'Pump lasts this many wins', 0, 10, 1],
+  ['coopBonus', 'Live co-op bonus', 0, 1, 0.05],
+  ['price_staff', 'Price: Barbell Staff', 0, 1000, 10],
+  ['price_shield', 'Price: Plate Shield', 0, 1000, 10],
+  ['price_flail', 'Price: Kettlebell Flail', 0, 1000, 10],
+  ['price_kanabo', 'Price: Oni Kanabo (after Oni Bro)', 0, 1000, 10],
+  ['price_gauntlets', 'Price: Golem Plate Gauntlets (after Forge Golem)', 0, 1000, 10],
+  ['price_headband', 'Price: Red Sweatband (look)', 0, 1000, 10],
+  ['price_goldchalk', 'Price: Gold Chalk (look)', 0, 1000, 10],
+  ['price_airhorn', 'Price: Air Horn KO (sound)', 0, 1000, 10],
 ];
+
+// ===========================================================================
+// Gold and shop: copied from prototypes/realtime-brawl.html. Keep in sync.
+// Tested by app/src/domain/__tests__/balanceSimGold.test.ts, which loads GOLD_LEVELS, TOWER_GOLD, SHOP, WEAPONS,
+// meetsReq, goldSim and weaponPace by name (keep them top-level).
+// GOLD_LEVELS: ZONES gold per win, unlocks from MAP_NODES (needs = any of these cleared).
+// lvl = the sim level a player needs to win it: a placeholder from the brawl's bot target
+// (2026-10-01: Zone 1 beatable at level 1, Zone 2's boss needs about level 5).
+// SHOP: ITEMS kind, stat requirement and sig (the boss whose first win stocks it). Prices are DEFAULTS.price_<key>.
+// Bare Fists (ITEMS.fists) is left out on purpose: every player starts with it for free, so there's nothing to buy.
+// ===========================================================================
+const GOLD_LEVELS = [
+  { key: 'z1swarm', name: 'Excuse Swarm', gold: 30, lvl: 1 },
+  { key: 'z1troll', name: 'Bridge Troll', gold: 45, lvl: 1, needs: ['z1swarm'] },
+  { key: 'z1oni', name: 'Oni Bro', gold: 70, lvl: 1, needs: ['z1troll'] },
+  { key: 'z1run', name: 'Comfort Zone Run', gold: 120, lvl: 1, needs: ['z1troll'] },
+  { key: 'z2swarm', name: 'Doom Scroll', gold: 50, lvl: 3, needs: ['z1oni', 'z1run'] },
+  { key: 'z2kitsune', name: 'Kitsune Sprinter (arena)', gold: 80, lvl: 5, needs: ['z2swarm'] },
+  { key: 'z2run', name: 'Whispering Woods Run', gold: 160, lvl: 5, needs: ['z2swarm'] },
+  { key: 'golem', name: 'Forge Golem', gold: 60, lvl: 7, needs: ['z2run', 'z2kitsune'] },
+  { key: 'wraith', name: 'Marathon Wraith', gold: 40, lvl: 8, needs: ['golem'] },
+];
+// Castle Tomorrow (TOWER in the brawl): floor f pays gold + goldPerFloor × f, opens after Zone 2's boss, one floor at a time.
+// Level needed: lvl + lvlPerFloor × f (a placeholder, like GOLD_LEVELS.lvl).
+const TOWER_GOLD = { gold: 20, goldPerFloor: 4, needs: ['z2run', 'z2kitsune'], lvl: 5, lvlPerFloor: 0.5 };
+const SHOP = {
+  staff:     { kind: 'weapon', name: 'Barbell Staff', req: { STR: 12, DEX: 14 } },
+  shield:    { kind: 'weapon', name: 'Plate Shield', req: { VIT: 18, STR: 14 } },
+  flail:     { kind: 'weapon', name: 'Kettlebell Flail', req: { STR: 26, END: 16 } },
+  kanabo:    { kind: 'weapon', name: 'Oni Kanabo', req: { STR: 22, VIT: 18 }, sig: 'z1oni' },
+  gauntlets: { kind: 'weapon', name: 'Golem Plate Gauntlets', req: { STR: 20 }, sig: 'golem' },
+  headband:  { kind: 'look', name: 'Red Sweatband' },
+  goldchalk: { kind: 'look', name: 'Gold Chalk' },
+  airhorn:   { kind: 'sound', name: 'Air Horn KO' },
+};
 
 // ===========================================================================
 // Players. Each has a weekly plan and starting lifts. `cap` is the heaviest
@@ -434,6 +496,9 @@ const ASSUMPTIONS = [
   'Import boost (B9, You only): replays the chosen weeks of You\'s program with no PR or consistency bonuses, then squashes that raw XP into at most the cap: boost = cap × (1 − e^(−raw ÷ (cap × softness))). The stat mix follows the replayed training. Imported PR baselines aren\'t modeled; the sim never counts an exercise\'s first session as a PR anyway.',
   'Dumbbell loads are the total of both dumbbells. Monday Circuit lunge reps (20) are a guess, as noted in docs/04.',
   'Each player has their own random stream from the seed, so every formula sees exactly the same skipped days and good and bad days.',
+  'Gold and shop (#12): gold per level, freshness, the first-clear bonus, the pump, the co-op bonus and the shop come from realtime-brawl.html (ZONES, TOWER, DEFAULT_ECON, ITEMS). Every fight is a win: the player fights the best-paying level they can beat right now, where "can beat" is a placeholder level gate (Zone 1 at level 1, Zone 2 at 3–5, Forge Golem 7, Marathon Wraith 8, tower floor f at 5 + f ÷ 2) based on the brawl\'s bot target. Losses and chests (#10) pay nothing here, so the gold is an upper bound for a player who fights this often.',
+  'Fights land on workout days first (after the session, so the pump applies), one per workout day in turn up to the pump\'s win count, then on rest days. A live co-op fight is every 1 ÷ share-th fight. Freshness refills per day, as when the brawl\'s day advances.',
+  'Shopping for your build: the next weapon is the cheapest stocked one you can equip with your stats at the start of the week, else the cheapest stocked one (requirements are a lock on equipping, not buying, docs/03); you save up for it. Boss signature weapons are stocked after that boss\'s first win. Looks and sounds are bought only once every stocked weapon is owned. "Equippable" is the first week whose end-of-week stats meet the requirement; a weapon is "usable" once it\'s bought and equippable, and the gear findings are judged on usable weapons.',
 ];
 
 // ===========================================================================
@@ -562,6 +627,7 @@ function simPlayer(P, idx, c, f, K, start = null) {
     vitCadence: 0, perfectMonths: 0, freezesUsed: 0, streakResets: 0, bestStreak: 0, msXp: 0, milestones: [],
     chests: { xp: 0, vit: 0, free: 0 }, chestFreePts: 0, importXp: 0, importLevels: 0,
   };
+  R.weekly[0].stats = { ...R.stats };
   const addXp = (x, tags) => {
     R.xp += x; R.into += x;
     for (const [k, v] of Object.entries(tags)) R.pool[k] = (R.pool[k] || 0) + v;
@@ -600,7 +666,7 @@ function simPlayer(P, idx, c, f, K, start = null) {
     R.importXp = start.xp;
     addXp(start.xp, start.tags);
     R.importLevels = R.level - 1 + R.into / need(R.level, c);
-    R.weekly[0] = { week: 0, level: R.importLevels + 1, xp: R.xp };
+    R.weekly[0] = { week: 0, level: R.importLevels + 1, xp: R.xp, stats: { ...R.stats } };
   }
   for (let w = 0; w < c.weeks; w++) {
     if (w % 4 === 0) monthOk = true;
@@ -677,7 +743,7 @@ function simPlayer(P, idx, c, f, K, start = null) {
       plan.done && plan.done(st);
       R.sessions++; weekCount++; weekXp += sx; R.baseXp += sBase;
       if (isLift) { R.liftSessions++; if (hadPR) R.prSessions++; }
-      R.log.push({ week: w, name: plan.name, base: sBase, xp: sx, isLift, bw });
+      R.log.push({ week: w, day, name: plan.name, base: sBase, xp: sx, isLift, bw });
     }
     if (weekCount >= P.target) {
       const b = Math.min(c.consCap, c.consBase + c.consStep * streak);
@@ -697,9 +763,98 @@ function simPlayer(P, idx, c, f, K, start = null) {
       if (freezes > 0) { freezes--; R.freezesUsed++; } else { if (streak > 0) R.streakResets++; streak = 0; }
     }
     if (w % 4 === 3 && monthOk) { addVit(c.vitMonth * vitScale); R.perfectMonths++; }
-    R.weekly.push({ week: w + 1, level: R.level + R.into / need(R.level, c), xp: R.xp });
+    R.weekly.push({ week: w + 1, level: R.level + R.into / need(R.level, c), xp: R.xp, stats: { ...R.stats } });
   }
   return R;
+}
+
+// Gold and shop (#12): replay a player's weeks as fights. Each week has c.fightsWeek wins: one per workout day in turn
+// (after the session, so the pump applies) up to pumpWins a day, the rest spread over rest days. Every fight is a win at
+// the best-paying level the player can beat (unlocked, and their level at the start of the week is high enough). Payout
+// is realtime-brawl.html's payout(): base × first-clear bonus or freshness × pump × live co-op bonus. The player shops for
+// their build: their next weapon is the cheapest stocked one they can equip with their stats at the start of the week,
+// else the cheapest stocked one (requirements don't stop a purchase: they're a lock on equipping). They save up for it,
+// and buy looks and sounds only once every stocked weapon is owned.
+const WEAPONS = () => Object.keys(SHOP).filter(k => SHOP[k].kind === 'weapon');
+const meetsReq = (k, stats) => Object.entries(SHOP[k].req || {}).every(([s, v]) => stats[s] >= v);
+function goldSim(r, c) {
+  const fresh = {}, clears = {}, owned = {}, price = k => c['price_' + k] ?? 0;
+  const freshOf = k => fresh[k] ?? 1;
+  const trained = new Set(r.log.map(l => l.day));
+  const G = { weekly: [0], fightsByWeek: [0], fights: 0, coop: 0, earned: 0, gold: 0, firstClearGold: 0, pumpGold: 0, buys: {}, stockWeek: {}, top: '—', finalStats: r.weekly[c.weeks].stats };
+  for (const k of Object.keys(SHOP)) if (!SHOP[k].sig) G.stockWeek[k] = 0;
+  const levelOk = (lv, L) => L >= lv.lvl && (!lv.needs || lv.needs.some(k => clears[k]));
+  const options = L => {
+    const out = GOLD_LEVELS.filter(lv => levelOk(lv, L));
+    let best = 0; while (clears['tower' + (best + 1)]) best++;
+    for (let f = 1; f <= best + 1; f++) {
+      const lv = { key: 'tower' + f, name: 'Tower floor ' + f, gold: TOWER_GOLD.gold + TOWER_GOLD.goldPerFloor * f, lvl: TOWER_GOLD.lvl + TOWER_GOLD.lvlPerFloor * f, needs: TOWER_GOLD.needs };
+      if (levelOk(lv, L)) out.push(lv);
+    }
+    return out;
+  };
+  const value = lv => lv.gold * (clears[lv.key] ? freshOf(lv.key) : c.firstClearMult);
+  const shop = (week, stats) => {
+    for (;;) {
+      const stocked = Object.keys(SHOP).filter(k => !owned[k] && (!SHOP[k].sig || clears[SHOP[k].sig]));
+      const cheapest = ks => ks.sort((a, b) => price(a) - price(b))[0];
+      const weapons = stocked.filter(k => SHOP[k].kind === 'weapon');
+      const k = cheapest(weapons.filter(k => meetsReq(k, stats))) ?? cheapest(weapons) ?? cheapest(stocked.filter(k => SHOP[k].kind !== 'weapon'));
+      if (!k || G.gold < price(k)) return;
+      G.gold -= price(k); owned[k] = true; G.buys[k] = { week, fight: G.fights };
+    }
+  };
+  let lastDay = 0;
+  for (let w = 0; w < c.weeks; w++) {
+    const L = Math.floor(r.weekly[w].level);
+    const perDay = Array(7).fill(0), tdays = [], rdays = [];
+    for (let d = 0; d < 7; d++) (trained.has(w * 7 + d) ? tdays : rdays).push(d);
+    let left = c.fightsWeek;
+    for (let pass = 0; pass < c.pumpWins && left > 0; pass++) for (const d of tdays) if (left > 0) { perDay[d]++; left--; }
+    const spill = rdays.length ? rdays : tdays;
+    for (let i = 0; left > 0; i++) { perDay[spill[i % spill.length]]++; left--; }
+    for (let d = 0; d < 7; d++) {
+      const day = w * 7 + d;
+      for (const k in fresh) fresh[k] = Math.min(1, fresh[k] + c.freshRefill * (day - lastDay));
+      lastDay = day;
+      let pump = trained.has(day) ? c.pumpWins : 0;
+      for (let n = 0; n < perDay[d]; n++) {
+        const lv = options(L).reduce((a, b) => value(b) > value(a) ? b : a);
+        const first = !clears[lv.key];
+        let g = value(lv);
+        if (pump > 0) { G.pumpGold += g * (c.pumpMult - 1); g *= c.pumpMult; pump--; }
+        const coop = Math.floor((G.fights + 1) * c.coopShare + 1e-9) > Math.floor(G.fights * c.coopShare + 1e-9);
+        if (coop) { g *= 1 + c.coopBonus; G.coop++; }
+        g = Math.round(g);
+        if (first) { G.firstClearGold += g; G.top = lv.name; }
+        G.gold += g; G.earned += g; G.fights++;
+        clears[lv.key] = (clears[lv.key] || 0) + 1;
+        fresh[lv.key] = Math.max(c.freshFloor, freshOf(lv.key) * c.freshDecay);
+        for (const k of Object.keys(SHOP)) if (SHOP[k].sig === lv.key && G.stockWeek[k] == null) G.stockWeek[k] = w + 1;
+        shop(w + 1, r.weekly[w].stats);
+      }
+    }
+    G.weekly.push(G.earned); G.fightsByWeek.push(G.fights);
+  }
+  // Equippable: the first week (from the purchase on) whose end-of-week stats meet the requirement. Looks and sounds
+  // have no requirement (b.noReq, shown as "—"). A weapon is usable once it's bought and equippable.
+  for (const [k, b] of Object.entries(G.buys)) {
+    b.equip = null;
+    if (!SHOP[k].req) { b.noReq = true; continue; }
+    for (let w = b.week; w <= c.weeks; w++) if (meetsReq(k, r.weekly[w].stats)) { b.equip = w; break; }
+    // Fights fought by the time it's usable: the purchase itself if the stats it was bought with (start of that week)
+    // already meet the requirement, else the end of the week the stats get there.
+    if (b.equip != null) b.usableFight = meetsReq(k, r.weekly[b.week - 1].stats) ? b.fight : G.fightsByWeek[b.equip];
+  }
+  // Weapons (fists don't count): bought in purchase order, and usable in the order they became usable.
+  const ws = WEAPONS();
+  const bought = ws.filter(k => G.buys[k]).sort((a, b) => G.buys[a].fight - G.buys[b].fight);
+  G.weapons = bought.length; G.weaponWeeks = bought.map(k => G.buys[k].week);
+  G.firstWeapon = bought.length ? { key: bought[0], ...G.buys[bought[0]] } : null;
+  const usable = ws.filter(k => G.buys[k]?.equip != null).sort((a, b) => G.buys[a].usableFight - G.buys[b].usableFight);
+  G.usable = usable; G.usableWeeks = usable.map(k => G.buys[k].equip);
+  G.firstUsable = usable.length ? { key: usable[0], ...G.buys[usable[0]] } : null;
+  return G;
 }
 
 // B9: You's imported history. Replay importWeeks of You's program under the same rules (no bonuses:
@@ -755,7 +910,7 @@ function runnerFairness(c) {
 function simulate(c, f) {
   const K = calibrate(c);
   const res = PLAYERS.map((P, i) => simPlayer(P, i, c, f, K, i === 0 ? importBoost(c, f, K) : null));
-  for (const r of res) r.fight = fightOf(r.stats, c);
+  for (const r of res) { r.fight = fightOf(r.stats, c); r.gold = goldSim(r, c); }
   const you = res[0].fight;
   for (const r of res) {
     r.golemSolo = c.golemHp / (r.fight.dps * c.uptime);
@@ -853,6 +1008,51 @@ function findings(c, sim, compare) {
   // 10. Bodyweight sensitivity for You under each formula
   const drift = compare.map(cmp => { const lg = cmp.res[0].log.filter(l => l.isLift && l.name === 'Workout A'); const a = lg.slice(0, 2), b = lg.slice(-2); const avg = x => x.reduce((s, l) => s + l.base, 0) / (x.length || 1); return `${cmp.f} ${avg(b) / avg(a) >= 1 ? '+' : ''}${pct(avg(b) / avg(a) - 1)}`; });
   out.push(['info', `You, Workout A base XP (no bonuses) from the first two to the last two sessions: ${drift.join(', ')}. Includes weight gains on the bar and bodyweight change.`]);
+  // 11–12. Gold and shop (B13 pricing principles, docs/03 "Gear and gold")
+  for (const f of goldFindings(c, sim)) out.push(f);
+  return out;
+}
+
+// Weapon pace, on usable weapons (bought AND equippable), not purchases. Too fast: two become usable in the same week.
+// Too slow: more than 2 weeks pass before the next one becomes usable, counted from the later of the previous usable
+// weapon and the week the next one was stocked, so a weapon waiting on its boss isn't blamed on price. Each slow gap
+// says what held it up: stats (bought, not yet equippable) or gold (equippable, not yet bought). Weapons still
+// unstocked at the end are listed as waiting on their boss, not flagged.
+function weaponPace(G, c) {
+  const causes = new Set(), waiting = [];
+  const fast = G.usableWeeks.slice(1).some((x, i) => x === G.usableWeeks[i]);
+  let prev = 0;
+  for (const k of G.usable) {
+    const b = G.buys[k];
+    if (b.equip - Math.max(prev, G.stockWeek[k]) > 2) causes.add(b.equip > b.week ? 'stats' : 'gold');
+    prev = b.equip;
+  }
+  for (const k of WEAPONS().filter(k => !G.usable.includes(k))) {
+    if (G.stockWeek[k] == null) { waiting.push(GOLD_LEVELS.find(l => l.key === SHOP[k].sig).name); continue; }
+    if (c.weeks - Math.max(prev, G.stockWeek[k]) > 2) causes.add(G.buys[k] || !meetsReq(k, G.finalStats) ? 'stats' : 'gold');
+  }
+  return { fast, slow: causes.size > 0, causes: [...causes], waiting };
+}
+function goldFindings(c, sim) {
+  const out = [], res = sim.res;
+  if (!c.fightsWeek) return [['info', 'Gold and shop: 0 fights a week, so nobody earns gold.']];
+  // A fight or two buys your first fun beginner gear, and the hook is trying it right away (docs/03): so the check is on
+  // the first weapon that's bought AND equippable. The first purchase is shown alongside.
+  const fights = n => `${n} fight${n === 1 ? '' : 's'}`;
+  const slow = res.filter(r => !r.gold.firstUsable || r.gold.firstUsable.usableFight > 2);
+  const priceBound = slow.filter(r => !r.gold.firstWeapon || r.gold.firstWeapon.fight > 2);
+  out.push([slow.length ? 'flag' : 'ok', `First weapon you can use (bought and equippable): ${res.map(r => `${r.P.short} ${r.gold.firstUsable ? `${SHOP[r.gold.firstUsable.key].name} after ${fights(r.gold.firstUsable.usableFight)} (wk ${r.gold.firstUsable.equip})` : `none in ${c.weeks} weeks`}${r.gold.firstWeapon ? `, first bought after ${fights(r.gold.firstWeapon.fight)}` : ''}`).join('; ')}.` +
+    (slow.length ? ` Over 2 fights for ${slow.map(r => r.P.short).join(', ')}: the first fun gear should take a fight or two.` +
+      (priceBound.length < slow.length ? ` Stat requirements, not prices, hold back ${slow.filter(r => !priceBound.includes(r)).map(r => r.P.short).join(', ')}.` : '') : '')]);
+  // Better gear: about one new usable weapon every 1–2 weeks (3×/week training, ~5 fights/week).
+  const paces = res.map(r => ({ r, ...weaponPace(r.gold, c) }));
+  const fast = paces.filter(x => x.fast), slowP = paces.filter(x => x.slow);
+  const waits = paces.filter(x => x.waiting.length);
+  out.push([fast.length || slowP.length ? 'flag' : 'ok', `Weapons usable in week (bought in week): ${paces.map(({ r }) => `${r.P.short} ${r.gold.usableWeeks.join(', ') || 'none'} (${r.gold.weaponWeeks.join(', ') || 'none'})`).join('; ')}. Target: one new usable weapon every 1–2 weeks.` +
+    (fast.length ? ` More than one in a week for ${fast.map(x => x.r.P.short).join(', ')}.` : '') +
+    (slowP.length ? ` A gap of more than 2 weeks for ${slowP.map(x => `${x.r.P.short} (waiting on ${x.causes.join(' and ')})`).join(', ')}.` : '') +
+    (waits.length ? ` Not stocked yet: ${waits.map(x => `${x.r.P.short} waiting on ${x.waiting.join(', ')}`).join('; ')}.` : '')]);
+  out.push(['info', `Gold after ${c.weeks} weeks (${c.fightsWeek} fights/week, ${pct(c.coopShare)} co-op): ${res.map(r => `${r.P.short} ${r.gold.earned.toLocaleString()} (${pct(r.gold.firstClearGold / (r.gold.earned || 1))} from first clears, pump +${Math.round(r.gold.pumpGold).toLocaleString()}, last first clear ${r.gold.top})`).join('; ')}.`]);
   return out;
 }
 
@@ -917,6 +1117,8 @@ function chart(sim, c) {
   svg.querySelector('#hit').onmouseleave = () => { tip.style.display = 'none'; xh.setAttribute('visibility', 'hidden'); };
 }
 
+const shopCell = b => !b ? '—' : `wk ${b.week} / ${b.noReq ? '—' : b.equip == null ? 'not yet' : 'wk ' + b.equip}`;
+
 function render() {
   try { localStorage.setItem('bb-balance-sim', JSON.stringify(cfg)); } catch (e) {}
   for (const c of CONTROLS) if (c.length > 1 && typeof c[2] !== 'object') { const el = $('v-' + c[0]); if (el) el.textContent = fmtV(c[0], cfg[c[0]]); }
@@ -929,6 +1131,11 @@ function render() {
       STATS.map(s => `<td>${Math.round(r.stats[s])}<span class="bar" style="width:${Math.round(28 * r.stats[s] / maxStat)}px"></span></td>`).join('') + `<td>+${r1(r.vitCadence)}</td><td>${r.perfectMonths}</td><td>${r.deloads}</td></tr>`).join('') + `</table>`;
   $('fight').innerHTML = `<table><tr><th>Player</th><th>Max HP</th><th>Damage / hit</th><th>Crit</th><th>Swing (s)</th><th>DPS</th><th>Stamina</th><th>Solo Forge Golem (s)</th><th>Co-op share with You (synced)</th><th>Co-op Forge Golem (s)</th></tr>` +
     sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${r.P.short}</td><td>${Math.round(r.fight.hp)}</td><td>${r1(r.fight.dmg)}</td><td>${pct(r.fight.crit)}</td><td>${r.fight.swing.toFixed(2)}</td><td>${r1(r.fight.dps)}</td><td>${Math.round(r.fight.stamina)}</td><td>${Math.round(r.golemSolo)}</td><td>${r.coopShare == null ? '—' : pct(r.coopShare)}</td><td>${r.golemCoop == null ? '—' : Math.round(r.golemCoop)}</td></tr>`).join('') + `</table>`;
+  $('gold').innerHTML = `<table><tr><th>Total gold earned by end of week</th><th>Fights</th><th>Co-op</th>${sim.res[0].gold.weekly.slice(1).map((_, i) => `<th>wk ${i + 1}</th>`).join('')}</tr>` +
+    sim.res.map(r => `<tr><td><span class="sw" style="background:${r.P.hex}"></span>${r.P.short}</td><td>${r.gold.fights}</td><td>${r.gold.coop}</td>${r.gold.weekly.slice(1).map(g => `<td>${g.toLocaleString()}</td>`).join('')}</tr>`).join('') + `</table>`;
+  $('shop').innerHTML = `<table><tr><th>Item</th><th>Price</th><th>Needs</th>${sim.res.map(r => `<th><span class="sw" style="background:${r.P.hex}"></span>${r.P.short}</th>`).join('')}</tr>` +
+    Object.entries(SHOP).map(([k, it]) => `<tr><td>${esc(it.name)}${it.sig ? ' <span class="muted small">(after ' + esc(GOLD_LEVELS.find(l => l.key === it.sig).name) + ')</span>' : ''}</td><td>${c['price_' + k]}</td><td>${Object.entries(it.req || {}).map(([s, v]) => `${s} ${v}`).join(', ') || '—'}</td>` +
+      sim.res.map(r => `<td>${shopCell(r.gold.buys[k])}</td>`).join('') + `</tr>`).join('') + `</table>`;
   const fs = Object.keys(FORMULAS);
   $('compare').innerHTML = `<table><tr><th>Level after ${c.weeks} wk (XP / session)</th>${fs.map(f => `<th class="${f === c.formula ? 'sel' : ''}">${FORMULAS[f]}</th>`).join('')}</tr>` +
     PLAYERS.map((P, i) => `<tr><td><span class="sw" style="background:${P.hex}"></span>${P.short}</td>${R.compare.map(cm => `<td class="${cm.f === c.formula ? 'sel' : ''}">L${r1(cm.res[i].weekly.at(-1).level)} <span class="muted">(${Math.round(perSession(cm.res[i]))})</span></td>`).join('')}</tr>`).join('') +
@@ -960,6 +1167,10 @@ function report(overrides = {}) {
   for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} L${r1(r.weekly.at(-1).level).padStart(5)}  ${String(r.sessions).padStart(3)} sessions  ${String(Math.round(perSession(r))).padStart(5)} XP/session  PR ${pct(r.prXp / (r.xp || 1)).padStart(4)}  cons ${pct(r.consXp / (r.xp || 1)).padStart(4)}  ` + STATS.map(s => `${s} ${Math.round(r.stats[s])}`).join(' ') + `  VIT goals +${r1(r.vitCadence)} (${r.perfectMonths} perfect months)  HP ${Math.round(r.fight.hp)}  deloads ${r.deloads}  freezes ${r.freezesUsed}  resets ${r.streakResets}` + (r.importXp ? `  import +${r1(r.importLevels)} lv` : ''));
   L.push('', 'FIGHT (final stats)');
   for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} HP ${Math.round(r.fight.hp)}  dmg ${r1(r.fight.dmg)}  crit ${pct(r.fight.crit)}  DPS ${r1(r.fight.dps)}  solo Golem ${Math.round(r.golemSolo)}s` + (r.coopShare == null ? '' : `  co-op share ${pct(r.coopShare)}`));
+  L.push('', `GOLD AND SHOP: ${c.fightsWeek} fights/week, ${pct(c.coopShare)} live co-op. Cumulative gold earned by week`);
+  for (const r of R.sim.res) L.push(`  ${r.P.short.padEnd(9)} ${r.gold.weekly.slice(1).map(g => String(g)).join(' ')}  (${r.gold.fights} fights, ${r.gold.coop} co-op, last first clear ${r.gold.top})`);
+  L.push('  Item: week bought / week equippable (requirement met)');
+  for (const [k, it] of Object.entries(SHOP)) L.push(`  ${(it.name + ' ' + c['price_' + k] + 'g').padEnd(30)}` + R.sim.res.map(r => `${r.P.short} ${shopCell(r.gold.buys[k])}`.padEnd(24)).join(''));
   L.push('', 'B7 COMPARISON: level after ' + c.weeks + ' weeks (XP/session)');
   L.push('  ' + ''.padEnd(9) + Object.keys(FORMULAS).map(f => `(${f})`.padStart(16)).join(''));
   PLAYERS.forEach((P, i) => L.push('  ' + P.short.padEnd(9) + R.compare.map(cm => `L${r1(cm.res[i].weekly.at(-1).level)} (${Math.round(perSession(cm.res[i]))})`.padStart(16)).join('')));
