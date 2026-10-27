@@ -369,7 +369,7 @@ const XPC = {
   vitWeek: 0.5, vitMonth: 2, vitGoalExp: 0.5,      // cadence VIT per hit week / perfect calendar month, × (goal ÷ 3)^0.5
   lvlBase: 100, lvlExp: 1.5, lvlOffset: 4, ptsPerLevel: 6, startStat: 8,   // XP for level L → L+1 = lvlBase × (L + lvlOffset)^lvlExp
   rustyDays: 14, rustyPct: 10,                     // Rusty: 2+ weeks with no workout, −10% in fights
-  streakMin: { lifts: 3, cardioMin: 30, cardioM: 1609.34 },   // a session counts toward the week if one exercise clears this
+  streakMin: { lifts: 3, cardioMin: 30, cardioM: 1608.34 },   // a session counts toward the week if one exercise clears this
   deloadPct: 0.10, suggestDeloadAfter: 3,
   guard: { weightJump: 0.5, maxReps: 50, maxHoldSec: 600, bwJump: 0.25, fastestMileSec: 223 },   // typo/sanity guard
 };
@@ -625,17 +625,21 @@ function cardioKcal(def, c, kg) {
   }
   return (def.met || 6) * (EFFORT[c.effort] || 1) * kg * min / 60;
 }
+// A milestone's cutoff: the race's distance or its usual mile figure, whichever is shorter, less 1 m, so a run logged
+// as "26.2 mi" is a marathon (decided 2026-10-20, app/src/domain/xp.ts). Run and walk fastest times use it too (#129).
+const loggedAs = (m, mi) => Math.min(m, mi * 1609.34) - 1;
+// Fastest-time standard distances: [name, distance in m, shortest log that counts (defaults to the distance)].
 const STD_DIST = {
-  run: [['1 mile', 1609.34], ['5K', 5000], ['10K', 10000], ['half marathon', 21097.5], ['marathon', 42195]],
-  walk: [['1 mile', 1609.34], ['5K', 5000], ['10K', 10000]],
+  run: [['1 mile', 1609.34, loggedAs(1609.34, 1)], ['5K', 5000, loggedAs(5000, 3.1)], ['10K', 10000, loggedAs(10000, 6.2)], ['half marathon', 21097.5, loggedAs(21097.5, 13.1)], ['marathon', 42195, loggedAs(42195, 26.2)]],
+  walk: [['1 mile', 1609.34, loggedAs(1609.34, 1)], ['5K', 5000, loggedAs(5000, 3.1)], ['10K', 10000, loggedAs(10000, 6.2)]],
   row: [['500 m', 500], ['2K', 2000], ['5K', 5000]],
   bike: [['10 mi', 16093], ['20 mi', 32187], ['40K', 40000]],
   swim: [['100 m', 100], ['400 m', 400], ['1500 m', 1500]],
 };
-const MILESTONES = [['first mile', 1609.34], ['first 5K', 5000], ['first 10K', 10000], ['first half marathon', 21097.5], ['first marathon', 42195]];
+const MILESTONES = [['first mile', loggedAs(1609.34, 1)], ['first 5K', loggedAs(5000, 3.1)], ['first 10K', loggedAs(10000, 6.2)], ['first half marathon', loggedAs(21097.5, 13.1)], ['first marathon', loggedAs(42195, 26.2)]];
 const stdFor = def => def.id === 'swim' ? STD_DIST.swim : STD_DIST[def.cal] || [];
-// Time scaled to a standard distance, if this session's distance is 0–10% over it.
-function stdTime(c, d) { return c.m >= d && c.m <= d * (1 + XPC.fastWindow) ? c.sec * d / c.m : null; }
+// Time scaled to a standard distance, if this session's distance is from its shortest log (min) to 10% over it.
+function stdTime(c, d, min = d) { return c.m >= min && c.m <= d * (1 + XPC.fastWindow) ? c.sec * d / c.m : null; }
 
 // PRs for one exercise against the sessions before it. Returns [{ tier: 'all' | 'recent', text }].
 function findPRs(def, ex, prior, since) {
@@ -653,9 +657,9 @@ function findPRs(def, ex, prior, since) {
     const c = ex.cardio;
     if (c.m > 0) add(best(past, p => p.e.cardio && p.e.cardio.m), best(recent, p => p.e.cardio && p.e.cardio.m), c.m, `longest ${def.name.toLowerCase()} ${fmtDist(c.m, def)}`);
     else add(best(past, p => p.e.cardio && p.e.cardio.sec), best(recent, p => p.e.cardio && p.e.cardio.sec), c.sec, `longest ${def.name.toLowerCase()} ${fmtDur(c.sec)}`);
-    for (const [name, d] of stdFor(def)) {
-      const t = stdTime(c, d); if (t == null) continue;
-      const neg = p => { const x = p.e.cardio && p.e.cardio.m && stdTime(p.e.cardio, d); return x ? -x : null; };
+    for (const [name, d, min] of stdFor(def)) {
+      const t = stdTime(c, d, min); if (t == null) continue;
+      const neg = p => { const x = p.e.cardio && p.e.cardio.m && stdTime(p.e.cardio, d, min); return x ? -x : null; };
       add(best(past, neg), best(recent, neg), -t, `fastest ${name} ${fmtDur(Math.round(t))}`);
     }
     return out;
@@ -768,7 +772,7 @@ function rescoreAll() {
 // ---------------------------------------------------------------------------
 const STATS = ['STR', 'SPD', 'DEX', 'END', 'VIT'];
 const need = L => Math.round(XPC.lvlBase * Math.pow(L + XPC.lvlOffset, XPC.lvlExp));
-function weekStart(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); }
+function weekStart(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay()); return d.getTime(); }   // weeks run Sunday–Saturday
 const addDays = (t, n) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
 function progression() {
   const hist = [...S.history].sort((a, b) => a.started - b.started);
@@ -811,14 +815,15 @@ function progression() {
     }
     R.streak = streak; R.freezes = freezes;
     // Perfect calendar month: every week that starts in that month hit the target (a frozen week breaks it).
+    // Judged as soon as the month's last week has started, so hitting the last week's target completes the month.
     const months = {};
     for (const wk of R.weeks) { const d = new Date(wk.w), key = `${d.getFullYear()}-${d.getMonth()}`; (months[key] = months[key] || []).push(wk); }
-    const curMonth = `${new Date().getFullYear()}-${new Date().getMonth()}`;
     for (const [key, list] of Object.entries(months)) {
-      if (key === curMonth) continue;
       const [y, mo] = key.split('-').map(Number);
-      const firstMon = weekStart(addDays(new Date(y, mo, 1).getTime(), 6));   // the first Monday on or after the 1st
+      const firstMon = weekStart(addDays(new Date(y, mo, 1).getTime(), 6));   // the first Sunday on or after the 1st
+      const lastMon = weekStart(new Date(y, mo + 1, 0).getTime());            // the last Sunday on or before the last day
       if (list[0].w > firstMon) continue;                                     // history starts mid-month
+      if (list[list.length - 1].w < lastMon) continue;                        // the month's last week hasn't started yet
       if (list.every(wk => wk.status === 'hit')) { R.vitCadence += XPC.vitMonth * vitScale; R.perfect.push(new Date(y, mo, 1).toLocaleDateString(undefined, { month: 'long' })); }
     }
   }
@@ -1539,7 +1544,7 @@ function calView() {
   const byDay = {};
   for (const h of S.history) (byDay[isoDate(h.started)] = byDay[isoDate(h.started)] || []).push(h);
   const wkStatus = Object.fromEntries(R.weeks.map(w => [w.w, w]));
-  let cells = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<div class="h">${d}</div>`).join('') + '<div class="h">wk</div>';
+  let cells = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="h">${d}</div>`).join('') + '<div class="h">wk</div>';
   for (let w = start; ; w = addDays(w, 7)) {
     for (let k = 0; k < 7; k++) {
       const t = addDays(w, k), d = new Date(t), list = byDay[isoDate(t)] || [];

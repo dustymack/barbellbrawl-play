@@ -140,6 +140,9 @@
   body.play #pad { display: block; position: absolute; inset: 0; }
   body.play #playbar { display: flex; position: absolute; top: max(6px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); gap: 8px; z-index: 3; }
   #playbar button { padding: 6px 12px; background: rgba(42,46,51,.75); font-size: 16px; }
+  /* In the app (bbInit with a wallet) the page behind play mode is off limits: its sliders, economy and wallet controls
+     would bypass the app's one wallet and the weapon hard lock. */
+  body.app aside, body.app #pbExit { display: none; }
   #stickZone { position: absolute; left: 0; top: 16%; bottom: 0; width: 45%; }
   #swipe { position: absolute; right: 0; top: 16%; bottom: 0; width: 55%; display: none; }
   #stickBase { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(236,234,228,.35); background: rgba(236,234,228,.06); display: none; pointer-events: none; }
@@ -202,6 +205,7 @@
   #menu .players div { background: #1e2125; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 14px; }
   #menu .players div.me { border-color: var(--p1); }
   #menu .players small { color: var(--muted); }
+  #menu .players .cdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
   @media (orientation: portrait) {
     body.play #rotate { display: flex; position: absolute; inset: 0; z-index: 10; background: #15171a; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 20px; }
   }
@@ -261,7 +265,7 @@
       <p class="hint" id="coopHint"></p>
     </div>
 
-    <div class="card">
+    <div class="card" id="shopCard">
       <h2>Rewards &amp; shop</h2>
       <div class="wallet"><div class="gold"><b id="gold">0</b> gold</div><span>Day <b id="day">1</b></span></div>
       <p class="hint" id="pump"></p>
@@ -303,6 +307,17 @@
         <div class="toggles" id="juiceToggles"></div>
         <div class="jv" id="juiceVals"></div>
         <p class="hint">Changes apply instantly, mid-fight. Flip <b>All off</b> / <b>All on</b> to compare. Haptics only work on a phone (Android Chrome). Sound starts on the first Start or R. Player knockback distance is <code>knockback</code> under Tuning.</p>
+      </details>
+    </div>
+
+    <div class="card">
+      <details open>
+        <summary>Specials &amp; charge (prototype)</summary>
+        <div class="row"><label class="check"><input type="checkbox" id="chOn"> Hold SPECIAL to charge (bullet time)</label><button id="chReset">Reset</button></div>
+        <div class="row"><label for="spGear">Special gear</label><select id="spGear"></select></div>
+        <div class="row"><label for="spTry">Try a special</label><select id="spTry"></select></div>
+        <div class="jv" id="chargeVals"></div>
+        <p class="hint">Hold <b>I</b> (P1) or <b>/</b> (P2), or the SPECIAL button, and let go as the colored ring meets the white one. Green = PERFECT, gold = GOOD, red = too late (it fires by itself at <code>lateMs</code>). Times are real time, so the window doesn't stretch with the slowdown. Live co-op fires specials at once, with no slowdown. Special gear only changes your special and wins over the weapon's.</p>
       </details>
     </div>
 
@@ -427,6 +442,24 @@ const JUICE_RANGES = {
   koSlowScale: [0.1, 1, 0.05], koSlowMs: [0, 1500, 50],
 };
 let J = structuredClone(DEFAULT_JUICE);
+
+// Charged special (prototype, 2026-10-27): hold SPECIAL and the world slows while a ring closes on your fighter; let go
+// as it meets the target ring for a stronger special. A quick tap still fires a normal one. Real time, not game time.
+// Solo and same-screen only: a live co-op fight fires specials at once, with no slowdown (shared clock, #36).
+const DEFAULT_CHARGE = {
+  on: 1,               // 1 = hold to charge, 0 = specials fire on press as before
+  slowScale: 0.3,      // world speed while anyone charges
+  ringMs: 900,         // the ring takes this long (real time) to close on the target
+  perfectMs: 70,       // let go within this of the close = PERFECT
+  goodMs: 170,         // within this = GOOD
+  perfectMult: 1.5, goodMult: 1.2, okMult: 1, lateMult: 0.8,   // × the special's damage and push
+  lateMs: 250,         // held this long past the close: it fires by itself, LATE
+};
+const CHARGE_RANGES = {
+  slowScale: [0.1, 1, 0.05], ringMs: [300, 2000, 50], perfectMs: [20, 200, 5], goodMs: [40, 400, 10],
+  perfectMult: [1, 3, 0.05], goodMult: [1, 2, 0.05], okMult: [0.5, 1.5, 0.05], lateMult: [0.3, 1.2, 0.05], lateMs: [0, 800, 25],
+};
+let CH = { ...DEFAULT_CHARGE };
 
 // ---------------------------------------------------------------------------
 // Monsters and zones are data (G4). Durations in ms, distances in px, speeds in px/s, heights up from the floor.
@@ -584,7 +617,7 @@ const ZONES = [
       scout: { stat: 'VIT', want: 26, text: 'HP doesn\'t refill between fights: you reach Oni Bro with whatever you have left. VIT is your fuel tank.' } },
   ] },
   { name: 'Test fights', levels: [
-    { key: 'golem', name: 'Forge Golem', format: 'Boss Arena', gold: 60, boss: true, waves: [['golem']],
+    { key: 'golem', name: 'Forge Golem', format: 'Boss Arena', gold: 300, boss: true, waves: [['golem']],
       scout: { stat: 'STR', want: 40, text: 'Heavy: it only launches once your STR outweighs it (about STR 40 for a special).' } },
     { key: 'z2kitsune', name: 'Kitsune Sprinter (arena)', format: 'Boss Arena', gold: 80, boss: true, waves: [['kitsune']],
       scout: { stat: 'DEX', want: 16, text: 'Zone 2\'s boss on her own, for tuning: no run before her.' } },
@@ -666,6 +699,18 @@ ZONES.forEach(z => z.levels.forEach((l, i) => {
 // Ladder locks: each level opens after the one before it; a zone's first level opens once any of its `after` levels is beaten.
 const cleared = k => (wallet.clears[k] || 0) > 0;
 const levelOpen = lv => !$('#locks').checked || !lv.zone.ladder || (lv.idx === 0 ? !lv.zone.after || lv.zone.after.some(cleared) : cleared(lv.zone.levels[lv.idx - 1].key));
+// Open on this phone's real ladder, whatever the Ladder locks toggle says: the tower also needs its map node (co-op
+// payouts, #38: a co-op win past your own ladder isn't a clear).
+// A level with a map node needs that node open (its `needs`, as nodeOpen has them with the locks on), and then its zone's
+// ladder: the Side-scroll and Test zones have no ladder, so their map node is all that gates them.
+const onOwnLadder = lv => {
+  if (lv.tower) return lv.idx > 0 ? cleared(lv.zone.levels[lv.idx - 1].key) : MAP_NODES.find(n => n.tower).needs.some(cleared);
+  const node = MAP_NODES.find(n => n.id === lv.key);
+  if (node && node.needs && !node.needs.some(cleared)) return false;
+  if (!lv.zone.ladder) return true;
+  if (lv.idx > 0) return cleared(lv.zone.levels[lv.idx - 1].key);
+  return !lv.zone.after || lv.zone.after.some(cleared);
+};
 const lockText = lv => lv.idx === 0 ? `beat ${LEVELS[lv.zone.after[0]].name} first` : `beat ${lv.zone.levels[lv.idx - 1].name} first`;
 
 // ---------------------------------------------------------------------------
@@ -707,7 +752,7 @@ const TOWER = {
   size: 3, sizePer: 7, sizeMax: 5,             // monsters per wave: 3, +1 every 7 floors, at most 5
   eliteFrom: 12, eliteEvery: 4,                // an elite replaces a minion in the last wave on every 4th floor from 12 (a mini-wall)
   chaffFrom: 22,                               // from floor 22 an old boss joins the last wave
-  gold: 20, goldPerFloor: 4,
+  gold: 170, goldPerFloor: 10,                 // B13 (2026-10-09): floor 1 already out-pays farming the Zone 2 run (160)
 };
 const TOWER_ZONE = { name: 'Castle Tomorrow · the tower', ladder: true, levels: [] };
 const towerKey = f => 'tower' + f;
@@ -848,7 +893,59 @@ function relevel(cur, level) {
   return statsFor(sum ? Object.fromEntries(STATS.map(k => [k, gains[k] / sum])) : BUILDS.Even, clamp(level, 1, MAX_LEVEL));
 }
 const benchLevel = k => +k.slice(1, k.indexOf(' '));
-const COLORS = ['#ff7a1a', '#2ec4b6'];
+
+// ---------------------------------------------------------------------------
+// Your look (docs/06 "Your look", #80/#82). The app passes the look you built (bbInit({ look })); a browser run uses
+// DEFAULT_LOOK. Same part names, options and defaults as the app (app/src/domain/look.ts, from
+// prototypes/fighter-looks.html), and read the same way: a part this page doesn't know falls back to the default, so a
+// damaged or newer look always draws. The free layers, the bought headwear, faces and capes (#83, sold in ITEMS as
+// `layer`s; the app only sends layers you own) and training marks (#84: the app sends only the marks you've earned).
+// Bought line styles and auras (#112) are read and kept, but fights still draw chalk with no aura (a follow-up).
+// ---------------------------------------------------------------------------
+const LOOK_ACCENTS = { orange: '#ff7a1a', blue: '#5c94f0', teal: '#2ec4b6', purple: '#b48cff', green: '#7ee08a', pink: '#ff6fa8',
+  yellow: '#ffd23f', red: '#e0555a', cyan: '#5fd7ff', white: '#f2efe8' };
+const LOOK_CLOTH = { charcoal: '#3a3f47', black: '#1b1d21', sand: '#c9b38a', navy: '#2f4a8a', maroon: '#7a2b3e', olive: '#5b6b2e', gray: '#7b8089', accent: null };
+const LOOK_HAIR_TINT = { chalk: null, black: '#2a2522', brown: '#8a5a2b', blonde: '#e8c86a', ginger: '#d0612e', silver: '#b8c0cc', pink: '#ff8fc0', blue: '#6fa8ff', green: '#7ee08a' };
+const LOOK_OPTIONS = {
+  hair: ['spiky', 'ponytail', 'bun', 'buzz', 'mohawk', 'afro', 'braids', 'pigtails', 'topknot', 'long', 'curly', 'swoop', 'bald'],
+  hairTint: Object.keys(LOOK_HAIR_TINT),
+  facial: ['none', 'beard', 'mustache', 'goatee'],
+  hat: ['none', 'headband', 'cap', 'beanie', 'bandana', 'visor', 'sweatband', 'viking', 'crown'],
+  face: ['dots', 'anime', 'fierce', 'happy', 'shades', 'warpaint', 'mouthguard'],
+  top: ['none', 'tank', 'tee', 'stringer', 'singlet', 'hoodie', 'compression', 'gi'],
+  cloth: Object.keys(LOOK_CLOTH),
+  bottom: ['none', 'shorts', 'joggers', 'leggings'],
+  cloth2: Object.keys(LOOK_CLOTH),
+  cape: ['none', 'short', 'long'],
+  accent: Object.keys(LOOK_ACCENTS),
+  line: ['chalk', 'ink', 'double', 'neon', 'sketch', 'pixel'],
+  aura: ['flame', 'lightning', 'dust', 'plates', 'pixel'],
+  finish: ['iron', 'chrome', 'gold', 'neon', 'red', 'blue', 'yellow', 'green'],   // weapon finishes and the trail (#113): see LOOK_FINISH
+  trail: ['off', 'on'],
+};
+// Training marks (#84), in the looks prototype's order. A look lists the ones its fighter wears.
+const LOOK_MARKS = ['chalkHands', 'soles', 'club1000', 'streak', 'medal', 'ironYear'];
+const DEFAULT_LOOK = { v: 1, hair: 'spiky', hairTint: 'chalk', facial: 'none', hat: 'headband', face: 'dots', top: 'tee', cloth: 'charcoal',
+  bottom: 'shorts', cloth2: 'black', cape: 'none', accent: 'orange', line: 'chalk', aura: 'flame', finish: 'iron', trail: 'off', marks: [] };
+// A saved or sent look, read like the app's normalizeLook: each part this page knows is kept, anything else is the default.
+function normalizeLook(raw) {
+  const out = { ...DEFAULT_LOOK, marks: [] };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const k of Object.keys(LOOK_OPTIONS)) { const v = raw[k]; if (typeof v === 'string' && LOOK_OPTIONS[k].includes(v)) out[k] = v; }
+  const marks = raw.marks;   // the marks this page knows, once each, in LOOK_MARKS order
+  if (Array.isArray(marks)) out.marks = LOOK_MARKS.filter(m => marks.includes(m));
+  return out;
+}
+// A Player 2 with no look of its own (the CPU buddy, or a second player on this device): the default with a ponytail, in teal.
+const P2_LOOK = { ...DEFAULT_LOOK, hair: 'ponytail', accent: 'teal', marks: [] };
+// Fight colors (#80): everyone fights in their own color; whoever joined later takes the next free one in SLOT_ORDER for
+// this fight only when theirs is already taken. The saved look never changes. accents: each fighter's own, in join order.
+const SLOT_ORDER = ['orange', 'blue', 'teal', 'purple', 'green', 'pink', 'yellow', 'red', 'cyan'];
+function fightAccents(accents) {
+  const used = new Set();
+  return accents.map(a => { const s = !used.has(a) ? a : SLOT_ORDER.find(k => !used.has(k)); used.add(s); return s; });
+}
+let myLook = { ...DEFAULT_LOOK };   // this phone's fighter: the app's look, or the default in a browser
 
 // ---------------------------------------------------------------------------
 // Rewards & shop: gold buys it, training unlocks it (B4/B13). All placeholders.
@@ -865,23 +962,68 @@ const DEFAULT_ECON = {
 let E = { ...DEFAULT_ECON };
 
 // Gear adds verbs, not numbers: every weapon trades something away. sig = the level whose win stocks it.
-// mods: range (px added), dmg (×), speed (× attack duration), push (× monster push), parry, plateSpecial, slamSpecial.
+// mods: range (px added), dmg (×), speed (× attack duration), push (× monster push), parry, plateSpecial, slamSpecial,
+//   lash (px of extra reach per monster already hit by the same swing: the hit carries down a line),
+//   waves (hits per attack, spread across the swing; no jab chain, and never launches, so the waves keep it in reach),
+//   knockdownMs + knockdownCd (a strike knocks a grounded minion flat for knockdownMs, then it can't be knocked down
+//   again for knockdownCd seconds after it gets up),
+//   special (which special the weapon fires, from SPECIALS; plateSpecial and slamSpecial are the older spelling).
 const ITEMS = {
   fists:     { kind: 'weapon', name: 'Bare Fists', price: 0, req: {}, mods: {},
                desc: 'The default. Punch, kick, sweep.' },
-  staff:     { kind: 'weapon', name: 'Barbell Staff', price: 150, req: { STR: 12, DEX: 14 }, mods: { range: 40, dmg: 0.75 },
-               desc: 'Long reach, lighter hits. Poke from outside the monster\'s swing.' },
-  shield:    { kind: 'weapon', name: 'Plate Shield', price: 200, req: { VIT: 18, STR: 14 }, mods: { dmg: 0.85, parry: true },
+  // Starters (B13, 2026-10-09): one per build, about a week of matching training (start 8 + 2) and a fight or two of gold.
+  knuckles:  { kind: 'weapon', name: 'Dumbbell Knuckles', price: 100, req: { STR: 10 }, mods: { range: -15, speed: 0.7, dmg: 0.75, special: 'flurry' },
+               desc: 'Short, fast jabs with less reach. Special: a one-more-rep flurry of punches straight ahead.' },
+  jumprope:  { kind: 'weapon', name: 'Jump Rope Whip', price: 100, req: { SPD: 10, DEX: 10 }, mods: { range: 25, dmg: 0.65, lash: 35, special: 'whirl' },
+               desc: 'A mid-range lash that hits through a crowd, with lighter damage. Special: a double-under that whirls the rope all around you, high enough to catch flyers.' },
+  ropes:     { kind: 'weapon', name: 'Battle Ropes', price: 100, req: { END: 10 }, mods: { range: 20, speed: 1.6, dmg: 0.45, push: 0.3, waves: 3 },
+               desc: 'A slow wave that hits everything in front of you several times.' },
+  roller:    { kind: 'weapon', name: 'Foam Roller', price: 100, req: { VIT: 10 }, mods: { dmg: 0.6, knockdownMs: 1100, knockdownCd: 1.5 },
+               desc: 'Roll it in to knock monsters down. Weak hits, and no knockdown on elites, bosses or flyers.' },
+  // Tier 2: weeks of gold, and requirements that track the build.
+  staff:     { kind: 'weapon', name: 'Barbell Staff', price: 1500, req: { STR: 12, DEX: 14 }, mods: { range: 40, dmg: 0.75, special: 'vault' },
+               desc: 'Long reach, lighter hits. Poke from outside the monster\'s swing. Special: vault over the nearest monster and slam down on the far side.' },
+  shield:    { kind: 'weapon', name: 'Plate Shield', price: 2000, req: { VIT: 18, STR: 14 }, mods: { dmg: 0.85, parry: true },
                desc: 'Block becomes parry: start a block just as a hit lands to take nothing and stagger the monster. Punches are a bit weaker.' },
-  flail:     { kind: 'weapon', name: 'Kettlebell Flail', price: 250, req: { STR: 26, END: 16 }, mods: { speed: 1.6, dmg: 1.35, push: 2.2 },
-               desc: 'Slow swing, huge push. Launches heavy monsters that fists barely move.' },
-  kanabo:    { kind: 'weapon', name: 'Oni Kanabo', price: 300, req: { STR: 22, VIT: 18 }, sig: 'z1oni', mods: { speed: 1.2, slamSpecial: true },
+  flail:     { kind: 'weapon', name: 'Kettlebell Flail', price: 3000, req: { STR: 26, END: 16 }, mods: { speed: 1.6, dmg: 1.35, push: 2.2, special: 'hammer' },
+               desc: 'Slow swing, huge push. Launches heavy monsters that fists barely move. Special: a hammer throw that hurls the kettlebell across the screen.' },
+  kanabo:    { kind: 'weapon', name: 'Oni Kanabo', price: 4000, req: { STR: 22, VIT: 18 }, sig: 'z1oni', mods: { speed: 1.2, slamSpecial: true },
                desc: 'Oni Bro\'s club. Your special becomes a ground-cracking slam that hits every grounded monster nearby (great vs swarms), but it can\'t touch flyers. Swings a bit slower.' },
-  gauntlets: { kind: 'weapon', name: 'Golem Plate Gauntlets', price: 300, req: { STR: 20 }, sig: 'golem', mods: { plateSpecial: true },
-               desc: 'Your special hurls a rolling plate across the floor instead of a spin. Great from range, useless against flyers.' },
-  headband:  { kind: 'look', name: 'Red Sweatband', price: 40, desc: 'Looks fast.' },
-  goldchalk: { kind: 'look', name: 'Gold Chalk', price: 90, desc: 'Your hit puffs turn gold.' },
-  airhorn:   { kind: 'sound', name: 'Air Horn KO', price: 120, desc: 'An air horn blares on every knockout.' },
+  gauntlets: { kind: 'weapon', name: 'Golem Plate Gauntlets', price: 4000, req: { STR: 20 }, sig: 'golem', mods: { plateSpecial: true },
+               desc: 'Your special drops a rolling plate instead of a spin. It rolls along whatever you stand on, off a bench and down to the floor. Great from range, and it hits flyers at its height.' },
+  // Bought look layers (#83, docs/06 "Your look"): layer = the look part and value it unlocks. You put one on in the
+  // app's look builder (here in a browser: Wear in the shop), so it has no on / off toggle. The Red Sweatband keeps its
+  // old id, so wallets that own it still do.
+  headband:  { kind: 'look', name: 'Red Sweatband', price: 200, desc: 'A thick red sweatband. Looks fast.', layer: { part: 'hat', value: 'sweatband' } },
+  warpaint:  { kind: 'look', name: 'War Paint', price: 300, desc: 'Two stripes under each eye, in your color.', layer: { part: 'face', value: 'warpaint' } },
+  mouthguard: { kind: 'look', name: 'Mouthguard', price: 300, desc: 'Bite down in your color. Safety first.', layer: { part: 'face', value: 'mouthguard' } },
+  capeshort: { kind: 'look', name: 'Short Cape', price: 500, desc: 'A short cape in your color that swishes when you move.', layer: { part: 'cape', value: 'short' } },
+  capelong:  { kind: 'look', name: 'Long Cape', price: 900, desc: 'A long cape in your color, for dramatic entrances.', layer: { part: 'cape', value: 'long' } },
+  viking:    { kind: 'look', name: 'Viking Helm', price: 1000, desc: 'Horns up. Sits low over your hair.', layer: { part: 'hat', value: 'viking' } },
+  crown:     { kind: 'look', name: 'Crown', price: 1800, desc: 'For the ruler of leg day.', layer: { part: 'hat', value: 'crown' } },
+  // Auras and line styles (#112): an aura shows on level-ups; a line style restyles your whole fighter. The app draws
+  // them; this page reads them but still draws every fighter in chalk without an aura (drawing them in fights is a follow-up).
+  auradust:  { kind: 'look', name: 'Chalk Dust Aura', price: 800, desc: 'Chalk dust drifts up around you on level-ups.', layer: { part: 'aura', value: 'dust' } },
+  auraplates: { kind: 'look', name: 'Orbiting Plates', price: 1000, desc: 'Plates in your color circle you on level-ups.', layer: { part: 'aura', value: 'plates' } },
+  aurapixel: { kind: 'look', name: 'Pixel Aura', price: 1000, desc: 'Blocky pixel flames in your color on level-ups.', layer: { part: 'aura', value: 'pixel' } },
+  auralightning: { kind: 'look', name: 'Lightning Aura', price: 1200, desc: 'Lightning crackles around you on level-ups.', layer: { part: 'aura', value: 'lightning' } },
+  linedouble: { kind: 'look', name: 'Double Line', price: 1500, desc: 'Draws your fighter dark, outlined in chalk.', layer: { part: 'line', value: 'double' } },
+  lineink:   { kind: 'look', name: 'Clean Ink', price: 1500, desc: 'Crisp lines with a bold black outline.', layer: { part: 'line', value: 'ink' } },
+  linesketch: { kind: 'look', name: 'Sketch Lines', price: 1600, desc: 'Drawn twice in a shaky pencil hand.', layer: { part: 'line', value: 'sketch' } },
+  linepixel: { kind: 'look', name: 'Pixel Style', price: 1800, desc: 'Turns your whole fighter into chunky pixels.', layer: { part: 'line', value: 'pixel' } },
+  lineneon:  { kind: 'look', name: 'Neon Lines', price: 2000, desc: 'Your whole fighter glows in your color.', layer: { part: 'line', value: 'neon' } },
+  goldchalk: { kind: 'look', name: 'Gold Chalk', price: 800, desc: 'Your hit puffs turn gold.' },
+  airhorn:   { kind: 'sound', name: 'Air Horn KO', price: 2000, desc: 'An air horn blares on every knockout.' },
+  // Weapon finishes and the trail (#113): one finish shows on whatever weapon you hold (LOOK_FINISH, drawGear). Last in
+  // the catalog, which keeps the order of the older items stable. (An unopened chest can still offer something else.)
+  finishgreen: { kind: 'look', name: 'Comp Green Finish', price: 400, desc: 'Green competition plates (25) on any weapon.', layer: { part: 'finish', value: 'green' } },
+  finishyellow: { kind: 'look', name: 'Comp Yellow Finish', price: 500, desc: 'Yellow competition plates (35) on any weapon.', layer: { part: 'finish', value: 'yellow' } },
+  finishblue: { kind: 'look', name: 'Comp Blue Finish', price: 600, desc: 'Blue competition plates (45) on any weapon.', layer: { part: 'finish', value: 'blue' } },
+  finishred: { kind: 'look', name: 'Comp Red Finish', price: 700, desc: 'Red competition plates (55) on any weapon. The heaviest color.', layer: { part: 'finish', value: 'red' } },
+  finishchrome: { kind: 'look', name: 'Chrome Finish', price: 900, desc: 'Mirror-bright chrome on any weapon.', layer: { part: 'finish', value: 'chrome' } },
+  finishgold: { kind: 'look', name: 'Gold Finish', price: 1200, desc: 'Solid gold on any weapon. Very heavy, very shiny.', layer: { part: 'finish', value: 'gold' } },
+  finishneon: { kind: 'look', name: 'Neon Finish', price: 1500, desc: 'Any weapon glows in your color.', layer: { part: 'finish', value: 'neon' } },
+  trail:     { kind: 'look', name: 'Weapon Trail', price: 1000, desc: 'A streak in your color follows your weapon, or your fist, as you swing.', layer: { part: 'trail', value: 'on' } },
 };
 const KIND = { weapon: 'Weapon', look: 'Look', sound: 'Sound' };
 const TRAIN = {
@@ -910,32 +1052,88 @@ let wallet = loadWallet();
 const freshOf = k => wallet.fresh[k] ?? 1;
 const meetsReq = (item, stats) => Object.entries(item.req || {}).every(([s, v]) => stats[s] >= v);
 const stocked = item => !item.sig || wallet.clears[item.sig] > 0;   // boss signature items appear after that boss falls
-const looksOn = k => wallet.looks.includes(k);
+const looksOn = k => wallet.looks.includes(k) && wallet.owned.includes(k);   // a stale wallet can't wear a look it doesn't own
+// The item for weapon key k if it's a real weapon this build has moves for (mods), else null.
+const builtWeapon = k => typeof k === 'string' && Object.hasOwn(ITEMS, k) && ITEMS[k].kind === 'weapon' && ITEMS[k].mods ? ITEMS[k] : null;
+// The weapon P1 actually fights with: the equipped one if it's a built weapon you own and meet the requirements for
+// (stats = trained stats, before Rusty); anything else (under-trained, or an old or odd wallet from the app) is fists.
+const fightWeapon = stats => {
+  const k = wallet.weapon, it = builtWeapon(k);
+  return it && wallet.owned.includes(k) && meetsReq(it, stats) ? k : 'fists';
+};
 
-// Pay out a win. Returns { gold, parts, unlock }.
-function payout(lv, coopLive) {
-  const key = lv.key, parts = [], first = !wallet.clears[key];
-  let g = lv.gold;
+// Specials (prototype, 2026-10-27): every weapon fires its own. A special-gear item only changes your special (it
+// leaves your weapon's normal hits alone), and wins over the weapon's. The Resistance Band Bow is the first one; it
+// isn't in the shop yet, so it's picked from the play menu, like the "try a special" test control.
+const SPECIALS = {
+  spin:   { name: 'Spin', from: 'Bare Fists', desc: 'A spin that hits all around you.' },
+  flurry: { name: 'One More Rep', from: 'Dumbbell Knuckles', desc: 'A flurry of six punches straight ahead. The last one pushes.' },
+  whirl:  { name: 'Double-Under', from: 'Jump Rope Whip', desc: 'The rope whirls twice all around you, high enough to catch flyers.' },
+  vault:  { name: 'Pole Vault', from: 'Barbell Staff', desc: 'Vault over the nearest monster (you can\'t be hit in the air) and slam down on the far side.' },
+  hammer: { name: 'Hammer Throw', from: 'Kettlebell Flail', desc: 'Two turns, then the kettlebell flies across the screen and launches the first monster it hits.' },
+  slam:   { name: 'Ground Slam', from: 'Oni Kanabo', desc: 'A quake that hits every grounded monster nearby.' },
+  plate:  { name: 'Rolling Plate', from: 'Golem Plate Gauntlets', desc: 'A plate that rolls along whatever you stand on.' },
+  bow:    { name: 'Band Shot', from: 'Resistance Band Bow', desc: 'An arrow at the nearest monster that goes through everything in its line, flyers too. A PERFECT draw fires three.' },
+};
+const SPECIAL_GEAR = {
+  bow: { name: 'Resistance Band Bow', special: 'bow', desc: 'Special gear: only changes your special, to a long-range Band Shot. Hold to draw it.' },
+};
+const weaponSpecial = w => w.plateSpecial ? 'plate' : w.slamSpecial ? 'slam' : w.special || 'spin';
+// Browser test controls for P1 (the app shows neither): the special-gear slot, and trying any weapon's special.
+let spTest = { gear: '', tryOut: '', charge: 1 };
+try { spTest = { ...spTest, ...JSON.parse(localStorage.getItem('bb-brawl-special')) }; } catch (e) {}
+CH.on = spTest.charge ? 1 : 0;
+const saveSpTest = () => { try { localStorage.setItem('bb-brawl-special', JSON.stringify(spTest)); } catch (e) {} };
+// Apply a change to the test controls: save it, and give P1 the new special at once (mid-fight too).
+function setSpTest(change) {
+  spTest = { ...spTest, ...change }; CH.on = spTest.charge ? 1 : 0; saveSpTest();
+  const p = players[0];
+  if (p && p.ctrl === 'human' && !watch) p.sp = p1Special(p.w);
+}
+const p1Special = w => {
+  if (appWallet) return weaponSpecial(w);
+  if (SPECIAL_GEAR[spTest.gear]) return SPECIAL_GEAR[spTest.gear].special;
+  return SPECIALS[spTest.tryOut] ? spTest.tryOut : weaponSpecial(w);
+};
+
+// What a win pays from wallet w, and the wallet after it (w itself is left alone). Pure, so the app can check its copy
+// (app/src/domain/brawl.ts payWin). The first win vs a level is the one that counts toward your ladder (it opens the
+// next level) and pays the first-clear bonus; later wins pay from that level's freshness. A co-op guest is paid the same
+// way from their own wallet, at the host's rung: it counts toward the guest's ladder only if they haven't beaten it yet
+// (docs/05 "Co-op on ladders", #38). `carried`: a co-op win on a level past the guest's own ladder (one they couldn't
+// open solo yet). It pays like a replay from their freshness (a full ×1 the first time) and isn't a clear: the ×3 and
+// the rung wait until they reach that level themselves (docs/decisions/2026-10-09-coop-past-your-ladder.md).
+function winPay(w, lv, E, coopLive, carried = false) {
+  const key = lv.key, parts = [], first = !carried && !(w.clears[key] > 0), fresh = w.fresh[key] ?? 1;
+  let g = lv.gold, pump = w.pump;
   parts.push(`${g} base`);
   if (first) { g *= E.firstClearMult; parts.push(`×${E.firstClearMult} first clear`); }
-  else { g *= freshOf(key); parts.push(`×${Math.round(freshOf(key) * 100)}% fresh`); }
-  if (wallet.pump > 0) { g *= E.pumpMult; wallet.pump--; parts.push(`×${E.pumpMult} pump`); }
+  else { g *= fresh; parts.push(`×${Math.round(fresh * 100)}% fresh`); }
+  if (carried) parts.push('past your ladder: not a clear');
+  if (pump > 0) { g *= E.pumpMult; pump--; parts.push(`×${E.pumpMult} pump`); }
   if (coopLive) { g *= 1 + E.coopBonus; parts.push(`+${Math.round(E.coopBonus * 100)}% live co-op`); }
   g = Math.round(g);
-  wallet.gold += g;
-  wallet.clears[key] = (wallet.clears[key] || 0) + 1;
-  wallet.fresh[key] = Math.max(E.freshFloor, freshOf(key) * E.freshDecay);
-  const sig = Object.values(ITEMS).find(it => it.sig === key);
+  return { gold: g, parts, first, wallet: { ...w, gold: w.gold + g, pump,
+    clears: carried ? w.clears : { ...w.clears, [key]: (w.clears[key] || 0) + 1 },
+    fresh: { ...w.fresh, [key]: Math.max(E.freshFloor, fresh * E.freshDecay) } } };
+}
+// Pay out a win into this phone's wallet. Returns { gold, parts, unlock }.
+function payout(lv, coopLive, carried = false) {
+  const { gold, parts, first, wallet: after } = winPay(wallet, lv, E, coopLive, carried);
+  wallet = after;
+  const sig = Object.values(ITEMS).find(it => it.sig === lv.key);
   const next = lv.zone.ladder && first ? lv.zone.levels[lv.idx + 1] : null;
   const unlock = [first && sig ? `New in the shop: ${sig.name}` : '', next ? `Unlocked: ${next.name}` : ''].filter(Boolean).join(' · ');
   saveWallet(); renderShop();
-  return { gold: g, parts, unlock };
+  return { gold, parts, unlock };
 }
 const setup = [
   { preset: 'Balanced', stats: { ...PRESETS.Balanced }, level: 7 },
   { preset: 'Fast runner', stats: { ...PRESETS['Fast runner'] }, level: 7 },
 ];
 let realStats = false;   // the app passed in the player's real stats: no level controls in play mode
+let trainedStats = null;   // those stats as the app sent them, so nothing on the page can change what P1 has trained
+const p1Stats = () => realStats && trainedStats ? trainedStats : setup[0].stats;
 // In a browser, P1's test fighter (build, stats) is remembered between visits; the app always passes real stats instead.
 try { const f = JSON.parse(localStorage.getItem('bb-brawl-fighter')); if (f && f.stats && STATS.every(k => f.stats[k] > 0)) Object.assign(setup[0], { preset: f.preset, stats: f.stats }); } catch (e) {}
 const saveFighter = () => { if (!realStats) try { localStorage.setItem('bb-brawl-fighter', JSON.stringify({ preset: setup[0].preset, stats: setup[0].stats })); } catch (e) {} };
@@ -985,13 +1183,18 @@ let monUid = 0;
 let shakeAmp = 0, shakeT = 0, shakeDur = 1;   // screen shake (real time)
 let hitstop = 0;                              // seconds of frozen simulation left
 let ko = null;                                // final KO slow-mo: { t, x, y }
+let realDt = 0, spFlash = 0;                  // this tick's unslowed step; the white flash of a PERFECT special
 let puffs = [];                               // chalk-puff particles
 // Live co-op (#35): while the host runs a co-op fight, every effect below is also written down (with the host's clock,
-// in ms) so the guest's phone can replay it when its view of the fight reaches that moment. Hitstop isn't: the guest adds
-// none of its own, though it sees the host's freezes (docs/08 Realtime ❓).
+// in ms) so the guest's phone can replay it when its view of the fight reaches that moment. Hitstop isn't: in co-op
+// nobody gets any (05 Game feel: it must never pause the shared fight, and the guest's own fighter runs ahead of it).
 let coopRec = null, coopClock = 0;            // coopClock: seconds of real time the page has run, the stamp on everything it sends
 let ticking = false;                          // only the fight's own effects count, not a button's buzz
 const rec = (name, args) => { if (coopRec && ticking) coopRec.push([Math.round(coopClock * 1000), name, ...args]); };
+// This phone hosts a live co-op fight (a started room): the fight it runs is shared with the guest's phone.
+const coopHosting = () => !!coop && coop.role === 'host' && coop.started && coopRec !== null;
+// P2 is the co-op guest, playing from their own phone (#36).
+const remoteP2 = p => p.i === 1 && p.ctrl === 'human' && coopHosting();
 
 function doShake(factor) {
   rec('doShake', arguments);
@@ -1000,10 +1203,12 @@ function doShake(factor) {
   const current = shakeT > 0 ? shakeAmp * shakeT / shakeDur : 0;
   if (amp >= current) { shakeAmp = amp; shakeDur = shakeT = J.shakeMs / 1000; }
 }
-function doHitstop(ms) { if (J.on.hitstop) hitstop = Math.max(hitstop, ms / 1000); }
+function doHitstop(ms) { if (J.on.hitstop && !coopHosting()) hitstop = Math.max(hitstop, ms / 1000); }
 const flashTime = () => (J.on.flash && !J.on.reduce ? J.flashMs / 1000 : 0);
 // Haptics are about you (05 Game feel): a co-op guest only feels the ones marked shared, like the final KO.
 function buzz(pattern, shared = false) { if (shared) rec('buzz', [pattern]); if (!simMode && J.on.haptics && navigator.vibrate) navigator.vibrate(pattern); }
+// Fighter p's own haptics (a hit it lands, a hit it takes): on this phone, or on the guest's phone for a co-op guest's P2.
+function buzzFor(p, pattern) { if (remoteP2(p)) rec('buzz', [pattern]); else buzz(pattern); }
 function chalkPuff(x, y, n, color) {
   rec('chalkPuff', arguments);
   if (!J.on.particles) return;
@@ -1063,6 +1268,9 @@ const sfx = {
   grab() { if (!canPlay()) return; tone(180 * pv(), 0.2, 'sawtooth', 0.2, 90); },
   horn() { if (!canPlay()) return; [466, 587, 698].forEach(f => tone(f, 0.7, 'sawtooth', 0.14)); },
   coin() { if (!canPlay()) return; tone(988, 0.08, 'square', 0.12); tone(1319, 0.25, 'square', 0.12, null, 0.08); },
+  charge() { if (!canPlay()) return; tone(180, CH.ringMs / 1000 + CH.lateMs / 1000, 'triangle', 0.14, 720); },
+  perfect() { if (!canPlay()) return; [1047, 1319, 1568].forEach((f, k) => tone(f, 0.25, 'triangle', 0.16, null, k * 0.04)); },
+  twang() { if (!canPlay()) return; tone(320 * pv(), 0.18, 'sawtooth', 0.18, 110); noise(0.06, 0.3, 3000); },
 };
 for (const k of Object.keys(sfx)) { const play = sfx[k]; sfx[k] = (...a) => { rec('sfx.' + k, a); play(...a); }; }   // co-op replay (#35)
 // What the guest may replay: only these, by name (the names come over the network), with every argument clamped so a
@@ -1107,10 +1315,12 @@ const KEYMAP = {
 };
 const HELD = new Set(['left', 'right', 'block', 'down']);
 const PRESSES = ['attack', 'dodge', 'special', 'jump', 'flex'];
-const newInput = () => ({ left: false, right: false, block: false, down: false, swipeDir: 0, press: { attack: -1e9, dodge: -1e9, special: -1e9, jump: -1e9, flex: -1e9 } });
+const newInput = () => ({ left: false, right: false, block: false, down: false, swipeDir: 0, specialHeld: false, press: { attack: -1e9, dodge: -1e9, special: -1e9, jump: -1e9, flex: -1e9 } });
 const inputs = [newInput(), newInput()];
 
 function setInput(i, a, down) {
+  if (watch) { if (i === 0) guestInput(a, down); return; }   // a co-op guest's buttons drive P2 on the host's phone (#36)
+  if (a === 'special') inputs[i].specialHeld = down;   // a charged special lets go on release
   if (HELD.has(a)) inputs[i][a] = down;
   else if (down) inputs[i].press[a] = gt;
 }
@@ -1132,15 +1342,17 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => {
   const m = KEYMAP[e.code];
-  if (m && HELD.has(m[1])) setInput(m[0], m[1], false);
+  if (!m || (m[0] === 1 && $('#p2mode').value !== 'human')) return;   // as keydown: the host's P2 keys don't touch a co-op guest
+  if (HELD.has(m[1]) || m[1] === 'special') setInput(m[0], m[1], false);
 });
 
 // ---------------------------------------------------------------------------
 // Fight setup
 // ---------------------------------------------------------------------------
-function makePlayer(i, stats, ctrl, weaponKey = 'fists') {
+function makePlayer(i, stats, ctrl, weaponKey = 'fists', look = i === 0 ? myLook : P2_LOOK) {
   const p = {
-    i, name: 'P' + (i + 1), color: COLORS[i], stats: { ...stats }, ctrl, weaponKey, w: ITEMS[weaponKey].mods, blockStart: -1, parries: 0,
+    i, name: 'P' + (i + 1), look, color: LOOK_ACCENTS[look.accent], stats: { ...stats }, ctrl, weaponKey, w: ITEMS[weaponKey].mods, blockStart: -1, parries: 0,
+    sp: i === 0 && ctrl === 'human' ? p1Special(ITEMS[weaponKey].mods) : weaponSpecial(ITEMS[weaponKey].mods), spPow: 1, charge: null,
     level: setup[i].level, x: i === 0 ? 330 : 280, y: 0, vy: 0, kx: 0, onGround: true, support: 0, dropUntil: -1, facing: 1,
     state: 'idle', t: 0, walkPh: 0, flash: 0, iUntil: -1, graceUntil: -1, dodgeDir: 1, hitDone: false,
     threat: 0, revive: 0, crouch: false, move: 'mid', sleepUntil: 0, grab: null,
@@ -1148,7 +1360,7 @@ function makePlayer(i, stats, ctrl, weaponKey = 'fists') {
     dmgDealt: 0, dmgTaken: 0, dodges: 0, blocks: 0, revives: 0, flexes: 0, aggroTime: 0, ducks: 0, launches: 0, kills: 0, escapes: 0,
     finishers: 0, throws: 0, strikes: 0,
     react: 0.6, reacts: new Map(), flexCd: 0,
-    preset: setup[i].preset, rusty: i === 0 && isRusty(), headband: i === 0 && looksOn('headband'),   // for the HUD and drawing (a co-op guest has no setup of its own for them)
+    preset: setup[i].preset, rusty: i === 0 && isRusty(),   // for the HUD and drawing (a co-op guest has no setup of its own for them)
   };
   p.maxHp = p.hp = maxHp(stats);
   p.maxSt = p.st = maxSt(stats);
@@ -1179,6 +1391,11 @@ function coopBlend(host, helper) {
   const h = statSum(host), b = T.coopHostWeight * h + (1 - T.coopHostWeight) * statSum(helper);
   return clamp(b / (h || 1), 0.75, 2);
 }
+// Each fighter's color for this fight: their own, unless someone who joined earlier already has it (fightAccents).
+function setFightColors(ps) {
+  const acc = fightAccents(ps.map(p => (p.look || DEFAULT_LOOK).accent));   // looks are normalized where they arrive
+  ps.forEach((p, j) => { p.color = LOOK_ACCENTS[acc[j]]; });
+}
 const rustyStats = s => Object.fromEntries(STATS.map(k => [k, r1(s[k] * T.rustyMult)]));
 const isRusty = () => $('#rusty').checked;
 
@@ -1204,17 +1421,21 @@ function startFight() {
   const lv = LEVELS[$('#level').value];
   if (!levelOpen(lv)) { logLine(`🔒 <b>${lv.name}</b> is locked: ${lockText(lv)} (or turn off ladder locks).`); return; }
   level = lv;
-  const mode = $('#p2mode').value;
-  const wk = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? wallet.weapon : 'fists';   // hard lock: under-trained = fists
-  const host = isRusty() ? rustyStats(setup[0].stats) : { ...setup[0].stats };
+  const guest = coopGuestFighter();   // hosting a co-op room: the guest fights as P2 from their own phone (#36)
+  const mode = guest ? 'human' : $('#p2mode').value;
+  const wk = fightWeapon(p1Stats());   // hard lock: under-trained = fists
+  const host = isRusty() ? rustyStats(p1Stats()) : { ...p1Stats() };
   players = [makePlayer(0, host, 'human', wk)];
-  coopScaleNow = { hp: 1, dmg: 1, blend: 1 };
+  coopScaleNow = { hp: 1, dmg: 1, blend: 1 }; p2Left = '';
   if (mode !== 'none') {
-    const helper = helperStats(host, setup[1].stats, mode);
-    players.push(makePlayer(1, helper, mode));
+    // A human guest gets the same partial sync, difficulty blend and live co-op gold bonus as a local P2.
+    const helper = helperStats(host, guest ? guest.stats : setup[1].stats, mode);
+    players.push(makePlayer(1, helper, mode, guest ? guest.weapon : 'fists'));
+    if (guest) Object.assign(players[1], { name: guest.name, level: guest.level, preset: guest.preset, rusty: guest.rusty, look: guest.look });
     const b = coopBlend(host, helper);
     coopScaleNow = { hp: T.coopHpMult * b, dmg: b, blend: b };
   }
+  setFightColors(players);
   if (lv.scale) coopScaleNow = { ...coopScaleNow, hp: coopScaleNow.hp * lv.scale.hp, dmg: coopScaleNow.dmg * lv.scale.dmg };   // tower floors
   if (lv.tower) ensureTower(lv.tower + 1);   // so a win can offer the next floor
   monsters = []; monUid = 0; waveIdx = 0; waveGap = null; camX = 0; LEFT = 30; RIGHT = W - 30;
@@ -1226,7 +1447,8 @@ function startFight() {
   if (!run) spawnWave();
   plates = []; shots = []; floaters = []; puffs = []; rings = []; shakeT = 0; hitstop = 0; ko = null; gt = 0; result = null; paused = false;
   combo = 0; comboBest = 0; lastHitAt = -9;
-  if (wk !== wallet.weapon) floater(`Not strong enough for the ${ITEMS[wallet.weapon].name} yet: fists this fight`, W / 2, 100, '#e8c547', 16);
+  if (wk !== wallet.weapon && builtWeapon(wallet.weapon) && wallet.owned.includes(wallet.weapon))   // owned, just under-trained
+    floater(`Not strong enough for the ${ITEMS[wallet.weapon].name} yet: fists this fight`, W / 2, 100, '#e8c547', 16);
   if (isRusty()) floater(`RUSTY: stats −${Math.round((1 - T.rustyMult) * 100)}% until you log a workout`, W / 2, 130, '#c98a5a', 16);
   if (!simMode) ensureAudio();
   inputs.forEach(inp => Object.assign(inp, newInput()));
@@ -1244,13 +1466,41 @@ const isEnraged = m => m.def.enrage && m.hp < m.maxHp * T.enrageAt;
 const speedMult = m => (isEnraged(m) ? T.enrageMult : 1) * (gt < m.buffUntil ? MONSTERS.snack.attacks.cheat.mult : 1);
 
 // Each move reaches a band of heights above the attacker's feet; it hits a monster whose body overlaps it.
-// A low sweep from a bench only reaches bench height, so it can't hit monsters on the floor.
-const MOVE_BAND = { low: [-5, 30], mid: [35, 105], jab: [35, 105], finisher: [20, 100], kick: [0, 85], spin: [10, 110] };
+// A low sweep from a bench only reaches bench height, so it can't hit monsters on the floor. The special's spin
+// starts at waist height like a normal swing, so from a bench it can't clip the heads of monsters below.
+const MOVE_BAND = { low: [-5, 30], mid: [35, 105], jab: [35, 105], finisher: [20, 100], kick: [0, 85], spin: [35, 110],
+  flurry: [35, 105], whirl: [0, 230], vault: [-5, 110] };   // the rope's whirl clears your head: it reaches flyers
 const bodyOf = m => { const b = m.def.body || [0, m.def.height]; return [m.y + b[0], m.y + b[1]]; };
 function reaches(p, m, move) {
   const [a, b] = MOVE_BAND[move] || MOVE_BAND.mid, [lo, hi] = bodyOf(m);
   return p.y + a < hi && p.y + b > lo;
 }
+// The Oni Kanabo's special: a quake along the floor that hits grounded monsters near x. fromY is the height the
+// slam lands on (slamFromY): from a bench it only shakes the bench, but a jump-slam over the floor still quakes the floor.
+function quakeHits(x, fromY, m, range) {
+  return m.hp > 0 && fromY < 30 && m.y < 30 && Math.abs(m.x - x) < range + m.def.width / 2;
+}
+// Where a Kanabo slam lands, read at the hit frame: what you stand on, or in the air, what you'd land on below you
+// (p.support is only set on landing, so it's stale once you walk off a bench or jump from one).
+function slamFromY(p, plats) {
+  if (p.onGround) return p.support;
+  let h = 0;
+  for (const pl of plats) if (p.x >= pl.x1 && p.x <= pl.x2 && pl.h <= p.y + 0.5) h = Math.max(h, pl.h);
+  return h;
+}
+// The Golem Plate Gauntlets' special: a plate dropped from wherever the player is. It falls, rolls along whatever it
+// lands on (a bench, then off its end down to the floor), and lands on one-way benches the way a player does.
+function rollShot(s, dt, plats, gravity) {
+  s.x += s.vx * dt; s.spin += s.vx * dt / 18;
+  const prevY = s.y;
+  s.y = s.y || 0; s.vy = (s.vy || 0) - gravity * dt; s.y += s.vy * dt;
+  let floorH = 0;
+  for (const pl of plats) if (s.x >= pl.x1 && s.x <= pl.x2 && prevY >= pl.h - 0.5 && s.y <= pl.h) floorH = Math.max(floorH, pl.h);
+  if (s.y <= floorH) { s.y = floorH; s.vy = 0; }
+}
+// A rolling plate hits a monster at its own level, flyers included: on the floor that's every grounded monster and any
+// flyer that dips low (the Snooze Imp settles just above its dip of 40, hence 45); on a bench, nothing on the floor below, but a flyer hovering near the bench (founder, PR #70).
+const shotHits = (s, m) => m.hp > 0 && Math.abs(m.y - s.y) < 45 && Math.abs(s.x - m.x) < m.def.width / 2;
 function nearestMonster(p) {
   let best = null;
   for (const m of monsters) if (m.hp > 0 && (!best || Math.abs(m.x - p.x) < Math.abs(best.x - p.x))) best = m;
@@ -1272,7 +1522,7 @@ function launchMonster(m, p, vx, vy) {
 function pushMonster(m, p, push, move) {
   const dir = sign(m.x - p.x);
   if (m.state === 'launched' || m.state === 'held') return;
-  if (move !== 'jab' && push >= T.launchAt && gt >= m.launchReadyAt) {
+  if (move !== 'jab' && !p.w.waves && push >= T.launchAt && gt >= m.launchReadyAt) {
     const low = move === 'finisher';
     launchMonster(m, p, dir * Math.min(push, 160) * (low ? 5 : 4), T.launchVy * Math.min(1.6, push / T.launchAt) * (low ? T.finisherLift : 1));
     m.launchReadyAt = gt + T.launchCooldown;
@@ -1286,23 +1536,36 @@ function pushMonster(m, p, push, move) {
 }
 
 // A normal strike or spin: hits every living monster in reach (punches cleave through a pack). Returns how many it hit.
-function playerHits(p, mult, range, bothSides, move = 'mid') {
-  let n = 0;
-  for (const m of monsters) {
+// Jump Rope Whip (lash): the strike runs from the nearest monster outward, and each one it hits carries it lash px farther.
+function playerHits(p, mult, range, bothSides, move = 'mid', push) {
+  const lash = !bothSides && p.w.lash || 0;
+  const order = lash ? monsters.filter(m => m.hp > 0).sort((a, b) => (a.x - b.x) * p.facing) : monsters;
+  let n = 0, ahead = 0;   // ahead: monsters hit in front of p (one overlapping p's back doesn't carry the lash)
+  for (const m of order) {
     if (m.hp <= 0) continue;
-    const dx = m.x - p.x, reach = range + m.def.width / 2;
+    const dx = m.x - p.x, reach = range + ahead * lash + m.def.width / 2;
     const ok = bothSides ? Math.abs(dx) < reach : (dx * p.facing > -m.def.width / 2 && dx * p.facing < reach);
-    if (ok && reaches(p, m, move)) { hitMonster(p, m, mult, move); n++; }
+    if (ok && reaches(p, m, move)) { hitMonster(p, m, mult, move, undefined, push); n++; if (dx * p.facing > 0) ahead++; }
   }
   return n;
 }
 
 // Minions flinch when hit: an interrupted windup, a beat of hitstun. Elites and bosses shrug hits off.
-const SPECIAL_MOVES = new Set(['spin', 'slam', 'plate']);   // the special and its gear variants
+const SPECIAL_MOVES = new Set(['spin', 'slam', 'plate', 'flurry', 'whirl', 'vault', 'bell', 'arrow']);   // the specials (see SPECIALS)
 const FLINCHABLE = new Set(['walk', 'windup', 'recover', 'flinch']);
 function flinch(m) {
   if (T.flinchMs <= 0 || m.def.rank !== 'minion' || !FLINCHABLE.has(m.state)) return;
   m.state = 'flinch'; m.t = 0; m.attack = null;
+}
+// Foam Roller: a strike knocks a minion on the ground flat ('knocked': no attacks) for w.knockdownMs, then it gets up and
+// can't go down again for w.knockdownCd s. Flyers, elites and bosses keep their feet (a minion that can't go down flinches).
+const STRIKES = new Set(['jab', 'mid', 'finisher', 'kick', 'low']);
+const KNOCKABLE = new Set([...FLINCHABLE, 'stagger']);
+function knockDown(m, w) {
+  if (m.def.rank !== 'minion' || m.def.flies || !KNOCKABLE.has(m.state) || gt < (m.downReadyAt || 0)) return flinch(m);
+  m.state = 'knocked'; m.t = 0; m.attack = null; m.downFor = w.knockdownMs / 1000;
+  m.downReadyAt = gt + m.downFor + w.knockdownCd;
+  floater('DOWN!', m.x, FLOOR - m.y - m.def.height - 20, '#7ee08a', 18);
 }
 
 // Apply one hit from p to monster m. at: contact point for effects (defaults to p's fist).
@@ -1323,12 +1586,16 @@ function hitMonster(p, m, mult, move, at, push) {
   const cx = at ? at.x : m.x - sign(m.x - p.x) * m.def.width * 0.35, cy = at ? at.y : FLOOR - m.y - Math.min(m.def.height * 0.6, 88);
   chalkPuff(cx, cy, Math.round(J.particleCount * (heavy ? 1.6 : 1)), p.i === 0 && looksOn('goldchalk') ? '#e8c547' : null);
   sfx.hit(heavy, crit);
-  if (p.ctrl === 'human' && p.i === 0) buzz(J.hapticHitMs);
+  if (p.ctrl === 'human' && (p.i === 0 || remoteP2(p))) buzzFor(p, J.hapticHitMs);
   if (special) doShake(0.7);
   if (m.hp > 0) {
-    flinch(m);
-    pushMonster(m, p, push ?? pushOf(p.stats.STR, m.def.weight, move, special) * (p.w.push || 1), move);
-    doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
+    const roll = p.w.knockdownMs && STRIKES.has(move);
+    if (!roll) flinch(m);
+    pushMonster(m, p, push ?? pushOf(p.stats.STR, m.def.weight, move, special) * (p.w.push || 1) * (special ? p.spPow || 1 : 1), move);
+    if (roll && m.state !== 'launched') knockDown(m, p.w);   // after the push: a launch wins, and spends no knockdown
+    // Battle Ropes: only the last wave of a swing freezes the screen (one hitstop per swing, not one per wave).
+    // The flurry's punches do the same: only the last one freezes.
+    if (!((p.w.waves && p.state === 'attack' || p.state === 'special' && p.sp === 'flurry') && !p.hitDone)) doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
   } else killMonster(m, p);
 }
 
@@ -1355,7 +1622,8 @@ function bowl(m) {
   }
 }
 
-// Grabs: walk into a minion (on the ground, not mid-attack) and keep pushing for a moment.
+// Grabs: walk into a minion (on the ground, not mid-attack) and keep pushing for a moment. A knocked-down minion
+// (Foam Roller) can't be grabbed: it's flat on the floor until it gets up.
 const GRABBABLE = new Set(['walk', 'windup', 'recover', 'flinch', 'stagger']);
 function tryGrab(p, dir, dt) {
   const m = T.grabOn && dir && p.onGround ? monsters.find(o => o.hp > 0 && !o.gone && o.def.rank === 'minion' && !o.def.flies && GRABBABLE.has(o.state) &&
@@ -1479,7 +1747,7 @@ function hurtPlayer(p, rawDmg, srcX, height = 'mid', m = null) {
     if (heavy) doShake(1);
     doHitstop(heavy ? J.hitstopHeavyMs : J.hitstopLightMs);
     chalkPuff(p.x, FLOOR - p.y - 75, Math.round(J.particleCount * 0.6));
-    if (p.ctrl === 'human') buzz(J.hapticHurtMs);
+    if (p.ctrl === 'human') buzzFor(p, J.hapticHurtMs);
   }
   if (J.on.numbers) floater(`-${dmg}`, p.x, FLOOR - p.y - 120, '#e0555a', 20);
   if (p.hp <= 0) {
@@ -1514,18 +1782,30 @@ function lossHint() {
     : `${level.name} leans on ${sc.stat}: yours is ${have}, ${sc.want}+ recommended. ${TRAIN[sc.stat]}.`;
 }
 
+// The live co-op bonus (B13) is paid whenever P2 is a human still in the fight at the end, however little they did:
+// carrying a buddy is fine (docs/decisions/2026-10-08-coop-bonus-no-contribution.md). A guest who left mid-fight isn't
+// live co-op any more. '' = paid; null = no human P2.
+function coopBonusMiss() {
+  if (p2Left) return `${p2Left} left before the end`;   // dropped out mid-fight (#37)
+  const p2 = players[1];
+  if (!p2 || p2.ctrl !== 'human') return null;
+  if (remoteP2(p2) && !coop.guest) return `${p2.name} left before the end`;
+  return '';
+}
+
 function endFight(won) {
   if (phase !== 'fight') return;
   phase = 'over';
   if (simMode) { result = { won, time: gt, hp: players[0].hp / players[0].maxHp, enc: run ? run.enc : 0, stars: level.run ? level.run.stars.map(st => won && (st.kind === 'clear' || (st.kind === 'time' && gt <= st.par) || (st.kind === 'plates' && run.plates >= totalPlates()))) : null }; return; }
-  const coopLive = players.length > 1 && players[1].ctrl === 'human';
+  const coopMiss = coopBonusMiss(), coopLive = coopMiss === '';
   const firstWin = won && !wallet.clears[level.key];
   const reward = won ? payout(level, coopLive) : { gold: 0, parts: ['Losses pay no gold'] };
+  if (won && coopMiss) reward.parts.push(`no live co-op bonus: ${coopMiss}`);
   if (won) sfx.coin();
   const left = monsters.filter(m => m.hp > 0);
   const stars = level.run ? runStars(won) : null;
   result = { won, time: gt, reward, hint: won ? '' : lossHint(), stars };
-  const who = players.map(p => `<b style="color:${p.color}">${p.name}</b> ${setup[p.i].preset}${p.ctrl === 'cpu' ? ' (CPU ghost)' : ''} · ${ITEMS[p.weaponKey].name}: ` +
+  const who = players.map(p => `<b style="color:${p.color}">${escHtml(p.name)}</b> ${escHtml(p.preset)}${p.ctrl === 'cpu' ? ' (CPU ghost)' : ''} · ${ITEMS[p.weaponKey].name}: ` +
     `dealt ${p.dmgDealt}, took ${p.dmgTaken}, ${p.kills} KOs, targeted ${Math.round(100 * p.aggroTime / Math.max(gt, 0.01))}% of the fight, ` +
     `${p.dodges} dodges, ${p.ducks} ducks, ${p.blocks} blocks, ${p.parries} parries, ${p.launches} launches, ${p.finishers} finishers, ${p.throws} throws, ${p.strikes} bowled over, ${p.escapes} grab escapes, ${p.flexes} flexes, ${p.revives} revives`).join('<br>');
   const enc = run && level.run.encounters[run.enc];
@@ -1534,11 +1814,14 @@ function endFight(won) {
   const coop = players.length > 1 ? ` · co-op difficulty ×${coopScaleNow.blend.toFixed(2)} (HP ×${coopScaleNow.hp.toFixed(2)})` : '';
   const starLine = stars ? ` · ${stars.map((st, k) => `${st ? '★' : '☆'} ${level.run.stars[k].label}`).join(', ')} · plates ${run.plates}/${totalPlates()}, shakes ${run.shakes}` : '';
   logLine(`<b>${won ? 'Victory' : 'Defeat'}</b> vs ${level.name} in <b>${gt.toFixed(1)}s</b>${won ? '' : where}${coop}${comboBest >= 5 ? ` · best combo ${comboBest}` : ''}${starLine}` +
-    ` · <b style="color:#e8c547">+${reward.gold} gold</b> (${reward.parts.join(' · ')})${reward.unlock ? ` · <b style="color:var(--p1)">${reward.unlock}</b>` : ''}` +
+    ` · <b style="color:#e8c547">+${reward.gold} gold</b> (${reward.parts.map(escHtml).join(' · ')})${reward.unlock ? ` · <b style="color:var(--p1)">${reward.unlock}</b>` : ''}` +
     `${result.hint ? `<br><span style="color:#e8c547">${result.hint}</span>` : ''}<br>${who}`);
   // App bridge (G2): hand the result back to the Expo app. No-op in a browser.
   if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, key: level.key, first: firstWin, gold: reward.gold, unlock: reward.unlock || '', hint: result.hint, ...(stars ? { stars } : {}) }));
+    // coop: a live co-op fight with a guest from another phone who was still in it at the end (each phone saves its
+    // own row, #38). A guest who left or dropped out mid-fight makes it a solo fight.
+    const live = coopLive && !!players[1] && remoteP2(players[1]);
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won, time: +gt.toFixed(1), level: level.name, key: level.key, first: firstWin, gold: reward.gold, unlock: reward.unlock || '', hint: result.hint, ...(stars ? { stars } : {}), ...(live ? { coop: true } : {}) }));
   }
   if (playMode) showMenu('after');
 }
@@ -1572,11 +1855,102 @@ function physics(p, dt) {
 
 // Attack button: air kick, low sweep, or (standing) the next hit of the chain: jab, jab, ..., finisher kick.
 function startAttackMove(p, inp) {
-  p.state = 'attack'; p.t = 0; p.hitDone = false;
+  p.state = 'attack'; p.t = 0; p.hitDone = false; p.wave = 0;
   const step = p.chainNext > 0 && gt <= p.chainUntil ? p.chainNext : 0;
   p.chainStep = step; p.chainNext = 0;
-  p.move = !p.onGround ? 'kick' : inp.down ? 'low' : !T.chainOn ? 'mid' : step >= T.chainLength - 1 ? 'finisher' : 'jab';
+  p.move = !p.onGround ? 'kick' : inp.down ? 'low' : !T.chainOn || p.w.waves ? 'mid' : step >= T.chainLength - 1 ? 'finisher' : 'jab';
   p.crouch = p.move === 'low';
+}
+
+// Charged specials: who may hold to charge, and what letting go does. CPU fighters and live co-op fire at once.
+const canCharge = p => CH.on && p.ctrl === 'human' && !simMode && !coopHosting();
+const charging = () => players.some(p => p.state === 'charge');
+// How a charge ends, ms after SPECIAL went down: null while it's still held (and not yet LATE), else the grade.
+function chargeGrade(ms, held, CH) {
+  const late = ms - CH.ringMs, off = Math.abs(late);
+  if (late >= CH.lateMs) return 'late';
+  if (held) return null;
+  return off <= CH.perfectMs ? 'perfect' : off <= CH.goodMs ? 'good' : 'ok';
+}
+const GRADES = { perfect: ['PERFECT!', '#7ee08a', 30], good: ['GOOD', '#e8c547', 24], ok: ['', '', 0], late: ['LATE', '#e0555a', 20] };
+function releaseCharge(p, grade) {
+  const [text, color, size] = GRADES[grade];
+  if (text) floater(text, p.x, FLOOR - p.y - 160, color, size);
+  if (grade === 'perfect') { sfx.perfect(); doShake(0.6); ring(p.x, FLOOR - p.y - 60, 140, color, 0.4); spFlash = 0.12; buzzFor(p, [20, 30, 40]); }
+  startSpecial(p, CH[grade + 'Mult'], grade);
+}
+function startSpecial(p, pow, grade = 'ok') {
+  p.state = 'special'; p.t = 0; p.hitDone = false; p.wave = 0; p.spPow = pow; p.spGrade = grade; p.charge = null;
+  if (p.sp === 'vault') {                                            // up and over the nearest monster
+    const m = nearestMonster(p), air = 2 * jumpVel(p) * 1.05 / T.gravity;
+    const to = m ? m.x + p.facing * (m.def.width / 2 + 45) : p.x + p.facing * 180;
+    if (p.onGround) { p.vy = jumpVel(p) * 1.05; p.onGround = false; }
+    p.vaultVx = clamp((to - p.x) / air, -420, 420);
+    p.iUntil = Math.max(p.iUntil, gt + air * 0.85);                  // can't be hit on the way over
+  }
+}
+// One frame of a special. mult = the special's damage x the charge's grade.
+function updateSpecial(p, dt) {
+  const dur = T.specialMs / 1000, mult = T.specialMult * p.spPow, at = k => !p.hitDone && p.t >= dur * k;
+  switch (p.sp) {
+    case 'flurry': {                                                 // Dumbbell Knuckles: six punches, the last one pushes
+      const n = 6;
+      if (at(0.12 + 0.68 * p.wave / (n - 1))) {
+        p.wave++; p.hitDone = p.wave >= n;
+        playerHits(p, mult * 0.22, T.attackRange + (p.w.range || 0) + 25, false, 'flurry', p.hitDone ? undefined : 0);
+        chalkPuff(p.x + p.facing * 45, FLOOR - p.y - 75 + fxRand(-12, 12), 2);
+      }
+      break;
+    }
+    case 'whirl':                                                    // Jump Rope Whip: two turns all around, flyers too
+      if (at(p.wave ? 0.75 : 0.3)) {
+        p.wave++; p.hitDone = p.wave >= 2;
+        playerHits(p, mult * 0.6, T.specialRange + 35, true, 'whirl', p.hitDone ? undefined : 0);   // only the second turn pushes
+      }
+      break;
+    case 'vault':                                                    // Barbell Staff: over the top, slam on landing
+      if (!p.onGround) p.x += p.vaultVx * dt;
+      else if (p.t > 0.08 && !p.hitDone) {
+        p.hitDone = true; p.landT = p.t;
+        doShake(1); sfx.slam(); ring(p.x, FLOOR - p.y, T.specialRange * 1.2, p.color, 0.35, true);
+        playerHits(p, mult, T.specialRange, true, 'vault');
+      }
+      if (p.hitDone ? p.t >= p.landT + 0.22 : p.t >= 2) { p.state = 'idle'; p.t = 0; }
+      return;
+    case 'hammer':                                                   // Kettlebell Flail: two turns, then let it fly
+      if (at(0.7)) { p.hitDone = true; fireShot(p, 'bell', 760, mult * 1.2); sfx.slam(); }
+      break;
+    case 'bow':                                                      // Resistance Band Bow: a drawn arrow (three if PERFECT)
+      if (at(0.35)) {
+        p.hitDone = true; sfx.twang();
+        for (const a of p.spGrade === 'perfect' ? [-0.12, 0, 0.12] : [0]) fireShot(p, 'arrow', 1150, mult * 0.9, a);
+      }
+      break;
+    case 'plate':                                                    // Golem Plate Gauntlets
+      if (at(0.5)) { p.hitDone = true; shots.push({ kind: 'plate', p, x: p.x + p.facing * 30, y: p.y, vy: 0, vx: p.facing * 520, spin: 0, mult }); }
+      break;
+    case 'slam':                                                     // Oni Kanabo: ground quake
+      if (at(0.5)) {
+        p.hitDone = true;
+        const fromY = slamFromY(p, platforms);
+        doShake(1.2); sfx.slam(); ring(p.x, FLOOR - fromY, T.specialRange * 2, '#e8c547', 0.35, true);
+        for (const m of monsters) {
+          if (quakeHits(p.x, fromY, m, T.specialRange * 2)) hitMonster(p, m, mult * 0.8, 'slam', { x: m.x, y: FLOOR - 16 });
+        }
+      }
+      break;
+    default:                                                         // the spin
+      if (at(0.5)) { p.hitDone = true; playerHits(p, mult, T.specialRange, true, 'spin'); }
+  }
+  if (p.t >= dur) { p.state = 'idle'; p.t = 0; }
+}
+// A thrown kettlebell or an arrow, aimed at the middle of the nearest monster's body (straight ahead if there's none).
+function fireShot(p, kind, speed, mult, spread = 0) {
+  const x = p.x + p.facing * 24, y = p.y + 90, m = nearestMonster(p);
+  let ang = p.facing > 0 ? 0 : Math.PI;
+  if (m) { const [lo, hi] = bodyOf(m); ang = Math.atan2((lo + hi) / 2 - y, m.x - x); }
+  ang += spread;
+  shots.push({ kind, p, x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, spin: 0, mult, hit: [] });
 }
 
 function updatePlayer(p, dt) {
@@ -1621,7 +1995,12 @@ function updatePlayer(p, dt) {
       p.st -= T.flexCost; p.state = 'flex'; p.t = 0; p.threat += T.flexThreat; p.flexes++;
       floater('FLEX!', p.x, FLOOR - p.y - 150, p.color, 20);
     } else if (pressed(inp, 'special')) {
-      if (p.st >= T.specialCost) { p.st -= T.specialCost; p.state = 'special'; p.t = 0; p.hitDone = false; }
+      if (p.sp === 'slam' && p.onGround && p.support > 0) floater('NO FLOOR TO SLAM', p.x, FLOOR - p.y - 150, '#e8c547', 16);   // nothing to hit from a bench
+      else if (p.st >= T.specialCost) {
+        p.st -= T.specialCost;
+        if (canCharge(p)) { p.state = 'charge'; p.t = 0; p.charge = { t: 0 }; sfx.charge(); }
+        else startSpecial(p, 1);
+      }
       else { p.stFlash = 0.7; floater('NEED STAMINA', p.x, FLOOR - p.y - 150, '#e8c547', 16); }
     } else if (pressed(inp, 'attack')) {
       startAttackMove(p, inp);
@@ -1645,9 +2024,9 @@ function updatePlayer(p, dt) {
   }
   switch (p.state) {
     case 'attack': {
-      const dur = moveDur(p);
-      if (!p.hitDone && p.t >= dur * 0.45) {
-        p.hitDone = true;
+      const dur = moveDur(p), waves = p.w.waves || 1;   // Battle Ropes: several waves, from 30% to 85% of the swing
+      if (!p.hitDone && p.t >= dur * (waves > 1 ? 0.3 + 0.55 * p.wave / (waves - 1) : 0.45)) {
+        p.wave++; p.hitDone = p.wave >= waves;
         const mult = p.move === 'low' ? T.lowDmgMult : p.move === 'finisher' ? T.finisherMult : p.move === 'jab' ? T.jabMult : 1;
         const range = T.attackRange + (p.w.range || 0) + (p.move === 'kick' ? T.kickRangeBonus : p.move === 'finisher' ? T.finisherRange : 0);
         const n = playerHits(p, mult, range, false, p.move);
@@ -1684,19 +2063,12 @@ function updatePlayer(p, dt) {
     case 'throw':
       if (p.t >= T.throwAnimMs / 1000) { p.state = 'idle'; p.t = 0; }
       break;
-    case 'special':
-      if (!p.hitDone && p.t >= T.specialMs / 1000 * 0.5) {
-        p.hitDone = true;
-        if (p.w.plateSpecial) shots.push({ p, x: p.x + p.facing * 30, vx: p.facing * 520, spin: 0 });   // Golem Plate Gauntlets
-        else if (p.w.slamSpecial) {                                                                    // Oni Kanabo: ground quake
-          doShake(1.2); sfx.slam(); ring(p.x, FLOOR, T.specialRange * 2, '#e8c547', 0.35, true);
-          for (const m of monsters) {
-            if (m.hp > 0 && m.y < 30 && Math.abs(m.x - p.x) < T.specialRange * 2 + m.def.width / 2) hitMonster(p, m, T.specialMult * 0.8, 'slam', { x: m.x, y: FLOOR - 16 });
-          }
-        } else playerHits(p, T.specialMult, T.specialRange, true, 'spin');
-      }
-      if (p.t >= T.specialMs / 1000) { p.state = 'idle'; p.t = 0; }
+    case 'charge': {                                                 // holding SPECIAL: the ring closes in real time
+      const grade = chargeGrade((p.charge.t += realDt) * 1000, inp.specialHeld, CH);
+      if (grade) releaseCharge(p, grade);
       break;
+    }
+    case 'special': updateSpecial(p, dt); break;
     case 'dodge':
       p.x += p.dodgeDir * T.dodgeSpeed * dt;
       if (p.t >= T.dodgeMs / 1000) { p.state = 'idle'; p.t = 0; }
@@ -1953,7 +2325,7 @@ const KITS = {
       const p = grabTarget(m, a);
       if (p && hurtPlayer(p, a.dmg * m.dmgMult, m.x, 'grab', m) === 'hit' && alive(p)) {
         m.state = 'hold'; m.t = 0; m.holding = p; p.grab = { m, mash: 0 }; p.state = 'grabbed'; p.crouch = false;
-        sfx.grab(); buzz([30, 30, 30]);
+        sfx.grab(); buzzFor(p, [30, 30, 30]);
         floater('GRABBED! Mash to break free', p.x, FLOOR - p.y - 160, '#b48cff', 16);
       } else m.state = 'recover';
     },
@@ -2164,6 +2536,10 @@ function updateMonster(m, dt) {
     return;
   }
   if (m.state === 'held') return;                             // a player is holding it (they move it)
+  if (m.state === 'knocked') {                                // Foam Roller: flat on its back, then up
+    if (m.t >= m.downFor) { m.state = 'walk'; m.t = 0; m.cd = Math.max(m.cd, 0.4); }
+    return;
+  }
   if (m.state === 'flinch') {
     if (m.t >= T.flinchMs / 1000) { m.state = 'walk'; m.t = 0; m.cd = Math.max(m.cd, 0.35); }
     return;
@@ -2324,12 +2700,25 @@ function updatePlates(dt) {
   plates = plates.filter(pl => !pl.dead);
 }
 
-// Player plates (gauntlet special) roll along the floor and hit the first grounded monster.
+// Player projectiles. Plates (gauntlet special) roll along what they land on and hit the first monster at their level.
+// A kettlebell (hammer throw) flies straight and stops at the first monster in its path; an arrow goes through them all.
+const inFlight = (s, m) => { const [lo, hi] = bodyOf(m); return m.hp > 0 && s.y > lo - 8 && s.y < hi + 8 && Math.abs(m.x - s.x) < m.def.width / 2 + 6; };
 function updateShots(dt) {
   for (const s of shots) {
-    s.x += s.vx * dt; s.spin += s.vx * dt / 18;
-    const m = monsters.find(o => o.hp > 0 && o.y < 40 && Math.abs(s.x - o.x) < o.def.width / 2);
-    if (m) { s.dead = true; hitMonster(s.p, m, T.specialMult, 'plate', { x: s.x, y: FLOOR - 24 }); }
+    if (s.kind === 'bell' || s.kind === 'arrow') {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.spin += dt * 14;
+      for (const m of monsters) {
+        if (s.dead || s.hit.includes(m.id) || !inFlight(s, m)) continue;
+        s.hit.push(m.id);
+        hitMonster(s.p, m, s.mult, s.kind, { x: s.x, y: FLOOR - s.y });
+        if (s.kind === 'bell') { s.dead = true; doShake(0.8); }
+      }
+      if (s.y < -20 || s.y > H + 40) s.dead = true;
+    } else {
+      rollShot(s, dt, platforms, T.gravity);
+      const m = monsters.find(o => shotHits(s, o));
+      if (m) { s.dead = true; hitMonster(s.p, m, s.mult ?? T.specialMult, 'plate', { x: s.x, y: FLOOR - s.y - 24 }); }
+    }
     if (s.x < camX - 40 || s.x > camX + W + 40) s.dead = true;
   }
   shots = shots.filter(s => !s.dead);
@@ -2596,17 +2985,246 @@ function drawPickups() {
 }
 
 // Fighters in the concept-art style (art-mockups.html, fusion): chalk-white stick bodies that bulk up with STR
-// (thicker limbs, muscle bulges, a V-shaped torso, a smaller head for comedy), plus a headband, hair and a soft
-// glow in the player's color. Joints are posed per move below; drawing happens after, back limbs first.
-const INK = '#f2efe8', HAIR = ['spiky', 'ponytail'];
+// (thicker limbs, muscle bulges, a V-shaped torso, a smaller head for comedy), dressed in the fighter's look (hair,
+// face, headwear, clothes) with a soft glow in their color. Joints are posed per move below; drawing happens after,
+// back limbs first.
+const INK = '#f2efe8';
+// Your look's layers (#82), ported from prototypes/fighter-looks.html: its side view, since the brawl draws everyone side
+// on. Head parts are drawn in head space (origin at the head's centre, x forward, y down) in the looks prototype's
+// units, LOOK_HEAD brawl px each, so its numbers port as they are. R: the look resolved to colors (lookColors).
+const LOOK_HEAD = 1.35, LOOK_EYE = '#1a1d22';
+const DOME_HATS = new Set(['cap', 'beanie', 'bandana', 'viking']), TOP_HAIR = new Set(['spiky', 'mohawk', 'curly', 'bun', 'topknot', 'swoop', 'buzz']);
+// out: > 0 while drawing a part's ink rim first (dyed hair, headwear): the rim's extra width. k: the fighter's level
+// scale (drawStick sets it); line widths are divided by it like every other stroke, so they stay the same on screen.
+const LK = { out: 0, k: 1 };
+const lkPlain = () => !LK.out;
+const lkPaint = c => { ctx.fillStyle = ctx.strokeStyle = LK.out ? INK : c; };
+const lkLW = w => { ctx.lineWidth = w / LK.k; };
+const lkW = w => { ctx.lineWidth = Math.max(0.5 / LK.k, w / LK.k + LK.out); };
+function lkFill() { ctx.fill(); if (LK.out) { ctx.lineWidth = LK.out; ctx.stroke(); } }
+function lkLine(a, b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+function lkCirc(at, r) { ctx.beginPath(); ctx.arc(at[0], at[1], Math.max(0.3, r), 0, Math.PI * 2); lkFill(); }
+function lkPoly(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]); ctx.closePath(); lkFill(); }
+const lkL2 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+const lkDir = (a, r) => [Math.cos(a) * r, Math.sin(a) * r];
+// One limb's cloth: segs are [a, b, k0, k1, w, color], hip/shoulder outwards. Dark cloth sits close to the background,
+// so a chalk rim 1.8 px a side on screen keeps the limb readable. Every rim is drawn before any cloth (#110): drawn
+// segment by segment, the shin's (forearm's) rim cap painted a chalk arc over the thigh's (upper arm's) cloth.
+function lkSegs(segs) {
+  const at = segs.map(([a, b, k0, k1, w, color]) => [[lkL2(a, b, k0), lkL2(a, b, k1)], Math.max(0.8 / LK.k, w), color]);
+  for (const [ends, w, color] of at) if (LOOK_DARK_CLOTH.has(color)) { ctx.strokeStyle = INK; ctx.lineWidth = w + 3.6 / LK.k; lkLine(...ends); }
+  for (const [ends, w, color] of at) { ctx.strokeStyle = color; ctx.lineWidth = w; lkLine(...ends); }
+}
+function lkInset(q, d) {
+  const m = [q.reduce((s, p) => s + p[0], 0) / q.length, q.reduce((s, p) => s + p[1], 0) / q.length];
+  return q.map(p => { const v = [m[0] - p[0], m[1] - p[1]], l = Math.hypot(v[0], v[1]) || 1, k = Math.min(0.4, d / l); return [p[0] + v[0] * k, p[1] + v[1] * k]; });
+}
+function lkOutlined(fn) { LK.out = 2.4 / LK.k; fn(); LK.out = 0; fn(); }
+const lkHair = (R, fn) => R.hair ? lkOutlined(fn) : fn();
+// The look's names as draw colors. color: the fighter's color this fight; ink: the body's. flash: the fighter was just
+// hit, so the whole fighter flashes HIT_RED, clothes, hair and the bought headwear's own colors too (fixed): the free
+// hoodie and joggers cover most of the body, and the flash is the "you got hit" cue. A part that is already HIT_RED
+// (a red fighter's accent cloth, cape or war paint; the Red Sweatband) flashes HIT_TINT instead, so it still changes (#110).
+const HIT_RED = '#e0555a', HIT_TINT = '#ff9a9e';
+const hitFlash = c => c === HIT_RED ? HIT_TINT : HIT_RED;
+// The bought headwear's own colors (#83): the Red Sweatband, the viking helm's horns, dome and band, the crown.
+const LOOK_FIXED = { sweatband: '#e0555a', horn: '#e9dfc4', helm: '#9aa3b5', helmBand: '#6b7078', crown: '#f5d66a' };
+function lookColors(L, color, ink, flash) {
+  const marks = new Set(L.marks || []);
+  if (flash) return { L, marks, accent: hitFlash(color), ink: HIT_RED, cloth: hitFlash(LOOK_CLOTH[L.cloth] ?? color), cloth2: hitFlash(LOOK_CLOTH[L.cloth2] ?? color),
+    hair: HIT_RED, fixed: k => hitFlash(LOOK_FIXED[k]), gold: HIT_RED, buckle: HIT_RED };
+  return { L, marks, accent: color, ink, cloth: LOOK_CLOTH[L.cloth] ?? color, cloth2: LOOK_CLOTH[L.cloth2] ?? color, hair: LOOK_HAIR_TINT[L.hairTint] ?? null,
+    fixed: k => LOOK_FIXED[k], gold: MARK_GOLD, buckle: BUCKLE_GOLD };
+}
+// A cape in your color (#83), hung from the neck behind the body; it trails back and sways. N(x, y): a point measured
+// from the neck, like lookTorsoCloth's.
+function lookCape(R, N, t) {
+  if (R.L.cape === 'none') return;
+  const len = R.L.cape === 'long' ? 62 : 36, sw2 = Math.sin(t * 2.6) * 3;
+  lkOutlined(() => { lkPaint(R.accent); lkPoly([N(2, 1), N(-1.5, 1), N(-22 - Math.abs(sw2) * 2, len), N(-6 + sw2, len + 2)]); });
+}
+// Cloth this dark sits close to the background, so it gets a wider chalk rim round it (lkSeg).
+const LOOK_DARK_CLOTH = new Set(['#1b1d21', '#3a3f47']);
+// Clothes over a leg (hip → knee → foot) or an arm (shoulder → elbow → hand). cw / cs: the thigh's / shin's (upper arm's
+// / forearm's) cloth width.
+function lookLegCloth(R, Lg, cw, cs) {
+  const L = R.L, b2 = R.cloth2, segs = [];
+  if (L.bottom === 'shorts') segs.push([Lg[0], Lg[1], 0, 0.6, cw, b2]);
+  if (L.bottom === 'joggers') segs.push([Lg[0], Lg[1], 0, 1, cw, b2], [Lg[1], Lg[2], 0, 0.92, cs, b2]);
+  if (L.bottom === 'leggings') segs.push([Lg[0], Lg[1], 0, 1, cw - 0.8, b2], [Lg[1], Lg[2], 0, 1, cs - 0.8, b2]);
+  if (L.top === 'singlet') segs.push([Lg[0], Lg[1], 0, 0.3, cw, R.cloth]);
+  lkSegs(segs);
+}
+function lookArmCloth(R, A, cu, cf) {
+  const L = R.L, tc = R.cloth, segs = [];
+  if (L.top === 'tee') segs.push([A[0], A[1], 0, 0.45, cu + 0.6, tc]);
+  if (L.top === 'hoodie') segs.push([A[0], A[1], 0, 1, cu + 0.6, tc], [A[1], A[2], 0, 0.85, cf + 0.6, tc]);
+  if (L.top === 'compression') segs.push([A[0], A[1], 0, 1, cu - 0.4, tc], [A[1], A[2], 0, 0.9, cf - 0.4, tc]);
+  if (L.top === 'gi') segs.push([A[0], A[1], 0, 1, cu + 1, tc], [A[1], A[2], 0, 0.45, cf + 1.6, tc]);
+  lkSegs(segs);
+}
+// The top over the torso a b (shoulders) cc d (waist), and the bottoms' waistband. N(x, y): a point measured from the neck.
+function lookTorsoCloth(R, a, b, cc, d, N, shW, lw) {
+  const L = R.L;
+  if (L.bottom !== 'none') { ctx.strokeStyle = R.cloth2; ctx.lineWidth = lw + 1.5 / LK.k; lkLine(lkL2(d, cc, 0.1), lkL2(d, cc, 0.9)); }
+  lkPaint(R.cloth);
+  if (['tank', 'tee', 'singlet', 'hoodie', 'compression', 'gi'].includes(L.top)) lkPoly(lkInset([a, b, cc, d], 1.8));
+  if (L.top === 'stringer') { lkPoly(lkInset([lkL2(a, d, 0.42), lkL2(b, cc, 0.42), cc, d], 1.6)); lkLW(1.6);
+    lkLine(lkL2(a, b, 0.3), lkL2(a, d, 0.44)); lkLine(lkL2(b, a, 0.3), lkL2(b, cc, 0.44)); }
+  if (L.top === 'compression') { lkPaint(R.accent); lkLW(1.2); lkLine(lkL2(a, d, 0.1), lkL2(a, d, 0.9)); lkLine(lkL2(b, cc, 0.1), lkL2(b, cc, 0.9)); }
+  if (L.top === 'hoodie') { lkPaint('rgba(0,0,0,.35)'); lkLW(1.2); lkLine(lkL2(d, a, 0.3), lkL2(cc, b, 0.3));
+    lkPaint(INK); lkLW(1); lkLine(N(-2, 2), N(-2.5, 9)); lkLine(N(2, 2), N(2.5, 9)); }
+  if (L.top === 'gi') { lkPaint('rgba(0,0,0,.4)'); lkLW(1.3); lkLine(N(-shW * 0.45, 1), N(1, 15)); lkLine(N(shW * 0.45, 1), N(-1, 15));
+    lkPaint('#111317'); lkLW(3.4); lkLine(lkL2(d, a, 0.18), lkL2(cc, b, 0.18)); }
+}
+// Training marks (#84), ported from the looks prototype: glowing soles under the feet, a chevron on the arm, chalk puffs
+// at the hands, a gold buckle, a medal on the chest and (in head space, below) a flame by the head.
+const MARK_GOLD = '#ffe27a', BUCKLE_GOLD = '#ffd23f';
+function lookMarksLeg(R, Lg) {
+  if (!R.marks.has('soles')) return;
+  const f = Lg[2], a = [f[0] - 4, f[1] + 1], b = [f[0] + 6, f[1] + 1];
+  ctx.globalAlpha = 0.3; ctx.strokeStyle = R.gold; lkLW(6); lkLine(a, b); ctx.globalAlpha = 1; lkLW(1.8); lkLine(a, b);
+}
+function lookMarksArm(R, A, t, seed) {
+  if (R.marks.has('ironYear')) { const m = lkL2(A[0], A[1], 0.38); ctx.strokeStyle = R.gold; lkLW(1.4);
+    ctx.beginPath(); ctx.moveTo(m[0] - 2.6, m[1] - 1.6); ctx.lineTo(m[0], m[1] + 0.6); ctx.lineTo(m[0] + 2.6, m[1] - 1.6); ctx.stroke(); }
+  if (R.marks.has('chalkHands')) for (let i = 0; i < 3; i++) {   // chalk puffs rising off the hand
+    const k = (t * 0.7 + hash(seed + i)) % 1;
+    ctx.fillStyle = `rgba(255,255,255,${0.55 * Math.sin(k * Math.PI)})`;
+    ctx.beginPath(); ctx.arc(A[2][0] + (hash(seed + i * 3) - 0.5) * 6, A[2][1] - k * 12, 1 + k * 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function lookMarksTorso(R, a, b, cc, d, N) {
+  if (R.marks.has('club1000')) { const w0 = lkL2(d, a, 0.13), w1 = lkL2(cc, b, 0.13), m = lkL2(w0, w1, 0.8);
+    ctx.strokeStyle = '#2b2f35'; lkLW(3); lkLine(w0, w1); ctx.fillStyle = R.buckle; ctx.fillRect(m[0] - 2.5, m[1] - 2.5, 5, 5); }
+  if (R.marks.has('medal')) { ctx.strokeStyle = R.accent; lkLW(1.2); lkLine(N(-1, 1), N(2, 13)); lkLine(N(5, 1), N(2, 13));
+    ctx.fillStyle = R.buckle; ctx.beginPath(); ctx.arc(...N(2, 15.5), 3.2, 0, Math.PI * 2); ctx.fill(); }
+}
+// Head space from here on. r: the head's radius in head units.
+function lookStreakFlame(R, r, t) {
+  if (!R.marks.has('streak')) return;
+  const at = [-r - 3, -r * 0.5], f = 1 + Math.sin(t * 14) * 0.12;
+  const g = ctx.createLinearGradient(at[0], at[1] + 3, at[0], at[1] - 9 * f);
+  g.addColorStop(0, R.gold === MARK_GOLD ? '#ff7a1a' : R.gold); g.addColorStop(1, R.gold);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(at[0] - 3, at[1] + 2);
+  ctx.quadraticCurveTo(at[0] - 3.5, at[1] - 5, at[0] + Math.sin(t * 9), at[1] - 9 * f); ctx.quadraticCurveTo(at[0] + 3.5, at[1] - 4, at[0] + 3, at[1] + 2); ctx.fill();
+}
+function lookHood(R, r) { if (R.L.top === 'hoodie') lkOutlined(() => { lkPaint(R.cloth); lkCirc([-2.5, 3.5], r * 1.02); }); }
+function lookHairBack(R, r, t) {
+  const h = R.L.hair;
+  if (!['ponytail', 'long', 'braids', 'afro'].includes(h)) return;
+  lkHair(R, () => {
+    lkPaint(R.hair || R.ink);
+    if (h === 'ponytail') { lkW(3.4); ctx.beginPath(); ctx.moveTo(-5, -r + 1); ctx.quadraticCurveTo(-16, -r - 3, -17 + Math.sin(t * 4) * 3, 9); ctx.stroke(); }
+    if (h === 'long') { const s2 = Math.sin(t * 2.2) * 1.5; ctx.beginPath(); ctx.arc(0, 0, r + 1.6, 1.62 * Math.PI, 0.85 * Math.PI, true);
+      ctx.lineTo(-r - 3 + s2, r + 11); ctx.lineTo(-2, r + 3); ctx.closePath(); lkFill(); }
+    if (h === 'braids') { lkW(1.2); for (let i = 0; i < 4; i++) lkCirc([-r + 0.5 + Math.sin(t * 2 + i) * 0.4 * i, 3 + i * 4.3], 2.4 - i * 0.2); }
+    if (h === 'afro') { const m = [-2, -3], R0 = r * 1.2; lkCirc(m, R0);
+      for (let i = 0; i < 12; i++) { const q = lkDir(i / 12 * Math.PI * 2, R0); lkCirc([m[0] + q[0], m[1] + q[1]], r * 0.46); } }
+  });
+}
+// closed: knocked out or asleep (eyes shut, whatever the face).
+function lookFace(R, r, closed) {
+  const e = LOOK_EYE, dots = () => { lkPaint(e); lkLW(1.4); lkLine([2, -1], [5, 0]); };
+  // War paint and the mouthguard (#83) stay on with the eyes closed.
+  const paint = () => {
+    if (R.L.face === 'warpaint') { lkPaint(R.accent); lkLW(1.2); lkLine([3.6, 1.5], [4, 4.6]); lkLine([5.4, 1.5], [5.6, 4.2]); }
+    if (R.L.face === 'mouthguard') { lkPaint(R.accent); lkLW(2); lkLine([3, 4.6], [6, 4.3]); }
+  };
+  if (closed) {
+    if (R.L.face === 'shades') { lkPaint('#0b0c0e'); lkLW(3.4); lkLine([1.5, -1], [r - 0.3, -1]); }
+    else { lkPaint(e); lkLW(1.4); lkLine([1.5, 0], [5.2, 0]); }
+    paint();
+    return;
+  }
+  switch (R.L.face) {
+    case 'dots': dots(); break;
+    case 'anime': lkPaint(e); ctx.beginPath(); ctx.ellipse(3.6, -1, 1.5, 2.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(3.2, -1.9, 0.55, 0, Math.PI * 2); ctx.fill(); break;
+    case 'fierce': dots(); lkPaint(e); lkLW(1.5); lkLine([1, -4.8], [5.5, -2.6]); break;
+    case 'shades': lkPaint('#0b0c0e'); lkLW(3.4); lkLine([1.5, -1], [r - 0.3, -1]);
+      ctx.strokeStyle = 'rgba(255,255,255,.55)'; lkLW(0.8); lkLine([2.5, -1.8], [3.8, -1.8]); break;
+    case 'happy': lkPaint(e); lkLW(1.3); ctx.beginPath(); ctx.arc(3.6, 0, 1.8, Math.PI + 0.3, Math.PI * 2 - 0.3); ctx.stroke(); break;
+    case 'warpaint': case 'mouthguard': dots(); paint(); break;
+  }
+}
+function lookFacialHair(R, r) {
+  const f = R.L.facial, tinted = !!R.hair;
+  if (f === 'none') return;
+  lkHair(R, () => {
+    lkPaint(R.hair || R.ink);
+    if (f === 'beard') { ctx.beginPath(); ctx.arc(0, 0, r + 2.4, -0.1 * Math.PI, 0.6 * Math.PI); ctx.arc(0, 0, r - 3.2, 0.6 * Math.PI, -0.1 * Math.PI, true); ctx.closePath(); lkFill(); }
+    if (f === 'goatee') lkPoly([[2.5, r - 2], [5.5, r - 3], [4.5, r + 3.5]]);
+    if (f === 'mustache' && (tinted || lkPlain())) { if (!tinted) lkPaint(LOOK_EYE); lkW(1.8); ctx.beginPath(); ctx.moveTo(2, 3.8); ctx.quadraticCurveTo(4.5, 2.4, 6.5, 3.6); ctx.stroke(); }
+  });
+  if (!tinted && f !== 'mustache') { lkPaint(LOOK_EYE); lkLW(1.1); lkLine([3.5, 3.4], [6, 3.2]); }
+}
+function lookHairFront(R, r, t) {
+  const h = R.L.hair;
+  if (DOME_HATS.has(R.L.hat) && TOP_HAIR.has(h)) return;
+  if (h === 'bald') {
+    if (t % 2.6 < 0.7) { const k = Math.sin((t % 2.6) / 0.7 * Math.PI) * 2.6, s0 = [r * 0.45, -r * 0.6];
+      ctx.strokeStyle = '#fff'; lkLW(1); lkLine([s0[0] - k, s0[1]], [s0[0] + k, s0[1]]); lkLine([s0[0], s0[1] - k], [s0[0], s0[1] + k]); }
+    return;
+  }
+  if (h === 'buzz' && !R.hair) { ctx.strokeStyle = 'rgba(0,0,0,.35)'; lkLW(2); ctx.beginPath(); ctx.arc(0, 0, r - 1.5, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); return; }
+  lkHair(R, () => {
+    lkPaint(R.hair || R.ink);
+    if (R.hair && !DOME_HATS.has(R.L.hat)) { lkW(3); ctx.beginPath(); ctx.arc(0, 0, r - 1, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke(); }
+    if (h === 'spiky') { lkW(2.4); for (let k = -2; k <= 2; k++) { const a = -Math.PI / 2 + k * 0.42 - 0.35; lkLine(lkDir(a, r * 0.7), lkDir(a, r + 6 + (k % 2 ? 1 : 3))); } }
+    if (h === 'bun') lkCirc([-5, -r - 3], 4.4);
+    if (h === 'mohawk') { lkW(3); for (let k = 0; k < 5; k++) { const a = Math.PI * (1.62 - k * 0.14); lkLine(lkDir(a, r * 0.8), lkDir(a, r + 5 + (k % 2) * 2)); } }
+    if (h === 'curly') for (let k = 0; k < 7; k++) lkCirc(lkDir(Math.PI * (1.05 + k * 0.15), r * 0.95), 3);
+    if (h === 'topknot') { lkW(2); lkLine([-2, -r + 1], [-2, -r - 3]); lkCirc([-2, -r - 5.5], 3.6); }
+    if (h === 'swoop') { ctx.beginPath(); ctx.moveTo(-r - 0.5, -1); ctx.arc(0, 0, r + 1.3, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.lineTo(r * 0.95, 1.5); ctx.quadraticCurveTo(r * 0.1, -r * 0.45, -r * 0.55, -r * 0.2); ctx.closePath(); lkFill(); }
+    if (h === 'pigtails') { ctx.beginPath(); ctx.ellipse(-(r + 2.5), -r * 0.35, 4, 2.6, -0.6, 0, Math.PI * 2); lkFill(); }
+    if (h === 'buzz') { lkW(2.4); ctx.beginPath(); ctx.arc(0, 0, r - 0.8, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); }
+  });
+}
+// flap: how far the headband's tails and the bandana's knot swing (they stream back when you move).
+function lookHat(R, r, flap) {
+  const dome = (rr, cy) => { ctx.beginPath(); ctx.arc(0, cy, rr, Math.PI, Math.PI * 2); ctx.closePath(); lkFill(); };
+  if (R.L.hat === 'none') return;
+  lkOutlined(() => {
+    switch (R.L.hat) {
+      case 'headband': lkPaint(R.accent); lkW(2.6); ctx.beginPath(); ctx.arc(0, 0, r, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+        lkW(2); lkLine([-r + 1, -4], [-r - 8, -1 + flap]); lkLine([-r + 1, -4], [-r - 7, 3 + flap]); break;
+      case 'cap': lkPaint(R.cloth); dome(r + 1, -0.3); lkW(2.6); lkLine([-r + 1, -1.2], [-r - 6, -0.6]); lkPaint(R.accent); lkCirc([0, -r - 1], 1.3); break;
+      case 'beanie': lkPaint(R.cloth); ctx.beginPath(); ctx.ellipse(0, -1, r + 1.4, r + 2.8, 0, Math.PI, Math.PI * 2); ctx.closePath(); lkFill();
+        lkPaint(R.accent); lkW(3.2); lkLine([-r - 1.2, -0.8], [r + 1.2, -0.8]); lkCirc([0, -r - 4.8], 2.8); break;
+      case 'bandana': lkPaint(R.accent); ctx.beginPath(); ctx.ellipse(0, -0.6, r + 1, r + 1.4, 0, Math.PI, Math.PI * 2); ctx.closePath(); lkFill();
+        lkW(2.2); lkLine([-r + 1, -2], [-r - 6, 2 + flap]); lkLine([-r + 1, -2], [-r - 4, 4 + flap]);
+        if (lkPlain()) { ctx.fillStyle = 'rgba(255,255,255,.8)'; for (const q of [[-3, -r + 3], [2, -r + 2.5], [-0.5, -r + 5.5]]) { ctx.beginPath(); ctx.arc(q[0], q[1], 0.8, 0, Math.PI * 2); ctx.fill(); } }
+        break;
+      case 'visor': lkPaint(R.cloth); lkW(2.6); ctx.beginPath(); ctx.arc(0, 0, r, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke();
+        lkPoly([[r - 1, -3.4], [r + 8, -2.8], [r + 7, -1.2], [r - 1, -1.6]]); break;
+      case 'sweatband': lkPaint(R.fixed('sweatband')); lkW(4.2); ctx.beginPath(); ctx.arc(0, 0, r, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+        if (lkPlain()) { lkPaint(R.accent); lkLW(1.2); ctx.beginPath(); ctx.arc(0, 0, r, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke(); } break;
+      case 'viking': lkPaint(R.fixed('horn')); lkW(2.8);
+        for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(k * (r - 1), -r * 0.55); ctx.quadraticCurveTo(k * (r + 7), -r * 0.5, k * (r + 6), -r - 6); ctx.stroke(); }
+        lkPaint(R.fixed('helm')); dome(r + 1.3, -0.5); lkPaint(R.fixed('helmBand')); lkW(2); lkLine([-r - 1.2, -0.8], [r + 1.2, -0.8]); break;
+      case 'crown': { const y0 = -r + 2.5, y1 = -r - 5, y2 = -r - 1.5, k = 0.7; lkPaint(R.fixed('crown'));
+        lkPoly([[-6 * k, y0], [-6 * k, y1], [-3 * k, y2], [0, y1], [3 * k, y2], [6 * k, y1], [6 * k, y0]]); break; }
+    }
+  });
+}
 function bulge(a, b, r) {
   if (r < 0.6) return;
   const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, ang = Math.atan2(b[1] - a[1], b[0] - a[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
   ctx.beginPath(); ctx.ellipse(mx, my, len * 0.8, r, ang, 0, Math.PI * 2); ctx.fill();
 }
+// The fighter this phone plays, when there's more than one (#80 "find yourself"): P1 on the host or solo, P2 on a
+// co-op guest that fights (watch.me), nobody on one that only watches.
+const isMine = p => players.length > 1 && p.i === (watch ? watch.me : 0);
 function drawStick(p) {
   const st = p.stats, k = 1 + T.heightPerLevel * (p.level - 1);   // taller with level: visual only
   const sw = clamp((st.STR - 8) / 34, 0, 1);                       // swole with STR
+  const mine = isMine(p);
+  if (mine) {   // a floor ring in your color under your own fighter, so you find yourself even next to a lookalike
+    ctx.save(); ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.ellipse(p.x, FLOOR - p.y + 2, 30, 7, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   ctx.save();
   ctx.translate(p.x, FLOOR - p.y);
   if (!alive(p)) { ctx.translate(0, -8); ctx.rotate(-p.facing * Math.PI / 2); ctx.globalAlpha = 0.45; }
@@ -2616,7 +3234,8 @@ function drawStick(p) {
   ctx.scale((p.state === 'spin' && p.spin ? p.spin.from : p.facing) * turn * k, k);
   if (p.state === 'dodge') ctx.globalAlpha = gt < p.iUntil ? 0.3 : 0.7;
   else if (alive(p) && (gt < p.iUntil || (J.on.grace && gt < p.graceUntil))) ctx.globalAlpha = 0.6 + 0.3 * Math.sin(gt * 30);
-  const ink = p.flash > 0 ? '#e0555a' : INK, accent = p.headband ? '#e0555a' : p.color;
+  // accent: the glow and the special's ring, always the fight color (#80 keeps two fighters' colors apart).
+  const ink = p.flash > 0 ? HIT_RED : INK, accent = p.color;
   const lw = (3.6 + sw * 5.4) / k, headR = 11.5 - sw * 3.5;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const crouchPose = p.crouch && p.onGround && alive(p);
@@ -2678,6 +3297,25 @@ function drawStick(p) {
     const u = clamp(p.t / (T.throwAnimMs / 1000), 0, 1);
     A([[sx, sy], [sx + 10, sy - 10], [sx + 20 + u * 8, sy - 22 + u * 10]]);
     A([[sx, sy], [sx + 14, sy - 6], fh = [sx + 26 + u * 8, sy - 16 + u * 10]]);
+  } else if (p.state === 'charge' || p.state === 'special' && p.sp === 'bow' && p.t < T.specialMs / 1000 * 0.35) {
+    const u = p.state === 'charge' ? clamp(p.charge.t * 1000 / CH.ringMs, 0, 1) : 1;
+    if (p.sp === 'bow') {                                                           // drawing the band back
+      A([[sx, sy], [sx + 16, sy + 2], fh = [sx + 34, sy]]);
+      A([[sx, sy], [sx + 10 - u * 12, sy + 6], [sx + 22 - u * 26, sy + 2]]);
+    } else {                                                                        // gathering power, fists in
+      A([[sx, sy], [sx - 8 - u * 6, sy + 16], [sx + 2, sy + 24]]);
+      A([[sx, sy], [sx + 10, sy + 16], fh = [sx + 6 - u * 4, sy + 26]]);
+    }
+  } else if (p.state === 'special' && p.sp === 'bow') {                            // follow-through after the shot
+    A([[sx, sy], [sx + 16, sy + 2], fh = [sx + 34, sy]]);
+    A([[sx, sy], [sx - 8, sy + 2], [sx - 22, sy - 6]]);
+  } else if (p.state === 'special' && p.sp === 'flurry') {                         // alternating punches
+    const u = (p.t / (T.specialMs / 1000) * 6) % 1, e2 = Math.sin(u * Math.PI);
+    A([[sx, sy], [sx + 12 + e2 * 16, sy + 8], [sx + 14 + e2 * 34, sy + 2]]);
+    A([[sx, sy], [sx + 12 + (1 - e2) * 16, sy + 12], fh = [sx + 14 + (1 - e2) * 30, sy + 6]]);
+  } else if (p.state === 'special' && p.sp === 'vault') {                          // both hands up on the staff
+    A([[sx, sy], [sx - 6, sy - 14], [sx + 4, sy - 28]]);
+    A([[sx, sy], [sx + 8, sy - 14], fh = [sx + 14, sy - 28]]);
   } else if (p.state === 'special') {
     const a = p.t / (T.specialMs / 1000) * Math.PI * 4;
     A([[sx, sy], [sx - Math.cos(a) * 42, sy - Math.sin(a) * 10]]);
@@ -2703,49 +3341,70 @@ function drawStick(p) {
     A([[sx - 2, sy], [sx + 2 - sw * 2, sy + 14 + bob], [sx + 13, sy + 5 + bob]]);
     A([[sx + 3, sy], [sx + 18 + sw * 5, sy + 11 + bob], fh = [sx + 26 + sw * 4, sy - 4 + bob]]);
   }
-  // ---- draw: back leg, back arm, torso, head, front leg, front arm ----
-  if (alive(p) && !J.on.reduce) { ctx.shadowColor = accent; ctx.shadowBlur = 12; }
+  // ---- draw: cape, back hair, back leg, back arm, torso, head, front leg, front arm, then the head's parts on top ----
+  LK.k = k;
+  const R = lookColors(p.look || DEFAULT_LOOK, p.color, ink, p.flash > 0), Lk = R.L, clothed = Lk.top !== 'none';
+  const glow = alive(p) && !J.on.reduce ? 12 : 0;
+  if (glow) { ctx.shadowColor = accent; ctx.shadowBlur = glow; }
+  // The look's layers draw without the glow: the body already carries it, and shadow blur is the costly part of a
+  // frame on an Android WebView (dozens of extra fills for a dressed fighter).
+  const unglowed = fn => { ctx.shadowBlur = 0; fn(); ctx.shadowBlur = glow; };
   ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw;
-  const leg = P => { poly(P); bulge(P[0], P[1], sw * 6.5); bulge(P[1], P[2], sw * 3); };
-  const arm = P => { poly(P); bulge(P[0], P[1], 1.2 + sw * 8); bulge(P[1], P[2], sw * 3.8); disc(P[2][0], P[2][1], lw * 0.6 + sw * 1.8, ink); ctx.fillStyle = ink; };
-  // hair behind the head (identity)
-  const hair = HAIR[p.i] || 'spiky';
-  if (hair === 'ponytail') {
-    const t2 = Math.sin(gt * 4 + (p.state === 'walk' ? p.walkPh : 0)) * 3;
-    ctx.lineWidth = 4 / k; ctx.beginPath(); ctx.moveTo(lean - 5, headY - headR + 1);
-    ctx.quadraticCurveTo(lean - 18, headY - headR - 3, lean - 17 + t2, headY + 11); ctx.stroke(); ctx.lineWidth = lw;
-  }
+  // Cloth is a little narrower than the limb under it (and its bulge), so a chalk rim shows round it (wider round dark
+  // cloth: lkSeg).
+  const cloth = (r) => Math.max(lw, 2 * r * 0.8) - 1.8 / k;
+  const leg = P => { ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw; poly(P); bulge(P[0], P[1], sw * 6.5); bulge(P[1], P[2], sw * 3);
+    unglowed(() => { lookLegCloth(R, P, cloth(sw * 6.5), cloth(sw * 3)); lookMarksLeg(R, P); }); };
+  const arm = P => { ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw; poly(P); bulge(P[0], P[1], 1.2 + sw * 8); bulge(P[1], P[2], sw * 3.8);
+    disc(P[2][0], P[2][1], lw * 0.6 + sw * 1.8, ink); unglowed(() => { lookArmCloth(R, P, cloth(1.2 + sw * 8), cloth(sw * 3.8)); lookMarksArm(R, P, t, (P === arms[0] ? 0 : 11) + 3); }); };
+  const hx = lean + 2, hr = headR / LOOK_HEAD, t = gt + p.i * 1.3;
+  const head = fn => { ctx.save(); ctx.translate(hx, headY); ctx.scale(LOOK_HEAD, LOOK_HEAD); fn(); ctx.restore(); };
+  unglowed(() => { lookCape(R, (x, y) => [lean + x, neckY + y], t); head(() => lookHairBack(R, hr, t)); });
   leg(legs[0]); arm(arms[0]);
   const shW = (6 + sw * 9), waW = 4 + sw * 2.5;
-  if (sw < 0.2) line(0, hipY, lean, neckY);
-  else { ctx.beginPath(); ctx.moveTo(lean - shW, neckY + 1); ctx.lineTo(lean + shW, neckY + 1); ctx.lineTo(waW, hipY); ctx.lineTo(-waW, hipY); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-  ctx.lineWidth = lw * (1 + sw * 0.8); line(lean, neckY, lean + 2, headY + headR); ctx.lineWidth = lw;
-  disc(lean + 2, headY, headR, ink); ctx.fillStyle = ink;
+  const a = [lean - shW, neckY + 1], b = [lean + shW, neckY + 1], cc = [waW, hipY], d = [-waW, hipY];
+  ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw;
+  if (sw < 0.2 && !clothed) line(0, hipY, lean, neckY);
+  else { ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.lineTo(...cc); ctx.lineTo(...d); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  const N = (x, y) => [lean + x, neckY + y];
+  unglowed(() => lookTorsoCloth(R, a, b, cc, d, N, shW, lw));
+  ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  ctx.lineWidth = lw * (1 + sw * 0.8); line(lean, neckY, hx, headY + headR); ctx.lineWidth = lw;
+  unglowed(() => head(() => lookHood(R, hr)));
+  disc(hx, headY, headR, ink); ctx.fillStyle = ink;
   leg(legs[1]); arm(arms[1]);
   ctx.shadowBlur = 0;
-  // headband + tails in the player's color
-  const hx = lean + 2;
-  ctx.strokeStyle = accent; ctx.lineWidth = 3.2 / k;
-  ctx.beginPath(); ctx.arc(hx, headY, headR, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+  lookMarksTorso(R, a, b, cc, d, N);   // over the front limbs, which side on cover the waist and chest
+  // the head's parts: face, facial hair, hair, headwear (tails stream back when you move)
   const flap = Math.sin(gt * 9 + p.i) * 2 - (p.state === 'walk' || p.state === 'dodge' ? 3 : 0);
-  ctx.lineWidth = 2.4 / k;
-  line(hx - headR + 1, headY - 4, hx - headR - 10, headY - 1 + flap); line(hx - headR + 1, headY - 4, hx - headR - 9, headY + 4 + flap);
-  // spiky hair and a determined eye
-  ctx.strokeStyle = ink; ctx.lineWidth = 2.8 / k;
-  if (hair === 'spiky') for (let q = -2; q <= 2; q++) { const an = -Math.PI / 2 + q * 0.42 - 0.35, r = headR; line(hx + Math.cos(an) * r * 0.7, headY + Math.sin(an) * r * 0.7, hx + Math.cos(an) * (r + 7 + (q % 2 ? 1 : 3)), headY + Math.sin(an) * (r + 7 + (q % 2 ? 1 : 3))); }
-  ctx.strokeStyle = '#1a1d22'; ctx.lineWidth = 1.8 / k;
-  if (alive(p) && p.state !== 'sleep') line(hx + 3, headY - 1, hx + 7, headY); else line(hx + 2, headY, hx + 7, headY);
-  // muscle definition once you're big, drawn in the background color
-  if (sw > 0.55 && p.state !== 'special') { ctx.lineWidth = 1.4 / k; line(lean + 2, neckY + 12, lean + 2, hipY - 4); }
+  head(() => {
+    lookFace(R, hr, !alive(p) || p.state === 'sleep'); lookFacialHair(R, hr); lookHairFront(R, hr, t); lookHat(R, hr, flap); lookStreakFlame(R, hr, t);
+  });
+  // muscle definition once you're big and shirtless, drawn in the background color
+  if (sw > 0.55 && !clothed && p.state !== 'special') { ctx.strokeStyle = LOOK_EYE; ctx.lineWidth = 1.4 / k; line(lean + 2, neckY + 12, lean + 2, hipY - 4); }
   // the special: a glowing ring in the player's color
-  if (p.state === 'special' && !p.w.plateSpecial && !p.w.slamSpecial) {
+  if (p.state === 'special' && (p.sp || 'spin') === 'spin') {
     ctx.strokeStyle = accent; ctx.globalAlpha = 0.35; ctx.lineWidth = 3 / k;
     ctx.beginPath(); ctx.ellipse(sx, sy, T.specialRange * 0.8, 16, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (p.state === 'special' && p.sp === 'whirl') {                                 // the rope sweeping all the way round
+    const a = p.t / (T.specialMs / 1000) * Math.PI * 4, rx = (T.specialRange + 35) * 0.85;
+    ctx.strokeStyle = accent; ctx.lineWidth = 4 / k; ctx.globalAlpha = 0.25;
+    ctx.beginPath(); ctx.ellipse(sx, sy - 10, rx, 78, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.ellipse(sx, sy - 10, rx, 78, 0, a - 1.4, a); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (p.state === 'special' && p.sp === 'flurry' && !J.on.reduce) {                // afterimage fists
+    ctx.fillStyle = accent; ctx.globalAlpha = 0.45;
+    for (let j = 0; j < 4; j++) { const h = hash(j * 7 + Math.floor(p.t * 30)); ctx.beginPath(); ctx.arc(sx + 30 + h * 30, sy - 8 + hash(j + Math.floor(p.t * 30)) * 18, 5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
   }
   ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw;
   if (alive(p)) drawGear(p, fh, k);
   ctx.restore();
   const top = FLOOR - p.y - 150 * k;
+  // and a small "YOU" tag over your head, above the aggro marker. It's text in chalk, never a triangle and never in
+  // your color: the aggro marker is a red downward triangle, and a red (or orange, pink) fighter's tag mustn't read as it.
+  if (mine && alive(p)) drawYouTag(p.x, top - 20 + Math.sin(gt * 4) * 2);
   // Spin throw: a whoosh ring traced by the whirled minion
   if (p.state === 'spin' && p.held && !J.on.reduce) {
     const m = p.held, reach = m.def.width * 0.4 + T.bodyRadius + 6, cy = FLOOR - m.y - m.def.height * 0.5;
@@ -2780,38 +3439,134 @@ function drawStick(p) {
   }
 }
 
-// Gear in the front hand, drawn in the fighter's local (facing-flipped, level-scaled) space.
+function drawYouTag(x, y) {
+  ctx.save(); ctx.font = '800 11px system-ui'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#15171b'; ctx.lineWidth = 3; ctx.strokeText('YOU', x, y); ctx.fillStyle = INK; ctx.fillText('YOU', x, y);
+  ctx.restore();
+}
+
+// Weapon finishes (#113): the looks prototype's FIN (prototypes/fighter-looks.html), without its rusty finish. A look
+// has one finish and it shows on whatever weapon you hold. Iron is the free default and is how every weapon has always
+// been drawn here, so it keeps each weapon's own colors; any other finish paints the weapon's metal (bars, handles,
+// chains, studs) `metal` and the rest (plates, bells, heads, rope, foam) `plate`. Neon is both in your fight color,
+// with a glow.
+const LOOK_FINISH = {
+  iron: { name: 'Iron', metal: '#9aa3b5', plate: '#50565f' },
+  chrome: { name: 'Chrome', metal: '#eef2f8', plate: '#c3ccd8' },
+  gold: { name: 'Gold', metal: '#f5d66a', plate: '#e0b43a' },
+  neon: { name: 'Neon (your color)', glow: true },
+  red: { name: 'Comp red 55', metal: '#dfe6f0', plate: '#d8403f' },
+  blue: { name: 'Comp blue 45', metal: '#dfe6f0', plate: '#3a6fd8' },
+  yellow: { name: 'Comp yellow 35', metal: '#dfe6f0', plate: '#f0c419' },
+  green: { name: 'Comp green 25', metal: '#dfe6f0', plate: '#3fa55b' },
+};
+// The parry ring's color: a fight cue, so no finish may look like it (see the shield in drawGear).
+const PARRY_RING = '#7ee08a';
+const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+// True when a color is close enough to the parry ring's green to be mistaken for it.
+const nearParry = hex => Math.hypot(...rgbOf(hex).map((v, i) => v - rgbOf(PARRY_RING)[i])) < 60;
+// A color k of the way to black (the neon finish's plates).
+const darken = (hex, k) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - k)).toString(16).padStart(2, '0')).join('');
+// The gear's paint for a fighter: metal(c) and plate(c) take the color iron draws with and give the finish's.
+function gearFinish(look, color) {
+  const f = Object.hasOwn(LOOK_FINISH, look.finish) ? LOOK_FINISH[look.finish] : null;
+  if (!f || look.finish === 'iron') return { id: 'iron', metal: c => c, plate: c => c, glow: false };
+  if (f.glow) { const plate = darken(color, 0.3); return { id: look.finish, metal: () => color, plate: () => plate, glow: true }; }
+  return { id: look.finish, metal: () => f.metal, plate: () => f.plate, glow: false };
+}
+// The weapon trail (#113): while you swing, the weapon's tip (or your fist) leaves a fading streak in your color, like
+// the looks prototype's trail(). Points live in the fighter's local space, so the streak follows the fighter. Kept per
+// fighter slot outside the game state: it's only drawing, so it never reaches a snapshot, a replay or co-op.
+const TRAILS = new Map();
+// Trail tunables. Kept faint and thin: it's drawn over telegraphs, red and purple fighters share the blockable and
+// unblockable telegraph colors, and a white fighter shares the Subtle tell's white glint (at this alpha its streak
+// reads as gray, well under the glint's near-solid white). A fighter close to the parry ring's green (#135) draws its
+// trail in `iron` instead: with the Plate Shield the trail's tip is the plate's centre, right where the ring shows.
+const TRAIL = { fade: 3.4, alpha: 0.4, width: 5, gapS: 0.5, iron: LOOK_FINISH.iron.metal };
+// The trail's color for a fighter: your fight color, unless that could pass for the parry ring.
+const trailColor = color => nearParry(color) ? TRAIL.iron : color;
+function drawTrail(p, tip, k) {
+  let st = TRAILS.get(p.i);
+  // A fresh streak after a gap or a new fight (time ran backwards). Keyed by slot, not the object: a co-op guest
+  // rebuilds its players from the host's states every frame.
+  if (!st || gt < st.lastT || gt - st.lastT > TRAIL.gapS) TRAILS.set(p.i, st = { pts: [], lastT: gt });
+  const dt = clamp(gt - st.lastT, 0, 0.1); st.lastT = gt;
+  for (const q of st.pts) q.life -= dt * TRAIL.fade;
+  st.pts = st.pts.filter(q => q.life > 0);
+  // Only while time runs: a paused fight or a hitstop draws the same frame again, and mustn't pile up points.
+  if (dt > 0 && (p.state === 'attack' || p.state === 'special') && tip) st.pts.push({ x: tip[0], y: tip[1], life: 1 });
+  if (st.pts.length < 2) return;
+  ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = trailColor(p.color);
+  for (let i = 1; i < st.pts.length; i++) {
+    const a = st.pts[i - 1], b = st.pts[i];
+    ctx.globalAlpha = Math.min(a.life, b.life) * TRAIL.alpha; ctx.lineWidth = TRAIL.width * b.life / k; line(a.x, a.y, b.x, b.y);
+  }
+  ctx.restore();
+}
+
+// Gear in the front hand, drawn in the fighter's local (facing-flipped, level-scaled) space, in your look's finish,
+// then your trail if you wear it. Returns the tip the trail follows (your fist with no weapon).
 function drawGear(p, [hx, hy], k) {
-  const key = p.weaponKey;
-  if (key === 'fists') return;
+  const key = p.weaponKey, look = p.look || DEFAULT_LOOK, f = gearFinish(look, p.color), M = f.metal, P = f.plate;
+  let tip = [hx, hy];
   ctx.save(); ctx.lineCap = 'round';
+  if (f.glow && !J.on.reduce) { ctx.shadowColor = p.color; ctx.shadowBlur = 10; }
   const swing = p.state === 'attack' ? clamp(p.t / moveDur(p), 0, 1) : -1;
-  if (key === 'staff') {                                 // a barbell held like a bo staff, level when striking
+  if (p.sp === 'bow' && (p.state === 'charge' || p.state === 'special')) {   // special gear: the band bow, out only for the shot
+    const pull = p.state === 'charge' ? clamp(p.charge.t * 1000 / CH.ringMs, 0, 1) * 24 : 0;
+    ctx.strokeStyle = M('#c9ccd2'); ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(hx - 10, hy, 26, -1.1, 1.1); ctx.stroke();
+    ctx.strokeStyle = p.color; ctx.lineWidth = 1.5 / k;
+    poly([[hx - 10 + Math.cos(-1.1) * 26, hy + Math.sin(-1.1) * 26], [hx - 4 - pull, hy], [hx - 10 + Math.cos(1.1) * 26, hy + Math.sin(1.1) * 26]]);
+  } else if (key === 'staff') {                                 // a barbell held like a bo staff, level when striking
     const a = swing >= 0 || p.state === 'block' ? 0 : -1.15;
     const x1 = hx - Math.cos(a) * 26, y1 = hy - Math.sin(a) * 26, x2 = hx + Math.cos(a) * 66, y2 = hy + Math.sin(a) * 66;
-    ctx.strokeStyle = '#c9ccd2'; ctx.lineWidth = 3 / k; line(x1, y1, x2, y2);
-    disc(x1, y1, 6, '#ff7a1a'); disc(x2, y2, 6, '#ff7a1a');
+    ctx.strokeStyle = M('#c9ccd2'); ctx.lineWidth = 3 / k; line(x1, y1, x2, y2);
+    disc(x1, y1, 6, P('#ff7a1a')); disc(x2, y2, 6, P('#ff7a1a')); tip = [x2, y2];
   } else if (key === 'flail') {                          // kettlebell on a chain: hangs at rest, whips over on a swing
     const a = swing >= 0 ? -2.1 + swing * 3.1 : p.state === 'special' ? p.t * 18 : 1.35;
     const bx = hx + Math.cos(a) * 34, by = hy + Math.sin(a) * 34;
-    ctx.strokeStyle = '#9a9ca0'; ctx.lineWidth = 2 / k; ctx.setLineDash([3, 3]); line(hx, hy, bx, by); ctx.setLineDash([]);
-    disc(bx, by + 3, 11, '#50555d');
-    ctx.strokeStyle = '#50555d'; ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(bx, by - 8, 5, Math.PI, 0); ctx.stroke();
+    ctx.strokeStyle = M('#9a9ca0'); ctx.lineWidth = 2 / k; ctx.setLineDash([3, 3]); line(hx, hy, bx, by); ctx.setLineDash([]);
+    disc(bx, by + 3, 11, P('#50555d'));
+    ctx.strokeStyle = P('#50555d'); ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(bx, by - 8, 5, Math.PI, 0); ctx.stroke(); tip = [bx, by];
   } else if (key === 'kanabo') {                         // studded club: over the shoulder at rest, down on a swing
     const a = swing >= 0 ? -1.9 + swing * 2.4 : p.state === 'special' ? -1.9 + Math.min(1, p.t / (T.specialMs / 2000)) * 3.4 : -2.2;
     const bx = hx + Math.cos(a) * 58, by = hy + Math.sin(a) * 58;
-    ctx.strokeStyle = '#3a2f2a'; ctx.lineWidth = 9 / k; line(hx, hy, bx, by);
-    ctx.fillStyle = '#c9ccd2';
-    for (let s = 0.45; s <= 1; s += 0.18) disc(hx + Math.cos(a) * 58 * s + Math.cos(a + 1.57) * 5, hy + Math.sin(a) * 58 * s + Math.sin(a + 1.57) * 5, 2, '#c9ccd2');
+    ctx.strokeStyle = P('#3a2f2a'); ctx.lineWidth = 9 / k; line(hx, hy, bx, by);
+    for (let s = 0.45; s <= 1; s += 0.18) disc(hx + Math.cos(a) * 58 * s + Math.cos(a + 1.57) * 5, hy + Math.sin(a) * 58 * s + Math.sin(a + 1.57) * 5, 2, M('#c9ccd2'));
+    tip = [bx, by];
   } else if (key === 'shield') {                         // a bumper plate on the forearm; green ring = parry window open
-    disc(hx + 4, hy, 17, '#b8bcc4'); disc(hx + 4, hy, 5, '#50555d');
-    if (p.state === 'block' && gt - p.blockStart <= E.parryMs / 1000) {
-      ctx.strokeStyle = '#7ee08a'; ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(hx + 4, hy, 22, 0, Math.PI * 2); ctx.stroke();
+    // The shield never glows, and a finish close to the parry ring's green (neon on a green fighter) draws it in
+    // iron: a plate that looked like the ring would read as an open parry window.
+    ctx.shadowBlur = 0;
+    const [SP, SM] = nearParry(P('#b8bcc4')) || nearParry(M('#50555d')) ? ['#b8bcc4', '#50555d'] : [P('#b8bcc4'), M('#50555d')];
+    disc(hx + 4, hy, 17, SP); disc(hx + 4, hy, 5, SM); tip = [hx + 4, hy];
+    if (p.state === 'block' && gt - p.blockStart <= E.parryMs / 1000) {   // a fight cue: never in the finish
+      ctx.strokeStyle = PARRY_RING; ctx.lineWidth = 3 / k; ctx.beginPath(); ctx.arc(hx + 4, hy, 22, 0, Math.PI * 2); ctx.stroke();
     }
   } else if (key === 'gauntlets') {                      // iron fists
-    disc(hx, hy, 8, '#8e939c'); disc(hx, hy, 3, '#50555d');
+    disc(hx, hy, 8, P('#8e939c')); disc(hx, hy, 3, M('#50555d'));
+  } else if (key === 'knuckles') {                       // a small dumbbell gripped in the fist
+    ctx.strokeStyle = M('#9a9ca0'); ctx.lineWidth = 3 / k; line(hx, hy - 9, hx, hy + 9);
+    disc(hx, hy - 9, 5, P('#50555d')); disc(hx, hy + 9, 5, P('#50555d'));
+  } else if (key === 'jumprope') {                       // rope hangs from the handle; a swing lashes it out level
+    const reach = 55 + (p.w.range || 0);
+    ctx.strokeStyle = P('#e0555a'); ctx.lineWidth = 2 / k; ctx.beginPath(); ctx.moveTo(hx, hy);
+    if (swing >= 0) { const u = Math.sin(swing * Math.PI); tip = [hx + reach * u, hy + 4]; ctx.quadraticCurveTo(hx + reach * 0.5 * u, hy - 30 * (1 - u), tip[0], tip[1]); }
+    else { tip = [hx - 6, hy + 52]; ctx.quadraticCurveTo(hx + 8, hy + 40, tip[0], tip[1]); }
+    ctx.stroke(); disc(hx, hy, 4, M('#f2f2f2'));
+  } else if (key === 'ropes') {                          // heavy rope out in front; a swing sends waves down it
+    const len = 70 + (p.w.range || 0), ph = swing >= 0 ? swing * Math.PI * 2 * (p.w.waves || 1) : 0, amp = swing >= 0 ? 12 : 2;
+    ctx.strokeStyle = P('#c9a86a'); ctx.lineWidth = 5 / k; ctx.beginPath(); ctx.moveTo(hx, hy);
+    for (let x = 0; x <= len; x += 6) { tip = [hx + x, hy + (x / len) * 16 + Math.sin(x / 12 - ph) * amp * (x / len)]; ctx.lineTo(tip[0], tip[1]); }
+    ctx.stroke();
+  } else if (key === 'roller') {                         // a foam roller held crosswise, pushed out on a swing
+    const x = hx + (swing >= 0 ? Math.sin(swing * Math.PI) * 14 : 0);
+    ctx.fillStyle = P('#3d8bd4'); ctx.fillRect(x - 6, hy - 18, 12, 36);
+    disc(x, hy - 18, 6, P('#3d8bd4')); disc(x, hy + 18, 6, P('#3d8bd4')); tip = [x, hy];
   }
   ctx.restore();
+  if (look.trail === 'on') drawTrail(p, tip, k);
+  return tip;
 }
 
 const TAGS = { high: 'HIGH · duck', low: 'LOW · jump', mid: 'MID · block', grab: 'GRAB · dodge/jump', ring: 'ALARM · dodge', overhead: 'OVERHEAD · dodge', charge: 'CHARGE · dodge/jump' };
@@ -2896,6 +3651,7 @@ function monsterFrame(m, lift = 0) {
   ctx.translate(m.x, FLOOR - m.y - lift);
   if (m.state === 'launched') ctx.rotate(-sign(m.vx) * Math.min(m.def.rank === 'minion' ? 6 : 0.5, m.t * (m.def.rank === 'minion' ? 10 : 1.2)));
   else if (m.state === 'stagger') ctx.rotate(Math.sin(m.t * 25) * 0.04);
+  else if (m.state === 'knocked') ctx.rotate(-m.facing * 1.45 * clamp(m.t / 0.12, 0, 1));                // knocked flat on its back, head away from you
   else if (m.state === 'held') ctx.rotate(Math.sin(gt * 30) * 0.08);                                  // squirming
   else if (m.state === 'flinch') ctx.rotate(-m.facing * 0.2 * (1 - clamp(m.t / (T.flinchMs / 1000), 0, 1)));   // rocked back
   ctx.scale(m.facing, 1);
@@ -3646,6 +4402,38 @@ function drawPlate(pl, color = '#b8bcc4') {
 }
 
 // Final KO impact frame: a starburst with POW! that punches in, then settles.
+// A charging special: the ring closes on the fighter, toward the white target ring. It turns gold in the GOOD window
+// and green in the PERFECT one, and red once it's past the close.
+function drawChargeRing(p) {
+  if (p.state !== 'charge' || !p.charge) return;
+  const late = p.charge.t * 1000 - CH.ringMs, off = Math.abs(late), x = p.x, y = FLOOR - p.y - 70, R0 = 34;
+  const r = late < 0 ? R0 + (-late / CH.ringMs) * 140 : Math.max(8, R0 - late / CH.lateMs * 24);
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath(); ctx.arc(x, y, R0, 0, Math.PI * 2); ctx.stroke();
+  ctx.lineWidth = 5; ctx.strokeStyle = off <= CH.perfectMs ? '#7ee08a' : off <= CH.goodMs ? '#e8c547' : late > 0 ? '#e0555a' : p.color;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+  if (!J.on.reduce) {                                                               // speed lines rushing in
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    for (let j = 0; j < 10; j++) {
+      const a = j / 10 * Math.PI * 2 + hash(j) * 0.4, u = (p.charge.t * 2.5 + hash(j + 5)) % 1, d1 = 240 - u * 160;
+      line(x + Math.cos(a) * d1, y + Math.sin(a) * d1, x + Math.cos(a) * (d1 - 40), y + Math.sin(a) * (d1 - 40));
+    }
+  }
+}
+// Player projectiles: a gauntlet plate, a thrown kettlebell, an arrow.
+function drawShot(s) {
+  if (s.kind === 'bell') {
+    const x = s.x, y = FLOOR - s.y;
+    disc(x, y + 3, 11, '#50555d');
+    ctx.strokeStyle = '#50555d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y - 8, 5, Math.PI, 0); ctx.stroke();
+  } else if (s.kind === 'arrow') {
+    const a = Math.atan2(-s.vy, s.vx), x = s.x, y = FLOOR - s.y, c = s.p && s.p.color || '#fff';
+    ctx.strokeStyle = c; ctx.globalAlpha = 0.35; ctx.lineWidth = 3; line(x - Math.cos(a) * 60, y - Math.sin(a) * 60, x, y);
+    ctx.globalAlpha = 1; ctx.strokeStyle = '#eceae4'; ctx.lineWidth = 2; line(x - Math.cos(a) * 26, y - Math.sin(a) * 26, x, y);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8);
+    ctx.lineTo(x + Math.cos(a + 2.5) * 7, y + Math.sin(a + 2.5) * 7); ctx.lineTo(x + Math.cos(a - 2.5) * 7, y + Math.sin(a - 2.5) * 7); ctx.fill();
+  } else drawPlate({ kind: 'roll', x: s.x, y: s.y || 0, spin: s.spin }, '#ff7a1a');
+}
 function drawPow(k) {
   const u = clamp(k.t / Math.max(0.05, J.koSlowMs / 1000), 0, 1);
   const s = u < 0.15 ? u / 0.15 * 1.25 : 1.25 - 0.25 * (u - 0.15) / 0.85;
@@ -3704,7 +4492,7 @@ function drawHud() {
   players.forEach((p, k) => {
     const y = 26 + k * 42;
     const tag = !alive(p) ? '  DOWN' : (players.length > 1 && monsters.some(m => m.hp > 0 && m.target === p) ? '  ◀ TARGET' : '');
-    const wpn = p.weaponKey !== 'fists' ? ' · ' + ITEMS[p.weaponKey].name : '';
+    const wpn = (p.weaponKey !== 'fists' ? ' · ' + ITEMS[p.weaponKey].name : '') + (SPECIALS[p.sp] && p.sp !== weaponSpecial(p.w) ? ' · ★ ' + SPECIALS[p.sp].name : '');
     const rust = p.rusty ? ' · RUSTY' : '';
     bar(16, y, 180, 10, p.hp / p.maxHp, p.color, `${p.name} L${p.level} ${p.preset}${p.ctrl === 'cpu' ? ' (CPU)' : ''}${rust}${wpn}  ${p.hp}/${p.maxHp}${tag}`);
     bar(16, y + 13, 180, 7, p.st / p.maxSt, p.stFlash > 0 && Math.sin(gt * 40) > 0 ? '#e0555a' : p.st >= T.specialCost ? '#e8c547' : '#8a7a3a');
@@ -3745,11 +4533,22 @@ function drawOverlay() {
          'Co-op: Flex pulls monsters onto you. Hold Block next to a downed ally to revive.'];
     lines.forEach((t, i) => ctx.fillText(t, W / 2, 146 + i * 24));
     if (sc && !playMode) { ctx.fillStyle = '#e8c547'; ctx.fillText(`Scouting report: ${sc.text}`, W / 2, 146 + lines.length * 24 + 12); }
-  } else if (result && result.watched) {                     // a co-op guest: the host's result, no gold of its own yet
+  } else if (result && result.watched) {                     // a co-op guest: the host's result, and this phone's own gold (#38)
     ctx.fillStyle = result.won ? '#e8c547' : '#e0555a'; ctx.font = '800 40px system-ui';
     ctx.fillText(result.won ? 'VICTORY' : 'DEFEATED', W / 2, 120);
     ctx.fillStyle = '#eceae4'; ctx.font = '500 16px system-ui';
     ctx.fillText(`${result.time.toFixed(1)}s · ${watch ? watch.host : 'the host'}'s fight`, W / 2, 152);
+    const r = result.reward;
+    if (r && r.unpaid) {   // a win this phone isn't paid for: say why, where the gold would go
+      ctx.fillStyle = '#9a9ca0'; ctx.font = '700 18px system-ui';
+      ctx.fillText(`No gold: ${r.unpaid}`, W / 2, 194);
+    } else if (r) {
+      ctx.fillStyle = '#e8c547'; ctx.font = '800 28px system-ui';
+      ctx.fillText(`+${r.gold} gold`, W / 2, 194);
+      ctx.fillStyle = '#9a9ca0'; ctx.font = '500 14px system-ui';
+      ctx.fillText(r.parts.join('  ·  '), W / 2, 218);
+      if (r.unlock) { ctx.fillStyle = '#ff7a1a'; ctx.font = '700 16px system-ui'; ctx.fillText(r.unlock, W / 2, 244); }
+    }
   } else if (!result || !result.reward) {                    // the bot difficulty check is running fights
     ctx.fillStyle = '#eceae4'; ctx.font = '800 30px system-ui'; ctx.fillText('Running bots…', W / 2, 150);
   } else {
@@ -3795,8 +4594,10 @@ function draw() {
   drawLobMarkers();
   monsters.forEach(drawMonster);
   plates.forEach(pl => drawPlate(pl));
-  shots.forEach(s => drawPlate({ kind: 'roll', x: s.x, y: 0, spin: s.spin }, '#ff7a1a'));
+  shots.forEach(drawShot);
+  if (charging() && !J.on.reduce) { ctx.fillStyle = 'rgba(8,10,14,0.5)'; ctx.fillRect(camX - 20, -20, W + 40, H + 40); }   // bullet time: the world dims
   players.forEach(drawStick);
+  players.forEach(drawChargeRing);
   for (const p of players) if (slowed(p) && alive(p)) {
     ctx.strokeStyle = `rgba(92,200,255,${0.4 + 0.3 * Math.sin(gt * 12)})`; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.ellipse(p.x, FLOOR - p.y, 26, 6, 0, 0, Math.PI * 2); ctx.stroke();
@@ -3820,6 +4621,7 @@ function draw() {
   }
   ctx.globalAlpha = 1;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (spFlash > 0 && J.on.flash && !J.on.reduce) { ctx.fillStyle = `rgba(255,255,255,${spFlash * 3})`; ctx.fillRect(0, 0, W, H); }
   drawHud();
   drawOverlay();
 }
@@ -3844,6 +4646,8 @@ function frame(now) {
 // doesn't leave its clock behind the guest's estimate of it.
 function step(dt, clockDt = dt) {
   coopClock += clockDt;
+  coopInputQuiet();
+  coopDropCheck();
   if (phase === 'fight' && !paused && !watch) { ticking = true; try { tick(dt); } finally { ticking = false; } }   // a co-op guest only draws what the host sends
   coopSend();
   if (!paused) {
@@ -3853,6 +4657,7 @@ function step(dt, clockDt = dt) {
     rings.forEach(r => r.t += dt); rings = rings.filter(r => r.t < r.dur);
     floaters.forEach(f => f.t += dt);
     floaters = floaters.filter(f => f.t < 0.9);
+    spFlash = Math.max(0, spFlash - dt);
   }
 }
 // One simulation step (the bots call this directly, with no drawing).
@@ -3860,7 +4665,8 @@ function tick(dt) {
   if (hitstop > 0) {
     hitstop -= dt;                                   // frozen on impact; drawing and effects keep running
   } else {
-    const sdt = ko ? dt * J.koSlowScale : dt;        // final KO slow-mo
+    realDt = dt;                                     // a charging special's ring runs on this, not the slowed clock
+    const sdt = ko ? dt * J.koSlowScale : charging() ? dt * CH.slowScale : dt;   // final KO slow-mo, or bullet time
     gt += sdt;
     for (const p of players) if (p.ctrl === 'cpu') cpuThink(p);
     players.forEach(p => updatePlayer(p, sdt));
@@ -3880,7 +4686,11 @@ function tick(dt) {
 }
 // Fights pause instantly: P/Esc, the ⏸ button, or putting the phone down (tab hidden).
 function togglePause(force) {
-  if (watch) { showMenu(menuView === 'coopwatch' && force !== true ? null : 'coopwatch'); return; }   // the guest can't pause the host
+  if (watch) {   // the guest can't pause the host's fight: it opens its own menu, and lets go of its buttons
+    showMenu(menuView === 'coopwatch' && force !== true ? null : 'coopwatch');
+    if (menuView) guestRelease();
+    return;
+  }
   if (phase !== 'fight') { if (playMode) showMenu('map'); return; }
   paused = force ?? !paused;
   if (playMode) showMenu(paused ? 'pause' : null);
@@ -4015,6 +4825,7 @@ function enterPlay() {
   if (phase !== 'fight') showMenu('map');
 }
 function exitPlay() {
+  if (appWallet) return;   // in the app there's no page behind play mode (its ✕ is hidden too)
   playMode = false; paused = false; document.body.classList.remove('play'); showMenu(null);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 }
@@ -4038,6 +4849,21 @@ const fighterMenu = () =>
         `<button data-m="lvstep" data-v="1">+ Level<small>Level ${Math.min(MAX_LEVEL, setup[0].level + 1)}</small></button>` +
         Object.entries(BUILDS).map(([k, b]) => `<button data-m="build" data-v="${k}" class="${setup[0].preset === k ? 'sel' : ''}">${k}<small>${b.desc}</small></button>`).join('') +
         `</div><p class="hint">${STATS.map(k => `${k} ${setup[0].stats[k]}`).join(' · ')} · HP ${maxHp(setup[0].stats)}</p>`);
+// Play menu: the charged special, and (in a browser) the special-gear slot and trying any weapon's special.
+function specialMenu() {
+  const cur = SPECIALS[p1Special(ITEMS[fightWeapon(p1Stats())].mods)];
+  const opt = (m, v, sel, label, small) => `<button data-m="${m}" data-v="${v}" class="${sel ? 'sel' : ''}">${label}<small>${small}</small></button>`;
+  let h = `<div class="sub">Specials (prototype)</div><div class="mrow">` +
+    opt('charge', '', CH.on, `Hold to charge: ${CH.on ? 'on' : 'off'}`, 'Hold SPECIAL: time slows while a ring closes. Let go as it meets the white ring for PERFECT (×' + CH.perfectMult + '). A tap fires a normal special.') + '</div>';
+  if (appWallet) return h;
+  h += `<p class="hint">Your special now: <b>${cur.name}</b> (${cur.from}). ${cur.desc}</p>` +
+    `<div class="sub">Special gear slot</div><div class="mrow">` + opt('spgear', '', !spTest.gear, 'Empty', 'Your weapon\'s special') +
+    Object.entries(SPECIAL_GEAR).map(([k, g]) => opt('spgear', k, spTest.gear === k, g.name, g.desc)).join('') + '</div>' +
+    `<div class="sub">Try a weapon's special (test)</div><div class="mrow">` + opt('sptry', '', !spTest.tryOut, 'My weapon\'s', 'What you have equipped') +
+    Object.entries(SPECIALS).filter(([k]) => !SPECIAL_GEAR[k]).map(([k, d]) => opt('sptry', k, spTest.tryOut === k, d.name, d.from)).join('') + '</div>' +
+    (spTest.gear && spTest.tryOut ? '<p class="hint">Special gear wins over the weapon\'s special.</p>' : '');
+  return h;
+}
 // ---- World map view
 let mapSel = null, mapLocks = true;
 try { const m = JSON.parse(localStorage.getItem('bb-brawl-map')); if (m) { mapSel = m.sel || null; mapLocks = m.locks !== false; } } catch (e) {}
@@ -4096,8 +4922,8 @@ function mapView() {
     return `<button class="node ${cls}" data-m="node" data-v="${n.id}" style="left:${n.x}px;top:${n.y}px" aria-label="${nodeName(n)}">${!open && !n.soon ? '🔒' : nodeIcon(n)}</button>` +
       `<div class="nlabel" style="left:${n.x}px;top:${n.y + r + 3}px">${nodeName(n)}${stars}</div>`;
   }).join('');
-  const me = `<g transform="translate(${sel.x + (sel.boss ? 36 : 30)} ${sel.y + 6})" stroke="${COLORS[0]}" stroke-width="3" stroke-linecap="round" fill="none">` +
-    `<circle cx="0" cy="-30" r="6" fill="${COLORS[0]}"/><line x1="0" y1="-24" x2="0" y2="-8"/><line x1="0" y1="-8" x2="-6" y2="4"/><line x1="0" y1="-8" x2="6" y2="4"/><line x1="0" y1="-19" x2="-7" y2="-12"/><line x1="0" y1="-19" x2="8" y2="-26"/></g>`;
+  const me = `<g transform="translate(${sel.x + (sel.boss ? 36 : 30)} ${sel.y + 6})" stroke="${LOOK_ACCENTS[myLook.accent]}" stroke-width="3" stroke-linecap="round" fill="none">` +
+    `<circle cx="0" cy="-30" r="6" fill="${LOOK_ACCENTS[myLook.accent]}"/><line x1="0" y1="-24" x2="0" y2="-8"/><line x1="0" y1="-8" x2="-6" y2="4"/><line x1="0" y1="-8" x2="6" y2="4"/><line x1="0" y1="-19" x2="-7" y2="-12"/><line x1="0" y1="-19" x2="8" y2="-26"/></g>`;
   return `<div class="maphead"><h3>World map</h3><span class="chip"><b>Level ${setup[0].level}</b> ${setup[0].preset} · ${wallet.gold} gold</span>` +
     (realStats ? '' : `<button data-m="lvstep" data-v="-1" aria-label="Level down">− Lvl</button><button data-m="lvstep" data-v="1" aria-label="Level up">+ Lvl</button>`) +
     `<button data-m="maplocks">${mapLocks ? '🔒 Locks on' : '🔓 Locks off'}</button><button data-m="coop" data-testid="coop-open">👥 Co-op</button><button data-m="levels">More ▸</button></div>` +
@@ -4139,13 +4965,15 @@ function showMenu(v) {
       (result && result.won && next ? `<button data-m="lv" data-v="${next.key}">Next: ${next.name}<small>${lvStatus(next)}</small></button>` : '') +
       `<button data-m="map">Map<small>${cur.tower ? 'Castle Tomorrow' : 'The world map'}</small></button><button data-m="levels">All fights<small>Levels, buddy, layout</small></button></div>`;
   } else if (v === 'pause') {
-    el.innerHTML = `<h3>Paused</h3><div class="mrow"><button class="primary" data-m="resume">Resume</button><button data-m="again">Restart</button><button data-m="map">Quit to map</button></div>${layoutPicker()}`;
+    el.innerHTML = `<h3>Paused</h3><div class="mrow"><button class="primary" data-m="resume">Resume</button><button data-m="again">Restart</button><button data-m="map">Quit to map</button></div>${specialMenu()}${layoutPicker()}`;
   } else {
     const p2 = $('#p2mode').value === 'none' ? 'none' : 'cpu';
     el.innerHTML = `<div class="maphead"><h3>All fights</h3><button data-m="map">◂ Map</button></div>` + fighterMenu() + ZONES.map(z => `<div class="sub">${z.name}</div><div class="lv">${z.levels.map(l =>
       `<button data-m="lv" data-v="${l.key}" class="${l.key === cur.key ? 'sel' : ''}" ${levelOpen(l) ? '' : 'disabled'}>${l.name}<small>${lvStatus(l)}</small>${l.scout ? `<small style="color:#e8c547">${l.scout.stat}: ${l.scout.text}</small>` : ''}</button>`).join('')}</div>`).join('') +
       `<div class="sub">Player 2</div><div class="mrow"><button data-m="p2" data-v="none" class="${p2 === 'none' ? 'sel' : ''}">Solo</button><button data-m="p2" data-v="cpu" class="${p2 === 'cpu' ? 'sel' : ''}">CPU buddy<small>A ghost: weaker than a real buddy</small></button></div>` +
-      layoutPicker() + `<p class="hint">${wallet.gold} gold. Stats, weapons, Rusty and the shop live on the page behind this screen (✕ to see it).</p>`;
+      specialMenu() + layoutPicker() + (appWallet
+        ? `<p class="hint" data-testid="shop-in-app">${wallet.gold} gold. Buy and equip weapons and looks in the app's Fighter tab.</p>`
+        : `<p class="hint">${wallet.gold} gold. Stats, weapons, Rusty and the shop live on the page behind this screen (✕ to see it).</p>`);
   }
 }
 $('#menu').addEventListener('click', e => {
@@ -4153,7 +4981,7 @@ $('#menu').addEventListener('click', e => {
   if (!b) return;
   const m = b.dataset.m, v = b.dataset.v;
   ensureAudio(); goFullscreen();
-  if (coop && (m === 'map' || m === 'levels' || m === 'lv')) coopLeave();   // leaving for the map ends the room
+  if (coop && (m === 'map' || m === 'levels' || m === 'lv')) { guestSettleNow(); coopLeave(true); }   // leaving for the map ends the room
   if (watch && (m === 'map' || m === 'levels' || m === 'lv')) stopWatch();
   if (m.startsWith('coop')) coopClick(m, v);
   else if (m === 'again') startFight();
@@ -4175,13 +5003,16 @@ $('#menu').addEventListener('click', e => {
   else if (m === 'lvstep') setLevel(0, setup[0].level + +v);
   else if (m === 'build') { setup[0].preset = v; setup[0].stats = statsFor(BUILDS[v], setup[0].level); fighterSync[0](); showMenu(menuView); }
   else if (m === 'tells') { prefs.tells = v; savePrefs(); $('#tells').value = v; showMenu(menuView); }
+  else if (m === 'charge') { setSpTest({ charge: CH.on ? 0 : 1 }); buildCharge(); showMenu(menuView); }
+  else if (m === 'spgear') { setSpTest({ gear: v }); buildCharge(); showMenu(menuView); }
+  else if (m === 'sptry') { setSpTest({ tryOut: v }); buildCharge(); showMenu(menuView); }
 });
 // ---------------------------------------------------------------------------
 // Live co-op lobby (#34; docs/05 Modes, docs/08 Realtime). The host opens a room and gets a 4-character code; a friend
 // on another phone joins with it and both see a lobby. A room is a public Supabase Realtime channel named after the
 // code: Presence lists who's in it (name, level, the host's fight), Broadcast carries Start. No account needed.
 // supabase-js loads only when a room is opened, so solo play still works offline. Syncing the fight itself is #35/#36:
-// Start begins the host's fight (solo until #36 brings the guest in), and the guest's phone watches it live (#35).
+// Start begins the host's fight with the guest as P2, the guest's phone shows it live (#35) and plays P2 from there (#36).
 // ---------------------------------------------------------------------------
 const COOP = {
   alphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',   // no look-alikes: 0/O and 1/I/L are left out
@@ -4201,9 +5032,29 @@ const COOP = {
   keepMs: 2000,      // the guest keeps this much of the host's fight (states and effects) behind the newest state
   endHz: 2,          // after the fight, the host resends the end state this often, in case one is lost...
   endForS: 10,       // ...for this long
-  proto: 1,          // what the start and state messages look like: a phone on another version can't watch
+  proto: 2,          // what the start, state and input messages look like: a phone on another version can't join
   lagSteps: [0, 150, 300],   // dev toggle on the co-op menu: test lag added to every state the guest receives
   lagJitterMs: 30,   // ± this much on top of the test lag, as a real network would
+  // The guest fighting as P2 (#36). Placeholders, to tune on two real phones.
+  inputBeatMs: 200,  // the guest resends its held buttons this often, so one lost message can't leave a direction stuck
+  inputQuietMs: 600, // the host lets go of P2's buttons when nothing has come from the guest for this long (Wi-Fi dropped)
+  seqAhead: 1000,    // the host ignores an input numbered more than this past the last one (so a bogus one can't lock the guest out)
+  corrRate: 12,      // the guest's own fighter eases toward where the host has it at this rate (per second)...
+  corrMaxPxS: 700,   // ...but never faster than this (px/s), so a correction never looks like a jump
+  corrSnapPx: 200,   // a gap bigger than this is a real jump (a new encounter): take it at once
+  histMs: 2000,      // how much of its own predicted path the guest keeps, to compare with what the host saw
+  // A phone that drops out (#37). Placeholder, to tune on two real phones.
+  dropMs: 5000,      // nothing from the other phone for this long mid-fight: it's gone. The host carries on solo (P2 leaves,
+                     // the monsters drop to solo HP and damage); the guest is told it lost the connection. A blip under this recovers.
+                     // A phone that leaves on purpose says bye, so the other one doesn't wait this long.
+  // The guest paying itself (#38). States aren't signed (#86), so a phone in the room could fake the host's end state;
+  // these keep that from paying more than playing would.
+  payFromS: 5,       // the guest is paid only for a fight it saw from its start: its first state came within this many s of fight time (= dropMs)
+  payMinS: 8,        // ...one that lasted at least this long...
+  payPace: 0.8,      // ...and only if its own clock ran at least this share of the host-clock time it watched (no sped-up fights).
+                     // 0 turns that off, for tests that play a whole fight on a fixed clock in one go.
+  paySlackMs: 250,   // the host-clock time it watched may fall this far short of the fight's time from where it came in
+                     // (the fight's clock and the host's step clock round apart)
 };
 const COOP_NO_SERVER = 'Co-op isn\'t set up on this device yet: there\'s no co-op server address.';
 const COOP_NO_CONN = 'Couldn\'t reach the co-op server. Check your connection and try again.';
@@ -4252,16 +5103,23 @@ function loadSupabase() {
   });
   return coopLib;
 }
-function coopLeave() {
+// Leave the room. `bye`: this phone is leaving on purpose (Leave, the map), so it tells the other phone straight away
+// instead of making it wait COOP.dropMs to notice (#37). Leaving a fight on purpose never records a result here.
+function coopLeave(bye = false) {
   const room = coop;
   coop = null;
   coopRec = null;   // a host stops writing effects down for a guest that's gone
   if (!room) return;
   clearTimeout(room.giveUp); clearTimeout(room.findTimer); clearTimeout(room.lostTimer);
-  if (room.ch && coopClient) Promise.resolve(coopClient.removeChannel(room.ch)).catch(() => {});
+  if (!room.ch || !coopClient) return;
+  const client = coopClient, sent = bye && room.subscribed && room.started
+    ? Promise.resolve(room.ch.send({ type: 'broadcast', event: 'bye', payload: { id: room.id, v: COOP.proto } })).catch(() => {})
+    : Promise.resolve();
+  sent.then(() => client.removeChannel(room.ch)).catch(() => {});
 }
 function coopFail(msg) {
   const room = coop;
+  coopDropP2();   // a host whose room ended by itself mid-fight carries on solo (#37)
   coopLeave();
   coopNote = msg;
   // Once Start is tapped, a dropped room ends quietly: never put a menu over a running fight.
@@ -4293,7 +5151,9 @@ async function coopOpen(role, code) {
   room.ch
     .on('presence', { event: 'sync' }, () => { if (coop === room) coopSync(); })
     .on('broadcast', { event: 'start' }, msg => { if (coop === room) coopStarted(msg && msg.payload); })
-    .on('broadcast', { event: 'state' }, msg => { if (coop === room && role === 'guest') coopState(msg && msg.payload); });
+    .on('broadcast', { event: 'state' }, msg => { if (coop === room && role === 'guest') coopState(msg && msg.payload); })
+    .on('broadcast', { event: 'input' }, msg => { if (coop === room && role === 'host') coopInput(msg && msg.payload); })
+    .on('broadcast', { event: 'bye' }, msg => { if (coop === room) coopBye(msg && msg.payload); });
   room.giveUp = setTimeout(() => { if (coop === room && !room.subscribed) coopFail(COOP_NO_CONN); }, COOP.connectMs);
   room.ch.subscribe(status => {
     if (coop !== room) return;
@@ -4306,11 +5166,12 @@ async function coopOpen(role, code) {
       else room.findTimer = setTimeout(() => {
         if (coop === room && !room.seenHost) coopFail(`No room with code ${code}. Check the code, or ask your friend to host again (a code ends when its host leaves).`);
       }, COOP.findMs);
-    } else if (status === 'CLOSED' || room.started) {
+    } else if (status === 'CLOSED') {
       coopFail(room.subscribed ? 'Lost the connection to the room.' : COOP_NO_CONN);   // quiet once started
     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-      // supabase-js rejoins by itself after these. Before the first join, giveUp already covers it; in the lobby,
-      // give it connectMs to come back before calling the room lost.
+      // supabase-js rejoins by itself after these. Before the first join, giveUp already covers it; in the lobby or a
+      // fight, give it connectMs to come back before calling the room lost. Mid-fight, COOP.dropMs of silence from the
+      // other phone decides first (#37), so a short blip is only a stutter.
       if (room.subscribed && !room.lostTimer) room.lostTimer = setTimeout(() => { if (coop === room) coopFail('Lost the connection to the room.'); }, COOP.connectMs);
     }
   });
@@ -4319,8 +5180,33 @@ async function coopOpen(role, code) {
 function coopTrack() {
   if (!coop || !coop.subscribed) return;
   const meta = { role: coop.role, name: myName(), level: setup[0].level, at: coop.at };
-  if (coop.role === 'host') Object.assign(meta, { fight: coop.fight, started: coop.started, guest: coop.guest || null, v: COOP.proto });
+  if (coop.role === 'host') Object.assign(meta, { look: myLook, fight: coop.fight, started: coop.started, guest: coop.guest || null, v: COOP.proto });
+  else meta.fighter = coopFighter();
   Promise.resolve(coop.ch.track(meta)).catch(() => {});
+}
+// Guest: the fighter it brings to the host's fight (#36): its trained stats (the host applies Rusty), build, looks, the
+// weapon it would fight with solo (owned and met, else fists), and the look you built (#82). The host checks the stats,
+// the requirement and the look again. (The host's own look goes in its Presence: coopTrack.)
+function coopFighter() {
+  return { stats: { ...p1Stats() }, preset: setup[0].preset, rusty: isRusty(), weapon: fightWeapon(p1Stats()), look: myLook };
+}
+const MAX_STAT = START_STAT + PTS_PER_LEVEL * (MAX_LEVEL - 1);   // all of the top level's points in one stat
+// Host of a started room: the guest's fighter, from what their phone put in Presence, checked. Otherwise null.
+function coopGuestFighter() {
+  if (!coop || coop.role !== 'host' || !coop.started || !coop.guest) return null;
+  const g = coop.members.find(m => m.id === coop.guest && m.role === 'guest'), f = g && g.fighter;
+  if (!f || typeof f !== 'object' || !f.stats || typeof f.stats !== 'object') return null;
+  // The guest's phone says what it trained; the host only takes what a real fighter could have (docs/08: reading the
+  // guest's character from their account is #86). Stats from START_STAT up to what MAX_LEVEL allows, the weapon only if they meet
+  // its requirement (else fists, as in a solo fight), and Rusty applied here.
+  let base = {};
+  for (const k of STATS) { const v = Number(f.stats[k]); if (!Number.isFinite(v)) return null; base[k] = clamp(Math.round(v), START_STAT, MAX_STAT); }
+  if (levelOf(base) > MAX_LEVEL) base = relevel(base, MAX_LEVEL);
+  const gw = builtWeapon(f.weapon), weapon = gw && meetsReq(gw, base) ? f.weapon : 'fists';
+  const stats = f.rusty ? rustyStats(base) : base;
+  // The level shown is worked out from the checked stats, not the one the guest's phone claims.
+  return { stats, weapon, name: cleanName(g.name) || 'Fighter', level: levelOf(base),
+    preset: cleanName(f.preset) || 'Custom', rusty: !!f.rusty, look: normalizeLook(f.look) };
 }
 const isLevel = k => typeof k === 'string' && Object.hasOwn(LEVELS, k);
 const joinedFirst = (a, b) => (a.at - b.at) || (a.id < b.id ? -1 : 1);
@@ -4343,7 +5229,13 @@ function coopSync() {
     // The host decides the seat: the first guest it sees gets it and keeps it until they leave.
     let g = coop.guest && coop.members.some(m => m.id === coop.guest) ? coop.guest : null;
     if (!g && !coop.started) { const first = coop.members.filter(m => m.role === 'guest').sort(joinedFirst)[0]; g = first ? first.id : null; }
-    if (g !== coop.guest) { coop.guest = g; coopTrack(); }
+    // Mid-fight, a guest missing from Presence keeps P2: a short blip can drop them from it for a moment. COOP.dropMs of
+    // silence (coopDropCheck) is what takes P2 out of the fight (#37).
+    if (!g && coop.guest && guestInFight()) g = coop.guest;
+    if (g !== coop.guest) {
+      if (!g) Object.assign(inputs[1], newInput());   // the guest left between fights: P2 lets go of every button
+      coop.guest = g; coopTrack();
+    }
   } else {
     if (!coop.members.some(m => m.id === coop.id)) return;   // our own join hasn't come back yet
     if (!coop.seenHost) {
@@ -4352,7 +5244,11 @@ function coopSync() {
       if (!host.guest) return;   // the host lets the first guest in on its next sync
       if (host.guest !== coop.id) return coopFail(`Room ${coop.code} is full.`);
       coop.seenHost = true; clearTimeout(coop.findTimer);
-    } else if (!host) return coopFail('The host left the room.');
+    } else if (!host) {
+      if (watch && !watch.ended) return;   // mid-fight: a blip, or the host is gone; COOP.dropMs of silence decides (#37)
+      if (watch && watch.ended && !watch.paid) return;   // the end, not settled yet: guestSettle waits COOP.dropMs for the host (#38)
+      return coopFail('The host left the room.');
+    }
     else if (host.guest && host.guest !== coop.id) return coopFail(`Room ${coop.code} is full.`);
     else if (host.started) return coopStarted({ fight: host.fight, v: host.v });
   }
@@ -4366,7 +5262,8 @@ function coopStart() {
   coop.started = true;
   coopTrack();
   Promise.resolve(coop.ch.send({ type: 'broadcast', event: 'start', payload: { fight: coop.fight, v: COOP.proto } })).catch(() => {});
-  // The guest's phone watches (#35); until it can fight too (#36), the fight is solo: no CPU buddy standing in for the friend.
+  // The guest fights as P2 from their own phone (#36; startFight takes their fighter from Presence). Player 2 is set to
+  // none so no CPU buddy stands in for them, and this phone's own P2 keys don't drive the guest's fighter.
   $('#level').value = coop.fight; $('#p2mode').value = 'none'; updateHint();
   startFight();
 }
@@ -4378,6 +5275,11 @@ function coopStarted(payload) {
   if (coop.fight) startWatch(coop.fight);
   else showMenu('coopwait');   // says the fight isn't in this version
 }
+// The fight was the host's, so when the host drops out it ends with no result on this phone: not a win, not a loss (#37).
+// "Host left" only when the host said so (a bye). Silence can be either phone's connection, so that message blames neither.
+const COOP_HOST_LEFT = "Host left. The fight doesn't count as a win or a loss.";
+const COOP_LOST_HOST = "Lost the connection to the host's fight. It doesn't count as a win or a loss.";
+const COOP_DROPPED = "You dropped out of the fight: nothing came through from your phone for a few seconds. It doesn't count as a win or a loss.";
 const COOP_OTHER_VERSION = 'Your friend\'s Barbell Brawl is a different version from yours. Update both to watch each other\'s fights.';
 
 // ---------------------------------------------------------------------------
@@ -4385,7 +5287,7 @@ const COOP_OTHER_VERSION = 'Your friend\'s Barbell Brawl is a different version 
 // times a second as a Broadcast `state`: the fighters, monsters, projectiles and run, plus every effect since the last
 // one (see rec()). The guest keeps the recent states and draws the fight COOP.interpMs behind the newest, blending the
 // two states either side of that moment, so a late or bunched message never makes anything jump. Its clock eases
-// toward the host's instead of snapping. The guest adds no hitstop of its own.
+// toward the host's instead of snapping. Nobody gets hitstop in co-op (see doHitstop).
 // ---------------------------------------------------------------------------
 let watch = null;    // guest: { fight, host, fid, buf, offs, est, rt, lastNow, events, seen, ended, stats }
 let coopLag = 0;     // dev: test lag in ms on every state this phone receives (co-op menu, or ?lag=150)
@@ -4400,7 +5302,74 @@ let coopFid = 0;     // host: which fight this is (Fight again starts a new one 
 // Host: a new fight in a started room. Effects start being written down for the guest.
 function coopHostFight() {
   if (!coop || coop.role !== 'host' || !coop.started) { coopRec = null; return; }
-  coopFid++; coop.sendAt = 0; coop.endAt = null; coopRec = [];
+  coopFid++; coop.sendAt = 0; coop.endAt = null; coopRec = []; coop.inSeq = 0; coop.inAt = 0;
+  coop.heardAt = performance.now();   // the guest has COOP.dropMs from the start to be heard from
+}
+// Host: the guest's buttons (#36). They go into P2's input exactly as a local P2's keys would (setInput), so P2 plays
+// by the same code. The last one applied (and when) goes back in every state, so the guest can check its own fighter.
+function coopInput(q) {
+  if (!q || typeof q !== 'object' || q.v !== COOP.proto || q.id !== coop.guest || q.fid !== coopFid) return;
+  if (!Number.isInteger(q.seq) || q.seq <= coop.inSeq || q.seq > coop.inSeq + COOP.seqAhead) return;
+  if (phase !== 'fight' || !players[1] || !remoteP2(players[1])) return;
+  coop.inSeq = q.seq; coop.inAt = coopClock; coop.heardAt = performance.now();
+  const h = q.h && typeof q.h === 'object' ? q.h : {};
+  for (const a of HELD) setInput(1, a, !!h[a]);
+  if (PRESSES.includes(q.p)) {
+    if (q.p === 'dodge') inputs[1].swipeDir = q.sw === 1 || q.sw === -1 ? q.sw : 0;
+    setInput(1, q.p, true);
+  }
+}
+// Host, every step: if the guest has gone quiet (Wi-Fi dropped, but Presence hasn't noticed yet), P2 lets go of its
+// buttons, so it doesn't walk into a wall holding the last direction it heard. The next input picks them up again.
+function coopInputQuiet() {
+  if (phase !== 'fight' || !players[1] || !remoteP2(players[1]) || coopClock - coop.inAt <= COOP.inputQuietMs / 1000) return;
+  for (const a of HELD) inputs[1][a] = false;
+}
+// Host: P2 is the co-op guest, in the fight now.
+const guestInFight = () => phase === 'fight' && !!players[1] && remoteP2(players[1]);
+// Host, every step: nothing from the guest for COOP.dropMs (wall-clock time: its beat comes every COOP.inputBeatMs) means
+// it's gone (#37). Short of that, coopInputQuiet has already let go of its buttons, and its next input picks them up.
+// Not while a test has taken the clock (manualClock): it can play a whole fight in one go, with no time for the
+// guest's inputs to come in.
+function coopDropCheck() {
+  if (!manualClock && guestInFight() && performance.now() - coop.heardAt > COOP.dropMs) coopDropP2();
+}
+// The other phone left on purpose (#37): the same as a drop, without waiting COOP.dropMs for it.
+function coopBye(q) {
+  if (!q || typeof q !== 'object' || q.v !== COOP.proto || typeof q.id !== 'string') return;
+  if (coop.role === 'host') { if (q.id === coop.guest) coopDropP2(true); return; }
+  const host = roomHost();
+  if (!host || q.id !== host.id || !watch) return;   // not in a fight: Presence says the host left
+  coopFail(watch.ended ? 'The host left the room.' : COOP_HOST_LEFT);
+}
+// Host: the guest dropped out (#37). P2 leaves the fight and the host carries on solo: every monster's HP (what's left
+// and its max) and damage go from the co-op scale to the solo one, and anything that pointed at P2 lets go of it.
+let p2Left = '';   // host: the name of a guest who dropped out of this fight
+function coopDropP2(left = false) {
+  if (!guestInFight()) return;
+  const p2 = players[1];
+  p2Left = p2.name;
+  if (p2.held) dropHeld(p2);
+  for (const m of monsters) {
+    if (m.holding === p2) release(m);
+    if (m.target === p2) m.target = null;
+    if (m.launchedBy === p2) m.launchedBy = null;
+    if (m.thrownBy === p2) m.thrownBy = null;
+  }
+  shots = shots.filter(q => q.p !== p2);
+  players.splice(1, 1);
+  Object.assign(inputs[1], newInput());
+  const solo = { hp: level.scale ? level.scale.hp : 1, dmg: level.scale ? level.scale.dmg : 1, blend: 1 }, k = solo.hp / coopScaleNow.hp;
+  for (const m of monsters) {
+    m.maxHp = Math.max(1, Math.round(m.maxHp * k));
+    if (m.hp > 0) m.hp = clamp(Math.round(m.hp * k), 1, m.maxHp);
+    m.dmgMult = solo.dmg;
+  }
+  coopScaleNow = solo;
+  coop.guest = null; coopTrack();   // the seat is free; they don't come back into this fight
+  // Silence can be either phone's connection, so only a guest who said bye is said to have left.
+  floater(left ? `${p2Left} left: solo from here` : `Lost ${p2Left}: solo from here`, W / 2, 100, '#e8c547', 16);
+  if (!players.some(alive)) endFight(false);   // you were down and nobody's left to revive you
 }
 // Host: send the state when it's due (or now, if forced). Called every step. After the fight it keeps sending the end
 // state, with the result, COOP.endHz times a second, so one lost message can't keep the result from the guest.
@@ -4432,15 +5401,18 @@ function coopSnap() {
     for (const k in v) { const x = pack(v[k], depth + 1); if (x !== undefined) o[k] = x; }
     return o;
   };
-  const entity = (e, skip) => { const o = {}; for (const k in e) if (k !== skip) { const x = pack(e[k], 1); if (x !== undefined) o[k] = x; } return o; };
+  const entity = (e, ...skip) => { const o = {}; for (const k in e) if (!skip.includes(k)) { const x = pack(e[k], 1); if (x !== undefined) o[k] = x; } return o; };
   for (const q of plates) q.uid ??= ++fxUid;   // so the guest can tell which plate is which between two states
   for (const q of shots) q.uid ??= ++fxUid;
   const ev = coopRec || [];
   coopRec = [];
   return {
     v: COOP.proto, fid: coopFid, ts: Math.round(coopClock * 1000), lv: level.key, phase, paused, gt: pack(gt), waveIdx, waves, combo, comboBest,
+    gid: coop && coop.role === 'host' ? coop.guest || null : null,   // the guest who plays P2
+    ack: coop && coop.inSeq ? [coop.inSeq, Math.round((coopClock - coop.inAt) * 1000)] : null,   // their last input, and ms since
     lastHitAt: pack(lastHitAt), camX: pack(camX), LEFT, RIGHT, ko: ko && pack(ko, 1), run: run && pack(run, 0),
-    players: players.map(p => entity(p, 'w')), monsters: monsters.map(m => entity(m, 'def')),
+    // Looks aren't sent 20 times a second: they go once, in Presence (coopTrack, coopFighter).
+    players: players.map(p => entity(p, 'w', 'look')), monsters: monsters.map(m => entity(m, 'def')),
     plates: plates.map(q => pack(q, 0)), shots: shots.map(q => pack(q, 0)),
     walls: level.labyrinth ? platforms.map(q => pack(q, 0)) : undefined,
     result: phase === 'over' && result ? { won: result.won, time: pack(result.time) } : null,
@@ -4450,8 +5422,12 @@ function coopSnap() {
 
 function startWatch(fight) {
   const host = coop && roomHost();
-  watch = { fight, host: cleanName(host && host.name) || 'Fighter', fid: null, buf: [], offs: [], est: 0, rt: null, lastNow: 0, lastAt: 0,
-    events: [], seen: false, ended: false, stats: { got: 0, played: 0, jumps: 0, holds: 0, kinds: {} } };
+  watch = { fight, host: cleanName(host && host.name) || 'Fighter', hostLook: normalizeLook(host && host.look), fid: null, buf: [], offs: [], est: 0, rt: null, lastNow: 0, lastAt: 0,
+    heardAt: performance.now(),   // when the last state came, on the clock watchRender is given (#37)
+    events: [], seen: false, ended: false, stats: { got: 0, played: 0, jumps: 0, holds: 0, kinds: {}, sent: 0, checks: 0 },
+    // Fighting as P2 (#36): me is this phone's fighter once the host's states say so; the rest is its prediction.
+    me: null, seq: 0, sent: [], sentAt: -1e9, ack: 0, hold: 0, ackTs: -1e9, jumpAt: -1e9, lagAt: 0, pred: null, hist: [], err: [0, 0] };
+  Object.assign(inputs[0], newInput());
   level = LEVELS[fight]; $('#level').value = fight;
   platforms = levelPlatforms(level);
   players = []; monsters = []; plates = []; shots = []; floaters = []; puffs = []; rings = [];
@@ -4462,6 +5438,7 @@ function startWatch(fight) {
 }
 function stopWatch() {
   if (!watch) return;
+  guestSettleNow();
   watch = null;
   players = []; monsters = []; plates = []; shots = []; floaters = []; puffs = []; rings = []; run = null; ko = null; result = null;
   paused = false; phase = 'ready'; camX = 0; LEFT = 30; RIGHT = W - 30; platforms = PLATFORMS;
@@ -4480,7 +5457,13 @@ function watchRecv(snap, now) {
   const w = watch;
   if (snap.fid !== w.fid) {   // the first state, or the host started a new fight in this room
     if (w.fid !== null && snap.fid < w.fid) return;
-    Object.assign(w, { fid: snap.fid, buf: [], offs: [], rt: null, events: [], ended: false });
+    guestSettleNow();   // a finished fight still waiting out a Presence blip is settled before the new one replaces it
+    Object.assign(w, { fid: snap.fid, buf: [], offs: [], rt: null, events: [], ended: false, seq: 0, sent: [], ack: 0, hold: 0, ackTs: -1e9, jumpAt: -1e9, pred: null, hist: [], err: [0, 0] });
+    Object.assign(inputs[0], newInput());   // a new fight starts with nothing held (the host numbers this fight's inputs from 1)
+    w.me = coop && snap.gid != null && snap.gid === coop.id && snap.players[1] && snap.players[1].ctrl === 'human' ? 1 : null;
+    // Where this phone came into the fight (host clock, own clock), and whether that was its start (#38: guestPayable).
+    w.from = { ts: snap.ts, at: now, gt: +snap.gt || 0, start: snap.phase === 'fight' && Number.isFinite(snap.gt) && snap.gt >= 0 && snap.gt <= COOP.payFromS };
+    w.overAt = null; w.paid = false;
     if (snap.lv !== w.fight || !level) { w.fight = snap.lv; level = LEVELS[snap.lv]; platforms = levelPlatforms(level); }
     result = null; floaters = []; puffs = []; rings = [];
     if (menuView === 'coopwatch') showMenu(null);
@@ -4502,8 +5485,12 @@ function watchRecv(snap, now) {
   const newest = w.buf[w.buf.length - 1].ts, keep = newest - COOP.keepMs;
   while (w.buf.length > 2 && w.buf[1].ts <= keep) w.buf.shift();
   while (w.events.length && w.events[0][0] < keep) w.events.shift();
-  w.lastAt = performance.now();
+  w.lastAt = performance.now(); w.heardAt = now;
+  if (snap.phase === 'over' && w.overAt === null) w.overAt = { ts: snap.ts, at: now };   // the end, on both clocks
   w.stats.got++;
+  // The host dropped this phone's fighter mid-fight (nothing reached it for COOP.dropMs): this phone is out of it (#37).
+  if (w.me != null && snap.phase === 'fight' && coop && snap.gid !== coop.id) { coopFail(COOP_DROPPED); return; }
+  if (w.me != null) guestCheck(snap);
 }
 // Guest: true when the host's fight is on screen but nothing has come from the host for a while (its screen locked, say).
 const watchWaiting = () => !!watch && watch.seen && phase === 'fight' && performance.now() - watch.lastAt > COOP.waitMs;
@@ -4518,8 +5505,11 @@ function blend(a, b, u) {
 // Guest: put the host's fight as it was COOP.interpMs ago into the page's globals, for draw(). Called every frame.
 function watchRender(now) {
   const w = watch;
+  // Nothing from the host for COOP.dropMs mid-fight: the host, or this phone, lost the connection (#37). Back to the
+  // co-op menu, with no result.
+  if (!w.ended && now - w.heardAt > COOP.dropMs) { coopFail(COOP_LOST_HOST); return; }
   if (!w.buf.length) return;
-  const target = now - w.est - COOP.interpMs;
+  const target = now - w.est - COOP.interpMs, frameMs = w.rt === null ? 0 : clamp(now - w.lastNow, 0, 50);
   if (w.rt === null || Math.abs(target - w.rt) > COOP.resyncMs) { if (w.rt !== null) w.stats.jumps++; w.rt = target; }
   else { const d = Math.max(0, now - w.lastNow); w.rt += d + clamp(target - w.rt - d, -0.1 * d, 0.1 * d); }   // ease, ±10% speed
   w.lastNow = now;
@@ -4532,6 +5522,7 @@ function watchRender(now) {
   if (i > 0) { w.buf.splice(0, i); i = 0; }   // older states are done with
   const a = w.buf[0], b = w.buf[1], u = b && w.rt > a.ts ? clamp((w.rt - a.ts) / (b.ts - a.ts), 0, 1) : 0;
   watchApply(a, b, u);
+  if (w.me != null) guestPredict(now, frameMs / 1000);
   while (w.events.length && w.events[0][0] <= w.rt) {
     const [ts, name, ...args] = w.events.shift();
     if (ts < w.rt - COOP.staleMs) continue;   // too late to feel like the same moment
@@ -4549,6 +5540,15 @@ function watchApply(a, b, u) {
     return Object.assign(q, { w: ITEMS[q.weaponKey].mods });
   });
   if (players[0]) players[0].name = w.host;
+  // Looks come from Presence, not the states (#82): the host's from its own, P2's from the guest's fighter, or this
+  // phone's own look when P2 is this phone. Fight colors are worked out here by the same rule as the host's, not taken
+  // from the state.
+  const hostNow = coop && roomHost();
+  if (hostNow) w.hostLook = normalizeLook(hostNow.look);
+  const gm = coop && a.gid != null && a.gid !== coop.id ? coop.members.find(m => m.id === a.gid) : null;
+  if (gm) w.guestLook = normalizeLook(gm.fighter && gm.fighter.look);
+  for (const p of players) p.look = p.i === 0 ? w.hostLook : coop && a.gid != null && a.gid === coop.id ? myLook : a.gid != null ? w.guestLook || DEFAULT_LOOK : P2_LOOK;
+  setFightColors(players);
   monsters = a.monsters.filter(m => Object.hasOwn(MONSTERS, m.key)).map(m => {
     const q = Object.assign(blend(structuredClone(m), bm && bm.get(m.id), u), { def: MONSTERS[m.key] });
     if (q.attack != null && !Object.hasOwn(q.def.attacks || {}, q.attack)) { q.attack = null; q.state = 'walk'; }
@@ -4579,10 +5579,203 @@ function watchApply(a, b, u) {
   phase = a.phase === 'over' ? 'over' : 'fight';
   w.seen = true;
   if (a.phase === 'over' && !w.ended) {   // the host's result, shown the same on this phone
-    w.ended = true;
+    w.ended = true; w.endSnap = a;
     result = a.result ? { won: !!a.result.won, time: +a.result.time || 0, watched: true } : null;
+    guestSettle(a, w.lastNow);
     if (playMode) showMenu('coopwatch');
+  } else if (w.ended) guestSettle(a, w.lastNow);   // still waiting out a Presence blip at the end
+}
+// Guest: settle the host's finished fight on this phone, once (#38). Only a guest still fighting as P2 at the end is
+// settled (one the host dropped mid-fight isn't, #37). It's paid only for a fight it really watched (guestPayable);
+// otherwise the results say why. If the host's Presence just doesn't show the fight at the end (a blip), it waits for
+// up to COOP.dropMs before giving up, rather than latching "not paid" at once.
+function guestSettle(a, now) {
+  const w = watch;
+  if (!result || w.paid || w.me == null || !coop || a.gid !== coop.id) return;
+  const why = guestPayable(a);
+  if (why === COOP_NOT_HOSTS_FIGHT && w.overAt && now - w.overAt.at < COOP.dropMs) return;
+  w.paid = true;
+  guestResult(result, why);
+}
+// Guest: a finished fight still waiting out a Presence blip is settled now, as things stand, before a new fight or
+// leaving the room forgets it.
+function guestSettleNow() {
+  if (watch && watch.ended && !watch.paid && watch.endSnap) guestSettle(watch.endSnap, Infinity);
+}
+
+// Guest: why the host's end state `a` doesn't pay this phone, or '' if it does (#38). States aren't signed yet (#86), so
+// anyone in the room could send one that says the fight is over. Only a fight this phone watched from its start, the
+// one the host's Presence says it's running, pays, and it must have taken at least as long on this phone's own clock as
+// it says it did: a fake one can't pay faster than playing would.
+const COOP_NOT_HOSTS_FIGHT = "it isn't the fight the host is running";
+const COOP_OTHER_LEVEL = "it didn't end on the level it started on";
+function guestPayable(a) {
+  const w = watch, from = w.from, end = w.overAt, host = roomHost();
+  if (!from || !from.start || !end || a.fid !== w.fid) return "this phone didn't see the fight from its start";
+  // What's paid is the level the fight started as (guestResult), so the end must be the same one.
+  if (a.lv !== w.fight) return COOP_OTHER_LEVEL;
+  if (!host || host.fight !== a.lv) return COOP_NOT_HOSTS_FIGHT;
+  const time = (+a.result.time || 0) * 1000, hostSpan = end.ts - from.ts, ownSpan = end.at - from.at;
+  // At least COOP.payMinS of it, on the host's clock, came to this phone (so a fake takes that long too)...
+  if (time < COOP.payMinS * 1000) return `the fight was shorter than ${COOP.payMinS} s`;
+  if (hostSpan < COOP.payMinS * 1000) return `this phone only saw ${(hostSpan / 1000).toFixed(1)} s of it`;
+  // ...and all of it from where this phone came in (the host's clock never runs slower than its fight time).
+  if (hostSpan < time - from.gt * 1000 - COOP.paySlackMs) return "this phone didn't see the whole fight";
+  // The host-clock time this phone watched (the line above keeps it close to the whole fight), against its own clock.
+  if (COOP.payPace > 0 && ownSpan < COOP.payPace * hostSpan) return 'it went by faster than a real fight';
+  return '';
+}
+
+// Guest who fought as P2: the host's fight is over, so this phone pays itself and saves its own result (#38). A win pays
+// from the guest's own wallet (their freshness for that level, or the first-clear bonus if they haven't beaten it, which
+// is also when it counts toward their ladder) plus the live co-op bonus: they were still in the room at the end.
+// The host's run stars stay the host's.
+// `why`: guestPayable's reason this fight doesn't pay. The results show it where the gold goes, and the fight is still
+// saved (with no gold) if this phone watched it from its start for at least COOP.payMinS of its own time, so a faked
+// fight can't fill the history faster than playing would.
+function guestResult(r, why = '') {
+  const lv = LEVELS[watch.fight];
+  if (!lv) return;
+  if (why) {
+    r.reward = { gold: 0, parts: [], unpaid: r.won ? why : '' };
+    if (!r.won) r.reward.parts.push('Losses pay no gold');
+    logLine(`Not paid for this co-op fight: ${escHtml(why)}.`);
+    const from = watch.from, end = watch.overAt;
+    if (window.ReactNativeWebView && from && from.start && end && end.at - from.at >= COOP.payMinS * 1000)
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won: r.won, time: +r.time.toFixed(1), level: lv.name, key: lv.key, first: false, gold: 0, unlock: '', hint: '', coop: true }));
+    return;
   }
+  // A level past this phone's own ladder pays like a replay and isn't a clear (docs/decisions/2026-10-09-coop-past-your-ladder.md).
+  const carried = !onOwnLadder(lv);
+  const first = r.won && !carried && !wallet.clears[lv.key];
+  r.reward = r.won ? payout(lv, true, carried) : { gold: 0, parts: ['Losses pay no gold'] };
+  if (r.won) sfx.coin();
+  logLine(`<b>${r.won ? 'Victory' : 'Defeat'}</b> vs ${lv.name} in <b>${r.time.toFixed(1)}s</b> · co-op with ${escHtml(watch.host)}` +
+    ` · <b style="color:#e8c547">+${r.reward.gold} gold</b> (${r.reward.parts.map(escHtml).join(' · ')})${r.reward.unlock ? ` · <b style="color:var(--p1)">${r.reward.unlock}</b>` : ''}`);
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'result', won: r.won, time: +r.time.toFixed(1), level: lv.name, key: lv.key, first, gold: r.reward.gold, unlock: r.reward.unlock || '', hint: '', coop: true }));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The guest fights as P2 (#36; docs/08 Realtime). Its buttons go to the host as a Broadcast `input` (on every change,
+// and every COOP.inputBeatMs anyway), and the host's phone plays P2 with them through setInput, like a local P2's keys.
+// Waiting for the host's states would leave the guest's own fighter a round trip plus COOP.interpMs behind its thumb,
+// so this phone moves it at once (walk, crouch, block, jump: updatePlayer's free states) and draws everything else as
+// the host sends it. Each state says which input the host last applied and how long ago (`ack`); the guest compares
+// where the host has P2 with where its own fighter was that long after it sent that input, and eases the gap away
+// (COOP.corrRate, at most COOP.corrMaxPxS) instead of snapping. Attacks, dodges, hits and grabs are the host's.
+// ---------------------------------------------------------------------------
+const FREE = new Set(['idle', 'walk', 'block', 'crouch']);   // updatePlayer's idleLike: the stick moves you
+function guestInput(a, down) {
+  const w = watch, inp = inputs[0];
+  // Held buttons are always written down, even between fights, so a button let go of on the results screen isn't
+  // still held when the host starts the next fight. Only sending waits for a fight.
+  if (HELD.has(a)) { if (inp[a] === down) return; inp[a] = down; }
+  else if (!down) return;
+  if (w.me == null || phase !== 'fight') return;
+  if (a === 'jump') w.jumpAt = w.lastNow;
+  guestSend(HELD.has(a) ? null : a);
+}
+// Guest: send the held buttons (and a press, if any) to the host.
+function guestSend(press = null) {
+  const w = watch, inp = inputs[0];
+  if (!coop || !coop.ch || w.me == null || w.fid == null) return;
+  const seq = ++w.seq, at = w.lastNow;
+  w.sent.push([seq, at]);
+  while (w.sent.length > 1 && w.sent[0][1] < at - COOP.histMs) w.sent.shift();
+  w.sentAt = at; w.stats.sent++;
+  if (press && press !== 'jump') w.hold = seq;   // an attack, dodge, special or flex: the host decides what happens
+  const payload = { v: COOP.proto, id: coop.id, fid: w.fid, seq, h: { left: !!inp.left, right: !!inp.right, down: !!inp.down, block: !!inp.block },
+    p: press, sw: press === 'dodge' ? inp.swipeDir : 0 };
+  inp.swipeDir = 0;
+  const ch = coop.ch, send = () => Promise.resolve(ch.send({ type: 'broadcast', event: 'input', payload })).catch(() => {});
+  if (!coopLag) { send(); return; }
+  // Test lag goes both ways, and keeps the inputs in order (a real socket does).
+  const t = performance.now();
+  w.lagAt = Math.max(w.lagAt || 0, t + coopLag + (Math.random() * 2 - 1) * COOP.lagJitterMs);
+  setTimeout(send, w.lagAt - t);
+}
+// Guest: let go of every held button (the menu opened, or the screen went off).
+function guestRelease() {
+  const w = watch, inp = inputs[0];
+  if (!w || w.me == null) return;
+  let any = false;
+  for (const a of HELD) if (inp[a]) { inp[a] = false; any = true; }
+  if (any) guestSend();
+}
+// Guest: a state from the host says where P2 was, a known time after one of our inputs reached it.
+function guestCheck(snap) {
+  const w = watch, p = snap.players[w.me];
+  if (!p || !Array.isArray(snap.ack) || snap.ts <= w.ackTs) return;
+  const [seq, age] = snap.ack;
+  if (!Number.isFinite(seq) || !Number.isFinite(age)) return;
+  w.ackTs = snap.ts; w.ack = Math.max(w.ack, seq);
+  const sent = w.sent.find(s => s[0] === seq);
+  if (!sent || !w.pred || !w.hist.length) return;
+  const h = histAt(w.hist, sent[1] + age);
+  w.err = [p.x - h[0], p.y - h[1]];
+  w.stats.checks++;
+  if (Math.hypot(w.err[0], w.err[1]) > COOP.corrSnapPx) { guestShift(w.err[0], w.err[1]); w.err = [0, 0]; w.stats.jumps++; }   // a real jump
+}
+function histAt(hist, t) {
+  if (t <= hist[0][0]) return hist[0].slice(1);
+  for (let k = 1; k < hist.length; k++) {
+    if (hist[k][0] >= t) {
+      const [t0, x0, y0] = hist[k - 1], [t1, x1, y1] = hist[k], u = t1 > t0 ? (t - t0) / (t1 - t0) : 1;
+      return [lerp(x0, x1, u), lerp(y0, y1, u)];
+    }
+  }
+  return hist[hist.length - 1].slice(1);
+}
+// Move the guest's own fighter, and the path it remembers, by a correction.
+function guestShift(dx, dy) {
+  const w = watch;
+  w.pred.x += dx; w.pred.y += dy;
+  for (const h of w.hist) { h[1] += dx; h[2] += dy; }
+}
+// Guest, every frame after watchApply: move its own fighter with its own buttons, ease toward the host, and draw it.
+function guestPredict(now, dt) {
+  const w = watch, shown = players[w.me], newest = w.buf[w.buf.length - 1], host = newest && newest.players[w.me];
+  if (!shown || !host) return;
+  const q = w.pred ??= { x: host.x, y: host.y, vy: 0, kx: 0, onGround: !!host.onGround, support: +host.support || 0, dropUntil: -1, walkPh: +host.walkPh || 0, state: 'idle' };
+  const inp = inputs[0], live = newest.phase === 'fight' && !newest.paused && alive(host) && !host.grab;
+  const free = live && FREE.has(host.state) && w.ack >= w.hold;
+  if (live) physics(q, dt); else q.vy = 0;
+  if (free) {
+    const jump = now - (w.jumpAt ?? -1e9) <= T.inputBufferMs;
+    w.jumpAt = -1e9;
+    if (jump && (inp.down || inp.block) && q.onGround && q.support > 0) { q.dropUntil = gt + 0.25; q.onGround = false; q.state = 'idle'; }
+    else if (jump && q.onGround) { q.vy = jumpVel(shown); q.onGround = false; q.state = 'idle'; }
+    else if (inp.block && shown.st > 0 && q.onGround) q.state = 'block';
+    else if (inp.down && q.onGround) q.state = 'crouch';
+    else {
+      const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0), v = moveSpeed(shown);
+      q.x = clamp(q.x + dir * v * dt, LEFT, RIGHT);
+      q.state = dir ? 'walk' : 'idle';
+      if (dir) q.walkPh += dt * v / 18;
+    }
+  }
+  // A labyrinth wall's side stops it, as on the host (updateMaze). A wall rising under it is the host's to lift.
+  if (live && level && level.labyrinth) {
+    for (const w of platforms) {
+      if (w.h < 8 || q.y >= w.h - 1 || (q.x >= w.x1 && q.x <= w.x2) || q.x < w.x1 - T.bodyRadius || q.x > w.x2 + T.bodyRadius) continue;
+      q.x = clamp(q.x < w.x1 ? w.x1 - T.bodyRadius : w.x2 + T.bodyRadius, LEFT, RIGHT);
+    }
+  }
+  // Ease toward where the host has this fighter.
+  const k = 1 - Math.exp(-COOP.corrRate * dt), cap = COOP.corrMaxPxS * dt;
+  let dx = w.err[0] * k, dy = w.err[1] * k;
+  const len = Math.hypot(dx, dy);
+  if (len > cap) { dx *= cap / len; dy *= cap / len; }
+  w.err[0] -= dx; w.err[1] -= dy;
+  guestShift(dx, dy);
+  if (dy > 0) q.vy = Math.max(q.vy, 0);
+  w.hist.push([now, q.x, q.y]);
+  while (w.hist.length > 2 && w.hist[0][0] < now - COOP.histMs) w.hist.shift();
+  shown.x = q.x; shown.y = q.y;
+  if (free) Object.assign(shown, { state: q.state, crouch: q.state === 'crouch' || (q.state === 'block' && !!inp.down), walkPh: q.walkPh, onGround: q.onGround });
+  if (newest.phase === 'fight' && now - w.sentAt >= COOP.inputBeatMs) guestSend();   // the held buttons, again
 }
 function coopView(v) {
   const head = (title, btn) => `<div class="maphead"><h3>${title}</h3>${btn}</div>`;
@@ -4600,17 +5793,24 @@ function coopView(v) {
     return head(coop.role === 'host' ? 'Opening a room…' : `Looking for room <span class="code">${coop.code}</span>…`, '') + cancel;
   }
   if (v === 'coopwatch') {   // the guest's menu over the host's fight (⏸, Esc, or the fight ended)
-    const over = phase === 'over', who = escHtml(watch ? watch.host : 'The host');
-    return head(over ? 'Fight over' : `Watching ${who}`, '') + note +
-      `<p class="hint" data-testid="coop-watching">${over ? `${who}'s fight is over. If they fight again in this room, it shows up here.` : `${who}'s phone runs this fight; yours shows it live.`}</p>` +
-      `<div class="mrow">${over || !coop ? '' : '<button class="primary" data-m="coopwatchback" data-testid="coop-watch-back">Keep watching</button>'}` +
+    const over = phase === 'over', who = escHtml(watch ? watch.host : 'The host'), fighting = !!watch && watch.me != null;
+    return head(over ? 'Fight over' : fighting ? `Fighting with ${who}` : `Watching ${who}`, '') + note +
+      `<p class="hint" data-testid="coop-watching">${over ? `${who}'s fight is over. If they fight again in this room, it shows up here.`
+        : fighting ? `The fight goes on while this menu is open: ${who}'s phone runs it.` : `${who}'s phone runs this fight; yours shows it live.`}</p>` +
+      `<div class="mrow">${over || !coop ? '' : `<button class="primary" data-m="coopwatchback" data-testid="coop-watch-back">${fighting ? 'Back to the fight' : 'Keep watching'}</button>`}` +
       `<button data-m="coopcancel" data-testid="coop-leave">Leave</button></div>`;
   }
   if (v === 'cooplobby' && coop) {
     const host = coop.role === 'host', ps = coopPlayers(), ready = ps.length >= COOP.maxPlayers;
     const hostP = ps.find(p => p.role === 'host'), fight = host ? coop.fight : hostP && isLevel(hostP.fight) ? hostP.fight : null;
-    const players = ps.map(p => `<div class="${p.id === coop.id ? 'me' : ''}" data-testid="coop-player"><b>${escHtml(cleanName(p.name) || 'Fighter')}</b> · ` +
-      `Level ${Math.max(1, Math.round(+p.level || 1))}${p.role === 'host' ? ' <small>host</small>' : ''}${p.id === coop.id ? ' <small>(you)</small>' : ''}</div>`).join('') +
+    // Each fighter's color for the fight (#80): their own, or the next free one if someone who joined earlier has it.
+    const own = ps.map(p => p.id === coop.id ? myLook : normalizeLook(p.role === 'host' ? p.look : p.fighter && p.fighter.look)).map(l => l.accent);
+    const acc = fightAccents(own), colorName = k => k[0].toUpperCase() + k.slice(1);
+    const players = ps.map((p, j) => `<div class="${p.id === coop.id ? 'me' : ''}" data-testid="coop-player">` +
+      `<i class="cdot" data-testid="coop-color" data-color="${acc[j]}" style="background:${LOOK_ACCENTS[acc[j]]}"></i><b>${escHtml(cleanName(p.name) || 'Fighter')}</b> · ` +
+      `Level ${Math.max(1, Math.round(+p.level || 1))}${p.role === 'host' ? ' <small>host</small>' : ''}${p.id === coop.id ? ' <small>(you)</small>' : ''}` +
+      (acc[j] !== own[j] ? `<br><small data-testid="coop-color-note">Same color as ${escHtml(cleanName(ps[0].name) || 'the host')}: ` +
+        `${p.id === coop.id ? 'you fight' : `${escHtml(cleanName(p.name) || 'Fighter')} fights`} in ${colorName(acc[j])} this time.</small>` : '') + '</div>').join('') +
       (ready ? '' : '<div><small>Waiting for a friend to join…</small></div>');
     // Start sits in the header beside Leave, so it's on screen however long the fight list grows.
     const start = host ? `<button class="primary" data-m="coopstart" data-testid="coop-start" ${ready ? '' : 'disabled'}>Start<small>${ready ? LEVELS[fight].name : 'Waiting for a friend'}</small></button>` : '';
@@ -4631,7 +5831,7 @@ function coopView(v) {
       '<button data-m="coopreset" data-testid="coop-reset">Reset</button></div>' : '');
 }
 function coopClick(m, v) {
-  if (m === 'coop' || m === 'coopcancel') { coopLeave(); stopWatch(); coopNote = ''; showMenu('coop'); }
+  if (m === 'coop' || m === 'coopcancel') { guestSettleNow(); coopLeave(true); stopWatch(); coopNote = ''; showMenu('coop'); }
   else if (m === 'coopwatchback') showMenu(null);
   else if (m === 'cooplag') { const L = COOP.lagSteps; coopLag = L[(L.indexOf(coopLag) + 1) % L.length] || 0; showMenu('coop'); }
   else if (m === 'coophost') coopOpen('host', newRoomCode());
@@ -4659,7 +5859,8 @@ $('#arena').addEventListener('contextmenu', e => e.preventDefault());   // a lon
 // Light up whichever button fires the special once you can afford it.
 let lastReady = null;
 function markSpecialReady() {
-  const ready = playMode && phase === 'fight' && !watch && players[0] && players[0].st >= T.specialCost;
+  const me = watch ? watch.me != null && players[watch.me] : players[0];   // a co-op guest's own fighter is P2
+  const ready = playMode && phase === 'fight' && me && me.st >= T.specialCost;
   if (ready === lastReady) return;
   lastReady = ready;
   document.querySelectorAll('.tb.special, .tb.attack').forEach(el => el.classList.toggle('ready', !!ready && (el.dataset.a === 'special' || LAYOUTS[layoutKey].holdSpecial)));
@@ -4728,6 +5929,21 @@ function buildJuice() {
     `<label for="j_${k}">${k}</label><input type="range" id="j_${k}" min="${min}" max="${max}" step="${step}" value="${J[k]}"><output>${J[k]}</output>`).join('');
   Object.keys(JUICE_RANGES).forEach(k => $('#j_' + k).oninput = e => { J[k] = +e.target.value; e.target.nextElementSibling.value = J[k]; });
 }
+function buildCharge() {
+  $('#chOn').checked = !!CH.on;
+  $('#spGear').innerHTML = '<option value="">Empty (the weapon\'s special)</option>' + Object.entries(SPECIAL_GEAR).map(([k, g]) => `<option value="${k}">${g.name}</option>`).join('');
+  $('#spGear').value = spTest.gear;
+  $('#spTry').innerHTML = '<option value="">The equipped weapon\'s</option>' + Object.entries(SPECIALS).filter(([k]) => !SPECIAL_GEAR[k]).map(([k, d]) => `<option value="${k}">${d.name} (${d.from})</option>`).join('');
+  $('#spTry').value = spTest.tryOut;
+  $('#chargeVals').innerHTML = Object.entries(CHARGE_RANGES).map(([k, [min, max, step]]) =>
+    `<label for="c_${k}">${k}</label><input type="range" id="c_${k}" min="${min}" max="${max}" step="${step}" value="${CH[k]}"><output>${CH[k]}</output>`).join('');
+  Object.keys(CHARGE_RANGES).forEach(k => $('#c_' + k).oninput = e => { CH[k] = +e.target.value; e.target.nextElementSibling.value = CH[k]; });
+}
+$('#chOn').onchange = e => setSpTest({ charge: e.target.checked ? 1 : 0 });
+$('#spGear').onchange = e => setSpTest({ gear: e.target.value });
+$('#spTry').onchange = e => setSpTest({ tryOut: e.target.value });
+$('#chReset').onclick = () => { CH = { ...DEFAULT_CHARGE, on: CH.on }; buildCharge(); };
+buildCharge();
 const setAllJuice = v => { for (const k in J.on) J.on[k] = k === 'reduce' ? false : v; buildJuice(); };
 $('#juiceOn').onclick = () => setAllJuice(true);
 $('#juiceOff').onclick = () => setAllJuice(false);
@@ -4744,7 +5960,7 @@ levelSel.innerHTML = ZONES.map(z => `<optgroup label="${z.name}">${z.levels.map(
 function updateHint() {
   if (!$('#f1').innerHTML) return;   // panels still building
   const lv = LEVELS[levelSel.value], s = isRusty() ? rustyStats(setup[0].stats) : setup[0].stats, str = s.STR;
-  const wItem = meetsReq(ITEMS[wallet.weapon], setup[0].stats) ? ITEMS[wallet.weapon] : ITEMS.fists;
+  const wItem = ITEMS[fightWeapon(p1Stats())];
   const fmt = v => `${Math.round(v)}${v >= T.launchAt ? ' LAUNCH' : ''}`;
   const keys = [...new Set(lv.waves.flat())];
   $('#monsterHint').innerHTML = (levelOpen(lv) ? '' : `🔒 Locked: ${lockText(lv)}.<br>`) +
@@ -4780,12 +5996,13 @@ function renderShop() {
   }).join('');
   $('#items').innerHTML = Object.entries(ITEMS).map(([k, it]) => {
     const owned = wallet.owned.includes(k), open = stocked(it), meets = meetsReq(it, s);
-    const eq = it.kind === 'weapon' ? wallet.weapon === k : looksOn(k);
+    const eq = it.kind === 'weapon' ? wallet.weapon === k : it.layer ? myLook[it.layer.part] === it.layer.value : looksOn(k);
     let btn;
     if (!open) btn = `<button disabled>🔒 Beat ${LEVELS[it.sig].name} to stock it</button>`;
     else if (!owned) btn = `<button data-act="buy" data-k="${k}" ${wallet.gold < it.price ? 'disabled' : ''}>Buy · ${it.price}g</button>`;
     else if (it.kind === 'weapon') btn = eq ? `<button disabled>Equipped${meets ? '' : ' · too weak, fights with fists'}</button>`
       : meets ? `<button data-act="equip" data-k="${k}">Equip</button>` : `<button disabled>Owned · train to equip</button>`;
+    else if (it.layer) btn = `<button data-act="wear" data-k="${k}">${eq ? 'Wearing · take off' : 'Wear it'}</button>`;   // the app wears it from its look builder
     else btn = `<button data-act="toggle" data-k="${k}">${eq ? 'On · turn off' : 'Off · turn on'}</button>`;
     const reqs = Object.entries(it.req || {}).map(([st, v]) =>
       `<div class="req ${s[st] >= v ? 'ok' : ''}"><span>${st} ${s[st]} / ${v}</span><div class="bar"><i style="width:${Math.min(100, 100 * s[st] / v)}%"></i></div></div>`).join('');
@@ -4802,10 +6019,11 @@ $('#items').onclick = e => {
   const k = b.dataset.k, it = ITEMS[k];
   if (b.dataset.act === 'buy' && wallet.gold >= it.price) {
     wallet.gold -= it.price; wallet.owned.push(k); sfx.coin();
-    if (it.kind !== 'weapon') wallet.looks.push(k);
-    else if (meetsReq(it, setup[0].stats)) wallet.weapon = k;
+    if (it.kind !== 'weapon' && !it.layer) wallet.looks.push(k);
+    else if (it.kind === 'weapon' && meetsReq(it, setup[0].stats)) wallet.weapon = k;
     logLine(`Bought <b>${it.name}</b> for ${it.price}g${it.kind === 'weapon' && !meetsReq(it, setup[0].stats) ? ' (locked until you train up)' : ''}`);
   } else if (b.dataset.act === 'equip') wallet.weapon = k;
+  else if (b.dataset.act === 'wear') { const { part, value } = it.layer; myLook = { ...myLook, [part]: myLook[part] === value ? DEFAULT_LOOK[part] : value }; }
   else if (b.dataset.act === 'toggle') wallet.looks = looksOn(k) ? wallet.looks.filter(x => x !== k) : [...wallet.looks, k];
   saveWallet(); renderShop(); updateHint();
 };
@@ -4914,7 +6132,7 @@ $('#resetTune').onclick = () => { T = { ...DEFAULT_TUNING }; buildTuning(); upda
 buildFighterPanel(0); buildFighterPanel(1); buildTuning(); updateHint();
 ensureTower(towerBest() + 2);
 level = LEVELS[levelSel.value];
-// App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet, coop }) after the page loads, and also sets
+// App bridge (G2): the Expo app calls window.bbInit({ stats, level, rusty, wallet, look, coop, room }) after the page loads, and also sets
 // window.BB_INIT in case its script runs first. P1 takes the real stats, the wallet comes from the app (already moved
 // to today: freshness refilled, pump granted by a real workout), ladder locks are on, and the page opens in play mode.
 // In a browser neither happens and nothing changes.
@@ -4922,16 +6140,35 @@ window.bbInit = init => {
   if (init && init.wallet) {
     appWallet = true;
     wallet = { ...newWallet(), ...init.wallet };
+    for (const k of ['owned', 'looks']) if (!Array.isArray(wallet[k])) wallet[k] = newWallet()[k];   // an odd wallet falls back, not throws
+    // The app runs the shop (Fighter tab, #19): one shop per wallet, so the page's own card goes, and so does the page
+    // behind play mode (sliders, economy, wipe wallet, ladder locks): see body.app in the CSS and exitPlay.
+    $('#shopCard').hidden = true;
+    document.body.classList.add('app');
     $('#locks').checked = true;
     renderShop(); updateHint();
   }
-  if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; realStats = true; }
+  if (init && init.stats) { setup[0].stats = { ...setup[0].stats, ...init.stats }; setup[0].preset = 'Custom'; realStats = true; trainedStats = { ...setup[0].stats }; }
   if (init && init.level) setup[0].level = init.level;
   if (init && 'rusty' in init) $('#rusty').checked = !!init.rusty;
+  // The look you built in the app (#82), read like the app reads it: an unknown part draws as the default.
+  if (init && 'look' in init) { myLook = normalizeLook(init.look); if (coop) coopTrack(); }
   if (init && init.coop && typeof init.coop.url === 'string' && typeof init.coop.anonKey === 'string') { coopServer = { url: init.coop.url, anonKey: init.coop.anonKey }; coopServerFromLink = false; }
   fighterSync[0]();
   if (!playMode) enterPlay();
+  // Host co-op / Join co-op on the app's Fighter tab (#38): open the room straight away. bbInit can run twice (see
+  // above), so only the first room asked for opens.
+  if (init && init.room && !roomAsked) {
+    roomAsked = true;
+    if (init.room.role === 'host') coopOpen('host', newRoomCode());
+    else if (init.room.role === 'guest') {
+      const code = normCode(init.room.code);
+      if (validCode(code)) coopOpen('guest', code);
+      else coopFail(`${code || 'That'} isn't a room code: codes are ${COOP.codeLen} letters and numbers.`);
+    }
+  }
 };
+let roomAsked = false;
 if (window.BB_INIT) window.bbInit(window.BB_INIT);
 else if (new URLSearchParams(location.search).has('play')) enterPlay();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -4939,7 +6176,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) naviga
 //   __bb.seed(n)              seed rng() and take the clock from the rAF loop; seed before starting the fight
 //   __bb.step(seconds = 1/60) advance in fixed 1/60 s steps (round(seconds * 60) of them; 0 does nothing) and
 //                             take the clock too, so the rAF loop only draws
-//   __bb.state()              plain-data snapshot of the fight, for comparing runs
+//   __bb.state()              plain-data snapshot of the fight (and each fighter's look), for comparing runs
 //   __bb.input(i, action, down) press or release an action for player i (same as a key or touch)
 //   __bb.coop                 live co-op view (#35) without a room: host side record() then snap() after steps; guest
 //                             side watch(fight), recv(snap, nowMs), render(nowMs), stats()
@@ -4956,7 +6193,7 @@ window.__bb = {
     return {
       phase, paused, gt, waveIdx, combo, comboBest, result: result && JSON.parse(JSON.stringify(result)),
       hitstop, camX, ko: ko && plain(ko), run: run && { ...plain(run), pickups: run.pickups.map(plain) },
-      players: players.map(plain), monsters: monsters.map(plain),
+      players: players.map(p => ({ ...plain(p), look: p.look ? { ...p.look } : null })), monsters: monsters.map(plain),
       plates: plates.map(plain), shots: shots.map(plain), walls: platforms.filter(w => w.look === 'wall').map(plain),
     };
   },
